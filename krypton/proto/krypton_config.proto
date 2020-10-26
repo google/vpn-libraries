@@ -1,0 +1,69 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the );
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an  BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto2";
+
+package privacy.krypton;
+
+import "google/protobuf/duration.proto";
+
+option cc_api_version = 2;
+option java_outer_classname = "ConfigProto";
+option java_package = "com.google.android.libraries.privacy.ppn.internal";
+option java_api_version = 2;
+option java_multiple_files = true;
+
+// Configuration for reconnection.
+message ReconnectorConfig {
+  reserved 2, 4;
+
+  // Initial time between reconnects. Note that exponential factor is added
+  // every time.
+  optional uint32 initial_time_to_reconnect_msec = 1 [default = 1000];
+
+  // Deadline for a session to be established.
+  optional uint32 session_connection_deadline_msec = 3 [default = 30000];
+
+  // Deadline timer that reconnects wait before declaring the session has
+  // failure and start reconnection (reconnection indicates failopen)
+  optional uint32 datapath_watchdog_timer_msec = 5 [default = 2000];  // 2 secs.
+}
+
+// NextId:13;
+message KryptonConfig {
+  optional string zinc_url = 1;
+  optional string zinc_public_signing_key_url = 11;
+  optional string brass_url = 2;
+  optional string service_type = 3;
+
+  optional ReconnectorConfig reconnector_config = 4;
+
+  // Use IpSec datapath.
+  optional bool ipsec_datapath = 5 [default = false];
+  // Could be DNS address or v4/v6 address of the copper controller.
+  optional string copper_controller_address = 6;
+  // Running bridge over PPN.
+  optional bool bridge_over_ppn = 7 [default = false];
+  // AES128 to AES256 in bits.  128 or 16 bytes is for AES128. 256 or 32 bytes
+  // is for AES256.
+  optional uint32 cipher_suite_key_length = 8 [default = 128];
+  // Duration between Rekeys. Defaulted to 1 day = 24 * 3600
+  optional google.protobuf.Duration rekey_duration = 9;
+
+  // Whether Krypton should install a signal handler to intercept crashes and
+  // notify listeners before crashing.
+  optional bool install_crash_signal_handler = 10 [default = false];
+  optional bool enable_blind_signing = 12 [default = false];
+  optional bool validate_blind_signing_signature = 13 [default = true];
+}

@@ -1,0 +1,76 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the );
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an  BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto2";
+
+package privacy.krypton;
+
+import "privacy/net/krypton/proto/network_type.proto";
+
+option cc_api_version = 2;
+option java_outer_classname = "SetNetworkRequestProto";
+option java_package = "com.google.android.libraries.privacy.ppn.internal";
+option java_api_version = 2;
+option java_multiple_files = true;
+
+// Parameters passed to Krypton::setNetwork.
+message NetworkInfo {
+  // A file descriptor for a UDP socket on the network. This fd must be bound
+  // to the network and "protected" so that its traffic bypasses the VPN and
+  // uses the network directly.
+  optional int32 protected_fd = 1;
+
+  // The type of the network.
+  optional NetworkType network_type = 2;
+
+  // Whether the network is a metered network.
+  optional bool is_metered = 3;
+
+  enum AddressFamily {
+    V4 = 1;
+    V6 = 2;
+    V4V6 = 3;
+  }
+  // Address family of the network. The IP Addresses allocated on the interface
+  // identify what type of IP can be used.
+  optional AddressFamily address_family = 4 [default = V4V6];
+
+  // MTU of the network.
+  optional uint32 mtu = 5;
+
+  // Id of the network.
+  optional int64 network_id = 6;
+}
+
+// Parameters needed for IpSec Transform
+message IpSecTransformParams {
+  optional bytes uplink_key = 1;
+  optional bytes downlink_key = 2;
+  optional bytes uplink_salt = 3;
+  optional bytes downlink_salt = 4;
+
+  optional uint32 uplink_spi = 5;
+  optional uint32 downlink_spi = 6;
+
+  optional int32 network_id = 7;
+  optional int32 network_fd = 8;
+  optional string destination_address = 9;
+}
+
+// Encryption key for uplink and downlink.
+message BridgeTransformParams {
+  optional bytes uplink_key = 1;
+  optional bytes downlink_key = 2;
+  optional uint32 session_id = 3;
+}

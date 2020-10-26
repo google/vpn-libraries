@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.google.android.libraries.privacy.ppn">
+  <!--
+      These values are used by roboelectric to select default 'sdk' version (part of @Config).
+   -->
+  <uses-sdk
+      android:minSdkVersion="22"
+      android:targetSdkVersion="29"/>
+  <application>
+
+  </application>
+
+</manifest>

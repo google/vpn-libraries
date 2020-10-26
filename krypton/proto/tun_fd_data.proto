@@ -1,0 +1,57 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the );
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an  BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto2";
+
+package privacy.krypton;
+
+option cc_api_version = 2;
+option java_outer_classname = "TunFdDataProto";
+option java_package = "com.google.android.libraries.privacy.ppn.internal";
+option java_api_version = 2;
+option java_multiple_files = true;
+
+// TunFdData needed for setting up the Tunnel.
+message TunFdData {
+  // Name of this session. It will be displayed in system-managed dialogs and
+  // notifications on the device.
+  optional string session_name = 1;
+
+  message IpRange {
+    enum IpFamily {
+      UNKNOWN = 0;
+      IPV4 = 1;
+      IPV6 = 2;
+    }
+    optional IpFamily ip_family = 1;
+    optional string ip_range = 2;
+    optional int32 prefix = 3;
+  }
+  repeated IpRange tunnel_ip_addresses = 2;
+
+  repeated IpRange tunnel_dns_addresses = 3;
+
+  repeated IpRange tunnel_routes = 4;
+
+  // Maximum Transmission Unit (MTU)
+  optional int32 mtu = 5 [default = 1280];
+
+  // Whether to consider this VPN network as metered.
+  optional bool is_metered = 6 [default = false];
+
+  // Buffer size that should be set for network sockets (non tunnel sockets)
+  // Defaulted to 4MB ~ 4*1024 KB ~ 4x1024*1024 bytes.
+  optional uint32 send_buffer_size = 7 [default = 4194304];
+  optional uint32 receive_buffer_size = 8 [default = 4194304];
+}

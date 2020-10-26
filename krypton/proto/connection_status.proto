@@ -1,0 +1,55 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the );
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an  BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto2";
+
+package privacy.krypton;
+
+import "privacy/net/krypton/proto/network_type.proto";
+
+option cc_api_version = 2;
+option java_outer_classname = "ConnectionStatusProto";
+option java_package = "com.google.android.libraries.privacy.ppn.internal";
+option java_api_version = 2;
+option java_multiple_files = true;
+
+/** The status of the network connection, as reported by Krypton. */
+message ConnectionStatus {
+  optional string network_name = 1;
+
+  optional NetworkType network_type = 2;
+
+  /** All possible Security types supported by a PpnConnection. */
+  enum Security {
+    UNKNOWN_SECURITY = 0;
+    SECURE = 1;
+    INSECURE = 2;
+  }
+  optional Security security = 3;
+
+  /**
+   * All possible connection qualities supported by a PpnConnection according to
+   * RSSI.
+   * https://wiki.teltonika-networks.com/view/Mobile_Signal_Strength_Recommendations
+   */
+  enum ConnectionQuality {
+    UNKNOWN_QUALITY = 0;
+    EXCELLENT = 1;
+    GOOD = 2;
+    FAIR = 3;
+    POOR = 4;
+    NO_SIGNAL = 5;
+  }
+  optional ConnectionQuality quality = 4;
+}

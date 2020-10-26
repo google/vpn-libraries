@@ -1,0 +1,73 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the );
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an  BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto2";
+
+package privacy.krypton;
+
+import "google/protobuf/duration.proto";
+import "privacy/net/krypton/proto/krypton_config.proto";
+import "privacy/net/krypton/proto/network_info.proto";
+
+option cc_api_version = 2;
+option java_outer_classname = "DebugInfoProto";
+option java_package = "com.google.android.libraries.privacy.ppn.internal";
+option java_api_version = 2;
+option java_multiple_files = true;
+
+message ReconnectorDebugInfo {
+  optional string state = 1;
+  optional int32 session_restart_counter = 2;
+  optional int32 successive_control_plane_failures = 3;
+  optional int32 successive_data_plane_failures = 4;
+}
+
+message AuthDebugInfo {
+  optional string state = 1;
+  optional string status = 2;
+  // Provides latency for each individual Auth requests. Array size represents
+  // the total auths that were done.
+  repeated google.protobuf.Duration latency = 3;
+}
+
+message EgressDebugInfo {
+  optional string state = 1;
+  optional string status = 2;
+  // Provides latency for each AddEgressRequests. Array size represents the
+  // total number of AddEgress that were called.
+  repeated google.protobuf.Duration latency = 3;
+}
+
+message SessionDebugInfo {
+  optional string state = 1;
+  optional string status = 2;
+  optional int32 active_tun_fd = 3;
+  optional NetworkInfo active_network = 4;
+  optional int32 previous_tun_fd = 5;
+  optional NetworkInfo previous_network = 6;
+  optional uint32 successful_rekeys = 7;
+  optional uint32 network_switches = 8;
+}
+
+message KryptonDebugInfo {
+  optional KryptonConfig config = 9;
+  optional bool cancelled = 4;
+
+  optional ReconnectorDebugInfo reconnector = 5;
+  optional AuthDebugInfo auth = 6;
+  optional EgressDebugInfo egress = 7;
+  optional SessionDebugInfo session = 8;
+
+  reserved 1, 2, 3;
+}

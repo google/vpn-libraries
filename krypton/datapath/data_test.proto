@@ -1,0 +1,30 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the );
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an  BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto2";
+
+package privacy.krypton.datapath;
+
+// This is internal proto for testing datapath and should not be used for prod
+// environments.
+
+// Defines a arbritrary packet containing sequence number.
+message Packet {
+  optional uint32 sequence_number = 1;
+}
+
+// Large packet.
+message LargePacket {
+  optional bytes data = 1;
+}
