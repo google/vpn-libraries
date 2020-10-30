@@ -20,7 +20,7 @@ The source code in its current form may not be buildable and is meant as a refer
 While the team that maintains the project at Google made a best effort to ensure parity between the open source library and the version implemented across various clients, we cannot offer explicit guarantees
 
 ## Learn more
-You can learn more about the first implementation of the Google VPN libraries at https://one.google.com/about/vpn
+You can learn more about the implementation of the Google VPN libraries on our white paper [here](https://www.gstatic.com/subscriptions/marketing_page/vpn/white_paper_4f995ab5d7c7edc3d3f14f2e0593f790.pdf)
 
 ## Community contributions
 At this time the project is not accepting community contributions, however, if you find a security issue/vulnerability, please report it by going to https://goo.gl/vulnz to include it in our [Vulnerability Reward Program](https://www.google.com/about/appsecurity/reward-program/).
