@@ -30,7 +30,6 @@ using privacy::krypton::NetworkInfo;
 using privacy::krypton::TunFdData;
 using privacy::krypton::jni::ConvertJavaByteArrayToString;
 using privacy::krypton::jni::ConvertJavaStringToUTF8;
-using privacy::krypton::jni::JavaString;
 using privacy::krypton::jni::JniCache;
 using privacy::krypton::jni::KryptonNotification;
 using privacy::krypton::jni::OAuth;
@@ -42,35 +41,35 @@ extern "C" {
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_connected(
-    JNIEnv* env, jobject instance) {
+    JNIEnv*  /*env*/, jobject  /*instance*/) {
   KryptonNotification notification;
   notification.Connected();
 }
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_connecting(
-    JNIEnv* env, jobject instance) {
+    JNIEnv*  /*env*/, jobject  /*instance*/) {
   KryptonNotification notification;
   notification.Connecting();
 }
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_controlPlaneConnected(
-    JNIEnv* env, jobject instance) {
+    JNIEnv*  /*env*/, jobject  /*instance*/) {
   KryptonNotification notification;
   notification.ControlPlaneConnected();
 }
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_statusUpdated(
-    JNIEnv* env, jobject instance) {
+    JNIEnv*  /*env*/, jobject  /*instance*/) {
   KryptonNotification notification;
   notification.StatusUpdated();
 }
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_disconnectedNative(
-    JNIEnv* env, jobject instance, jint code, jstring message) {
+    JNIEnv* env, jobject  /*instance*/, jint code, jstring message) {
   KryptonNotification notification;
   absl::Status status(static_cast<absl::StatusCode>(code),
                       ConvertJavaStringToUTF8(env, message));
@@ -79,7 +78,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_discon
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_permanentFailureNative(
-    JNIEnv* env, jobject instance, jint code, jstring message) {
+    JNIEnv* env, jobject  /*instance*/, jint code, jstring message) {
   KryptonNotification notification;
   absl::Status status(static_cast<absl::StatusCode>(code),
                       ConvertJavaStringToUTF8(env, message));
@@ -88,7 +87,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_perman
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_networkDisconnectedNative(
-    JNIEnv* env, jobject instance, jbyteArray network_info_byte_array,
+    JNIEnv* env, jobject  /*instance*/, jbyteArray network_info_byte_array,
     jint code, jstring message) {
   KryptonNotification notification;
   std::string network_info_bytes =
@@ -105,14 +104,14 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_networ
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_waitingToReconnectNative(
-    JNIEnv* env, jobject instance, jlong retry_millis) {
+    JNIEnv*  /*env*/, jobject  /*instance*/, jlong retry_millis) {
   KryptonNotification notification;
   notification.WaitingToReconnect(retry_millis);
 }
 
 JNIEXPORT jint JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_createTunFdNative(
-    JNIEnv* env, jobject instance, jbyteArray tun_fd_data_byte_array) {
+    JNIEnv* env, jobject  /*instance*/, jbyteArray tun_fd_data_byte_array) {
   VpnService service;
   std::string tun_fd_data_bytes =
       ConvertJavaByteArrayToString(env, tun_fd_data_byte_array);
@@ -121,7 +120,14 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
     JniCache::Get()->ThrowKryptonException("invalid TunFdData bytes");
     return -1;
   }
-  auto status_or_fd = service.CreateTunFd(tun_fd_data);
+  auto status_or_tunnel = service.CreateTunnel(tun_fd_data);
+  if (!status_or_tunnel.ok()) {
+    JniCache::Get()->ThrowKryptonException(
+        status_or_tunnel.status().ToString());
+    return -1;
+  }
+  auto tunnel = std::move(status_or_tunnel).value();
+  auto status_or_fd = tunnel->GetFd();
   if (!status_or_fd.ok()) {
     JniCache::Get()->ThrowKryptonException(status_or_fd.status().ToString());
     return -1;
@@ -131,7 +137,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
 
 JNIEXPORT jint JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_createNetworkFdNative(
-    JNIEnv* env, jobject instance, jbyteArray network_info_byte_array) {
+    JNIEnv* env, jobject  /*instance*/, jbyteArray network_info_byte_array) {
   VpnService service;
   std::string network_info_bytes =
       ConvertJavaByteArrayToString(env, network_info_byte_array);
@@ -140,7 +146,13 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
     JniCache::Get()->ThrowKryptonException("invalid NetworkInfo bytes");
     return -1;
   }
-  auto status_or_fd = service.CreateNetworkFd(network_info);
+  auto status_or_pipe = service.CreateProtectedNetworkSocket(network_info);
+  if (!status_or_pipe.ok()) {
+    JniCache::Get()->ThrowKryptonException(status_or_pipe.status().ToString());
+    return -1;
+  }
+  auto pipe = std::move(status_or_pipe).value();
+  auto status_or_fd = pipe->GetFd();
   if (!status_or_fd.ok()) {
     JniCache::Get()->ThrowKryptonException(status_or_fd.status().ToString());
     return -1;
@@ -150,10 +162,10 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
 
 JNIEXPORT jstring JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_getOAuthToken(
-    JNIEnv* env, jobject instance) {
+    JNIEnv* env, jobject  /*instance*/) {
   OAuth oauth;
   auto status_or_token = oauth.GetOAuthToken();
-  std::string token = "";
+  std::string token;
   if (!status_or_token.ok()) {
     JniCache::Get()->ThrowKryptonException(status_or_token.status().ToString());
     return env->NewStringUTF("");
@@ -165,7 +177,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_getOAu
 
 JNIEXPORT jboolean JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_configureIpSecNative(
-    JNIEnv* env, jobject instance,
+    JNIEnv* env, jobject  /*instance*/,
     jbyteArray ipsec_transform_params_byte_array) {
   VpnService service;
   std::string ipsec_transform_params_bytes =
@@ -174,9 +186,9 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_config
   if (!params.ParseFromString(ipsec_transform_params_bytes)) {
     JniCache::Get()->ThrowKryptonException(
         "invalid IpSecTransformParams bytes");
-    return false;
+    return 0u;
   }
-  return service.ConfigureIpSec(params).ok();
+  return static_cast<jboolean>(service.ConfigureIpSec(params).ok());
 }
 
 }  // extern "C"

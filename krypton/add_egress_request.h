@@ -20,8 +20,6 @@
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/dataplane_protocol.h"
-#include "privacy/net/krypton/http_header.h"
-#include "privacy/net/krypton/http_request_json.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/jsoncpp/value.h"
@@ -59,17 +57,15 @@ class AddEgressRequest {
   };
 
   // Returns the corresponding headers and json_body separately.
-  absl::optional<HttpRequestJson> EncodeToJsonObjectForBridge(
+  absl::optional<HttpRequest> EncodeToProtoForBridge(
       std::shared_ptr<AuthAndSignResponse> auth_response);
 
-  absl::optional<HttpRequestJson> EncodeToJsonObjectForPpn(
+  absl::optional<HttpRequest> EncodeToProtoForPpn(
       const PpnDataplaneRequestParams& params);
 
  private:
-  HttpRequest http_request_;
-  Json::Value BuildJson(
-      std::shared_ptr<AuthAndSignResponse> auth_response);
-  Json::Value BuildJson(const PpnDataplaneRequestParams& params);
+  Json::Value BuildBodyJson(std::shared_ptr<AuthAndSignResponse> auth_response);
+  Json::Value BuildBodyJson(const PpnDataplaneRequestParams& params);
 };
 }  // namespace krypton
 }  // namespace privacy

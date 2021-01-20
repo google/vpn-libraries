@@ -142,54 +142,67 @@ class Session : public Auth::NotificationInterface,
   // returns nullopt on no networks.
   absl::optional<NetworkInfo> active_network_info() const
       ABSL_LOCKS_EXCLUDED(mutex_);
-  absl::optional<int> active_tun_fd() const ABSL_LOCKS_EXCLUDED(mutex_);
-  absl::optional<int> previous_tun_fd() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   void CollectTelemetry(KryptonTelemetry* telemetry)
       ABSL_LOCKS_EXCLUDED(mutex_);
   void GetDebugInfo(SessionDebugInfo* debug_info) ABSL_LOCKS_EXCLUDED(mutex_);
+  // Callback from DatapathReattempt timer.
   void AttemptDatapathReconnect() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  int DatapathReattemptCountTestOnly() {
+  // Test only methods
+  int DatapathReattemptCountTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
     return datapath_reattempt_count_.load();
   }
-  int DatapathReattemptTimerIdTestOnly() {
+  int DatapathReattemptTimerIdTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return datapath_reattempt_timer_id_;
   }
 
-  crypto::SessionCrypto* MutableCryptoTestOnly() { return key_material_.get(); }
-  absl::Status RekeyTestOnly() { return Rekey(); }
+  crypto::SessionCrypto* MutableCryptoTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
+    return key_material_.get();
+  }
+  absl::Status RekeyTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
+    return Rekey();
+  }
+  absl::optional<int> active_tun_fd_test_only() const
+      ABSL_LOCKS_EXCLUDED(mutex_);
+  absl::optional<int> previous_tun_fd_test_only() const
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
-  void SetState(State state) ABSL_LOCKS_EXCLUDED(mutex_);
-  void UpdateLatestStatus(const absl::Status& status)
-      ABSL_LOCKS_EXCLUDED(mutex_);
-  void UpdateLatestDatapathStatus(const absl::Status& status)
-      ABSL_LOCKS_EXCLUDED(mutex_);
-
-  void StartDatapath() ABSL_LOCKS_EXCLUDED(mutex_);
-
-  void set_tun_fd(int tun_fd) ABSL_LOCKS_EXCLUDED(mutex_);
-  void UpdateActiveNetworkInfo(absl::optional<NetworkInfo> network_info)
-      ABSL_LOCKS_EXCLUDED(mutex_);
-  absl::Status SwitchDatapath(absl::optional<NetworkInfo> network_info)
-      ABSL_LOCKS_EXCLUDED(mutex_);
-  absl::Status BuildTunFdData(TunFdData* tun_fd_data) const;
-  void UpdateActiveNetworkFd(int fd);
+  // Callback methods from timers.
   void FetchCounters() ABSL_LOCKS_EXCLUDED(mutex_);
-  void StartFetchCountersTimer() ABSL_LOCKS_EXCLUDED(mutex_);
-  void StartDatapathReattemptTimer() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::StatusOr<int> CreateTunFdIfNeeded();
-  absl::Status ClearDatapath() ABSL_LOCKS_EXCLUDED(mutex_);
-  void ResetAllDatapathReattempts() ABSL_LOCKS_EXCLUDED(mutex_);
-  bool IsFdCurrentActiveFd(int failed_fd) ABSL_LOCKS_EXCLUDED(mutex_);
-  absl::Status SetRemoteKeyMaterial() ABSL_LOCKS_EXCLUDED(mutex_);
+  void SetState(State state) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void UpdateLatestStatus(const absl::Status& status)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void UpdateLatestDatapathStatus(const absl::Status& status)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void PpnDataplaneRequest(bool rekey = false) ABSL_LOCKS_EXCLUDED(mutex_);
-  absl::Status Rekey() ABSL_LOCKS_EXCLUDED(mutex_);
-  void RekeyDatapath() ABSL_LOCKS_EXCLUDED(mutex_);
+  void StartDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void UpdateActiveNetworkInfo(absl::optional<NetworkInfo> network_info)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  absl::Status SwitchDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  absl::Status BuildTunFdData(TunFdData* tun_fd_data) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void StartFetchCountersTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void StartDatapathReattemptTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  absl::Status CreateTunnelIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  absl::Status ClearDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void ResetAllDatapathReattempts() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool IsFdCurrentActiveFd(int failed_fd) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  absl::Status SetRemoteKeyMaterial() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void PpnDataplaneRequest(bool rekey = false)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  absl::Status Rekey() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void RekeyDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelFetcherTimerIfRunning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelDatapathReattemptTimerIfRunning()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -209,24 +222,26 @@ class Session : public Auth::NotificationInterface,
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
   absl::Status latest_datapath_status_ ABSL_GUARDED_BY(mutex_) =
       absl::OkStatus();
-  // Current active tun fd.
-  absl::optional<int> active_tun_fd_ ABSL_GUARDED_BY(mutex_);
-  // Previously active tun fd.
-  absl::optional<int> previous_tun_fd_ ABSL_GUARDED_BY(mutex_);
+
+  // Currently active tunnel.
+  std::unique_ptr<PacketPipe> active_tunnel_ ABSL_GUARDED_BY(mutex_);
+  // Previously active tunnel.
+  std::unique_ptr<PacketPipe> previous_tunnel_ ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<PacketPipe> active_network_socket_ ABSL_GUARDED_BY(mutex_);
   absl::optional<NetworkInfo> active_network_info_ ABSL_GUARDED_BY(mutex_);
 
   // Counts the number of times the endpoint switched till now.
   // TODO: Should this be plumbed from Xenon.
-  std::atomic_int network_switches_count_ = 1;
+  std::atomic_int network_switches_count_ ABSL_GUARDED_BY(mutex_) = 1;
   int fetch_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int datapath_reattempt_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
-  std::atomic_int datapath_reattempt_count_ = 0;
+  std::atomic_int datapath_reattempt_count_ ABSL_GUARDED_BY(mutex_) = 0;
 
-  std::unique_ptr<crypto::SessionCrypto> key_material_;
-  absl::optional<std::string> rekey_verification_key_;
-  std::atomic_bool datapath_connected_ = false;
-  std::string copper_address_;
-  absl::Time last_rekey_time_;
+  std::unique_ptr<crypto::SessionCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
+  absl::optional<std::string> rekey_verification_key_ ABSL_GUARDED_BY(mutex_);
+  std::atomic_bool datapath_connected_ ABSL_GUARDED_BY(mutex_) = false;
+  std::string copper_address_ ABSL_GUARDED_BY(mutex_);
+  absl::Time last_rekey_time_ ABSL_GUARDED_BY(mutex_);
   // Keep track of the last reported network switches.
   std::atomic_int last_repoted_network_switches_ = 0;
   std::atomic_int number_of_rekeys_ = 0;

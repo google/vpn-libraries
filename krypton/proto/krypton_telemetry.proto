@@ -40,4 +40,12 @@ message KryptonTelemetry {
   optional uint32 control_plane_failures = 5;
   optional uint32 data_plane_failures = 6;
   optional uint32 session_restarts = 7;
+
+  // Provides latency for each token getting operation during Auth
+  // requests. Array size represents the total GetOAuthToken that were done.
+  repeated google.protobuf.Duration oauth_latency = 8;
+
+  // Provides latency for each token verification during Auth request.
+  // Array size represents the total number of zinc_url that were called.
+  repeated google.protobuf.Duration zinc_latency = 9;
 }

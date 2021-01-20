@@ -16,6 +16,7 @@
 #define PRIVACY_NET_KRYPTON_UTILS_TIME_UTIL_H_
 
 #include "google/protobuf/duration.proto.h"
+#include "google/protobuf/timestamp.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
@@ -27,6 +28,11 @@ namespace utils {
 
 absl::Status ToProtoDuration(absl::Duration d,
                              google::protobuf::Duration* proto);
+
+absl::Status ToProtoTime(absl::Time t, google::protobuf::Timestamp* proto);
+
+absl::StatusOr<absl::Time> ParseTimestamp(absl::string_view s);
+
 }  // namespace utils
 }  // namespace krypton
 }  // namespace privacy

@@ -36,16 +36,16 @@
 
 namespace privacy {
 namespace krypton {
-using ::testing::_;
+
 using ::testing::Eq;
+using ::testing::EqualsProto;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
+using ::testing::proto::Partially;
 
 class HttpFetcherImplForTest : public HttpFetcherInterface {
  public:
-  MOCK_METHOD(std::string, PostJson,
-              (absl::string_view, const Json::Value&, const Json::Value&),
-              (override));
+  MOCK_METHOD(HttpResponse, PostJson, (const HttpRequest&), (override));
 };
 
 class MockAuthNotification : public Auth::NotificationInterface {
@@ -60,6 +60,9 @@ class AuthTest : public ::testing::Test {
     config_.set_zinc_url("http://www.example.com/auth");
     config_.set_zinc_public_signing_key_url("http://www.example.com/publickey");
     config_.set_service_type("service_type");
+    config_.set_enable_blind_signing(false);
+    config_.set_ipsec_datapath(false);
+    config_.set_bridge_over_ppn(false);
     auth_ = absl::make_unique<Auth>(&config_, &http_fetcher_, &oauth_,
                                     &looper_thread_);
     auth_->RegisterNotificationHandler(&auth_notification_);
@@ -68,26 +71,27 @@ class AuthTest : public ::testing::Test {
 
   void TearDown() override { auth_->Stop(); }
 
-  Json::Value buildHttpHeaders() {
-    Json::Value headers;
-    // Empty headers.
-    return headers;
+  HttpRequest buildAuthRequest() {
+    HttpRequest request;
+    request.set_url("http://www.example.com/auth");
+    Json::FastWriter writer;
+    request.set_json_body(writer.write(buildJsonBodyForAuth()));
+    return request;
   }
+
   // Request from Auth.
   Json::Value buildJsonBodyForAuth() {
     Json::Value json_body;
     json_body[JsonKeys::kAuthTokenKey] = "some_token";
     json_body[JsonKeys::kServiceTypeKey] = "service_type";
-
     return json_body;
   }
 
-  Json::Value buildPublicKeyResponse() {
-    Json::Value response;
-    Json::Value status;
-    status["code"] = 200;
-    status["message"] = "OK";
-    response["status"] = status;
+  HttpResponse buildPublicKeyResponse() {
+    HttpResponse response;
+    response.mutable_status()->set_code(200);
+    response.mutable_status()->set_message("OK");
+
     Json::Value json_body;
     // Some random public string.
     const std::string rsa_pem = absl::StrCat(
@@ -100,39 +104,26 @@ class AuthTest : public ::testing::Test {
         "NVez52n5TLvQP3hRd4MTi7YvfhezRcA4aXyIDOv+TYi4p+OVTYQ+FMbkgoWBm5bq\n",
         "wQIDAQAB\n", "-----END PUBLIC KEY-----\n");
     json_body["pem"] = rsa_pem;
-    response["json_body"] = json_body;
+    Json::FastWriter writer;
+    response.set_json_body(writer.write(json_body));
+
     return response;
   }
+
   // Response to Auth
-  Json::Value buildResponse() {
-    Json::Value response;
-    Json::Value status;
-    status["code"] = 200;
-    status["message"] = "OK";
-    response["status"] = status;
-    Json::Value json_body;
-    json_body["jwt_token"] = "some_random_jwt_token";
-    response["json_body"] = json_body;
+  HttpResponse buildResponse() {
+    HttpResponse response;
+    response.mutable_status()->set_code(200);
+    response.mutable_status()->set_message("OK");
+    response.set_json_body(R"pb({ "jwt_token": "some_random_jwt_token" })pb");
     return response;
   }
 
-  // Permanent failure
-  Json::Value buildPermanentFailureResponse() {
-    Json::Value response;
-    Json::Value status;
-    status["code"] = 403;
-    status["message"] = "OK";
-    response["status"] = status;
-    return response;
-  }
-
-  // Permanent failure
-  Json::Value buildTemporarytFailureResponse() {
-    Json::Value response;
-    Json::Value status;
-    status["code"] = 500;
-    status["message"] = "OK";
-    response["status"] = status;
+  // Temporary failure
+  HttpResponse buildTemporaryFailureResponse() {
+    HttpResponse response;
+    response.mutable_status()->set_code(500);
+    response.mutable_status()->set_message("OK");
     return response;
   }
 
@@ -148,14 +139,11 @@ class AuthTest : public ::testing::Test {
 TEST_F(AuthTest, AuthAndResponseWithAdditionalRekey) {
   absl::Notification init_done;
   absl::Notification http_fetcher_done;
-  Json::FastWriter writer;
-  const std::string& return_val = writer.write(buildResponse());
+  const auto return_val = buildResponse();
 
   EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
 
-  EXPECT_CALL(http_fetcher_,
-              PostJson(Eq("http://www.example.com/auth"),
-                       Eq(buildHttpHeaders()), Eq(buildJsonBodyForAuth())))
+  EXPECT_CALL(http_fetcher_, PostJson(EqualsProto(buildAuthRequest())))
       .WillOnce(::testing::Return(return_val));
   EXPECT_CALL(auth_notification_, AuthSuccessful(false))
       .WillOnce(
@@ -172,9 +160,7 @@ TEST_F(AuthTest, AuthAndResponseWithAdditionalRekey) {
 
   // Do Authentication for rekey.
   absl::Notification http_fetcher_done_rekey;
-  EXPECT_CALL(http_fetcher_,
-              PostJson(Eq("http://www.example.com/auth"),
-                       Eq(buildHttpHeaders()), Eq(buildJsonBodyForAuth())))
+  EXPECT_CALL(http_fetcher_, PostJson(EqualsProto(buildAuthRequest())))
       .WillOnce(::testing::Return(return_val));
   EXPECT_CALL(auth_notification_, AuthSuccessful(/*is_rekey=*/true))
       .WillOnce(InvokeWithoutArgs(&http_fetcher_done_rekey,
@@ -211,14 +197,10 @@ TEST_P(AuthParamsTest, GetOAuthTokenFailure) {
 TEST_P(AuthParamsTest, TestFailure) {
   absl::Notification init_done;
   absl::Notification http_fetcher_done;
-  Json::FastWriter writer;
-  const std::string& return_val =
-      writer.write(buildTemporarytFailureResponse());
+  const auto return_val = buildTemporaryFailureResponse();
 
   EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
-  EXPECT_CALL(http_fetcher_,
-              PostJson(Eq("http://www.example.com/auth"),
-                       Eq(buildHttpHeaders()), Eq(buildJsonBodyForAuth())))
+  EXPECT_CALL(http_fetcher_, PostJson(EqualsProto(buildAuthRequest())))
       .WillOnce(::testing::Return(return_val));
   EXPECT_CALL(auth_notification_, AuthFailure(absl::InternalError("OK")))
       .WillOnce(
@@ -235,17 +217,17 @@ TEST_P(AuthParamsTest, TestFailure) {
 TEST_P(AuthParamsTest, AuthWithBlindSigning) {
   config_.set_enable_blind_signing(true);
 
-  Json::FastWriter writer;
   absl::Notification http_fetcher_done;
-  const std::string& return_val = writer.write(buildPublicKeyResponse());
-  EXPECT_CALL(http_fetcher_, PostJson(Eq("http://www.example.com/publickey"),
-                                      Eq(buildHttpHeaders()), _))
+  const auto return_val = buildPublicKeyResponse();
+  EXPECT_CALL(http_fetcher_,
+              PostJson(Partially(EqualsProto(
+                  R"pb(url: "http://www.example.com/publickey")pb"))))
       .WillOnce(::testing::Return(return_val));
 
   EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
 
-  EXPECT_CALL(http_fetcher_, PostJson(Eq("http://www.example.com/auth"),
-                                      Eq(buildHttpHeaders()), _))
+  EXPECT_CALL(http_fetcher_, PostJson(Partially(EqualsProto(
+                                 R"pb(url: "http://www.example.com/auth")pb"))))
       .WillOnce(::testing::Return(return_val));
   EXPECT_CALL(auth_notification_, AuthSuccessful(GetParam()))
       .WillOnce(
@@ -257,7 +239,28 @@ TEST_P(AuthParamsTest, AuthWithBlindSigning) {
       http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
 }
 
+TEST_P(AuthParamsTest, AuthWithBlindSigningFailure) {
+  config_.set_enable_blind_signing(true);
+
+  absl::Notification http_fetcher_done;
+  const auto return_val = buildTemporaryFailureResponse();
+  EXPECT_CALL(http_fetcher_,
+              PostJson(Partially(EqualsProto(
+                  R"pb(url: "http://www.example.com/publickey")pb"))))
+      .WillOnce(::testing::Return(return_val));
+
+  EXPECT_CALL(auth_notification_, AuthFailure(absl::InternalError("OK")))
+      .WillOnce(
+          InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
+
+  auth_->Start(/*is_rekey=*/GetParam());
+
+  EXPECT_TRUE(
+      http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+}
+
 INSTANTIATE_TEST_SUITE_P(AuthWithBlindSigning, AuthParamsTest,
                          testing::Values(true, false));
+
 }  // namespace krypton
 }  // namespace privacy

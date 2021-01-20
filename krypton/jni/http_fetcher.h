@@ -18,6 +18,7 @@
 #include <string>
 
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/jsoncpp/value.h"
 
@@ -32,8 +33,7 @@ class HttpFetcher : public HttpFetcherInterface {
   ~HttpFetcher() final = default;
 
   // Fetches the content from a remote server. This is a blocking call.
-  std::string PostJson(absl::string_view url, const Json::Value& headers,
-                       const Json::Value& json_body) override;
+  HttpResponse PostJson(const HttpRequest& request) override;
 };
 
 }  // namespace jni

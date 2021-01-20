@@ -17,6 +17,7 @@
 #include <string>
 
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
@@ -38,45 +39,47 @@ using ::testing::Return;
 
 class MockHttpFetcherInterface : public HttpFetcherInterface {
  public:
-  MOCK_METHOD(std::string, PostJson,
-              (absl::string_view, const Json::Value&, const Json::Value&),
-              (override));
+  MOCK_METHOD(HttpResponse, PostJson, (const HttpRequest&), (override));
 };
 
 class HttpFetcherTest : public ::testing::Test {
  public:
-  void Callback(absl::string_view response) {}
+  void Callback(const HttpResponse& response) {}
   MockHttpFetcherInterface http_interface_;
   utils::LooperThread looper_thread_{"Test"};
 };
 
 TEST_F(HttpFetcherTest, TestBasicPostJson) {
   HttpFetcher fetcher(&http_interface_, &looper_thread_);
-  Json::Value json_body;
-  json_body["a"] = "b";
+  HttpRequest request;
+  request.set_url("http://unknown");
+  request.set_json_body("{\"a\":\"b\"}");
   absl::Notification notification;
-  EXPECT_CALL(http_interface_, PostJson(_, _, _))
+  HttpResponse response;
+  EXPECT_CALL(http_interface_, PostJson(_))
       .WillOnce(
           DoAll(InvokeWithoutArgs(&notification, &absl::Notification::Notify),
-                Return("some value")));
-  fetcher.PostJsonAsync("http://unknown", Json::Value::null, json_body,
+                Return(response)));
+  fetcher.PostJsonAsync(request,
                         absl::bind_front(&HttpFetcherTest::Callback, this));
   notification.WaitForNotificationWithTimeout(absl::Seconds(3));
 }
 
 TEST_F(HttpFetcherTest, CancellationBeforeHttpResponse) {
   HttpFetcher fetcher(&http_interface_, &looper_thread_);
-  Json::Value json_body;
-  json_body["a"] = "b";
+  HttpRequest request;
+  request.set_url("http://unknown");
+  request.set_json_body("{\"a\":\"b\"}");
   absl::Notification notification;
+  HttpResponse response;
   // Delay sending the PostResponse. Wish there was a better way to simulate a
   // delayed response.
-  EXPECT_CALL(http_interface_, PostJson(_, _, _))
+  EXPECT_CALL(http_interface_, PostJson(_))
       .WillOnce(
           DoAll(Invoke([]() { absl::SleepFor(absl::Seconds(2)); }),
                 InvokeWithoutArgs(&notification, &absl::Notification::Notify),
-                Return("some value")));
-  fetcher.PostJsonAsync("http://unknown", Json::Value::null, json_body,
+                Return(response)));
+  fetcher.PostJsonAsync(request,
                         absl::bind_front(&HttpFetcherTest::Callback, this));
   fetcher.CancelAsync();
   notification.WaitForNotification();

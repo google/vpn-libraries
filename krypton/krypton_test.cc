@@ -35,15 +35,9 @@
 namespace privacy {
 namespace krypton {
 
-using ::testing::InvokeWithoutArgs;
-
 class HttpFetcherForTest : public HttpFetcherInterface {
  public:
-  std::string PostJson(absl::string_view /*url*/,
-                       const Json::Value& /*headers*/,
-                       const Json::Value& /*json_body*/) override {
-    return std::string();
-  }
+  HttpResponse PostJson(const HttpRequest&) override { return HttpResponse(); }
 };
 
 class KryptonTest : public ::testing::Test {

@@ -26,10 +26,7 @@ option java_multiple_files = true;
 
 // Parameters passed to Krypton::setNetwork.
 message NetworkInfo {
-  // A file descriptor for a UDP socket on the network. This fd must be bound
-  // to the network and "protected" so that its traffic bypasses the VPN and
-  // uses the network directly.
-  optional int32 protected_fd = 1;
+  reserved 1;
 
   // The type of the network.
   optional NetworkType network_type = 2;

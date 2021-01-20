@@ -20,6 +20,7 @@
 #include <string>
 
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/strings/string_view.h"
@@ -48,23 +49,20 @@ class HttpFetcher {
   // executing and this ensures critical sections are
   // protected.
   struct CallbackInfo {
-    explicit CallbackInfo(std::function<void(const std::string&)> cb) {
+    explicit CallbackInfo(std::function<void(const HttpResponse&)> cb) {
       callback = cb;
       cancelled = false;
     }
     absl::Mutex mutex;
     bool cancelled ABSL_GUARDED_BY(mutex) = false;
-    std::function<void(const std::string&)> callback ABSL_GUARDED_BY(mutex);
+    std::function<void(const HttpResponse&)> callback ABSL_GUARDED_BY(mutex);
     utils::LooperThread* looper;  // Not owned.
   };
 
   // Provides async call back to PostJson, this is a non blocking function.
   // Callback cannot be null.
-  // Callback is called with JSON string with the following format {
-  // "status":{}, "json_body": {<mime>}, "headers":{}}
-  void PostJsonAsync(absl::string_view url, const Json::Value& headers,
-                     const Json::Value& json_body,
-                     std::function<void(const std::string&)> callback);
+  void PostJsonAsync(const HttpRequest& request,
+                     std::function<void(const HttpResponse&)> callback);
 
   // Cancel Async processing. This one does not stop the HTTP requests, it stops
   // calling the callback in |PostJsonAsync|.  Applicable only for
@@ -74,8 +72,7 @@ class HttpFetcher {
  private:
   HttpFetcherInterface* pal_interface_;  // Not owned.
 
-  void PostJsonAsyncInternal(const std::string& url, const Json::Value& headers,
-                             const Json::Value json_body,
+  void PostJsonAsyncInternal(const HttpRequest& request,
                              std::shared_ptr<CallbackInfo> callback_info);
 
   std::shared_ptr<CallbackInfo> callback_info_;

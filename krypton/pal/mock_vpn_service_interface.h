@@ -15,6 +15,8 @@
 #ifndef PRIVACY_NET_KRYPTON_PAL_MOCK_VPN_SERVICE_INTERFACE_H_
 #define PRIVACY_NET_KRYPTON_PAL_MOCK_VPN_SERVICE_INTERFACE_H_
 
+#include <memory>
+
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
@@ -27,9 +29,10 @@ namespace krypton {
 // Mock interface for VPN Service.
 class MockVpnService : public VpnServiceInterface {
  public:
-  MOCK_METHOD(absl::StatusOr<int>, CreateTunFd, (const TunFdData&), (override));
-  MOCK_METHOD(absl::StatusOr<int>, CreateNetworkFd, (const NetworkInfo&),
-              (override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<PacketPipe>>, CreateTunnel,
+              (const TunFdData&), (override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<PacketPipe>>,
+              CreateProtectedNetworkSocket, (const NetworkInfo&), (override));
   MOCK_METHOD(absl::Status, ConfigureIpSec, (const IpSecTransformParams&),
               (override));
 };

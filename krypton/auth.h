@@ -107,11 +107,14 @@ class Auth {
 
   // Sets the authentication sate.
   void SetState(State) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  void HandleAuthAndSignResponse(bool is_rekey, const std::string& response)
+  void HandleAuthAndSignResponse(bool is_rekey, const HttpResponse& response)
       ABSL_LOCKS_EXCLUDED(mutex_);
   void HandlePublicKeyResponse(bool is_rekey,
-                               const std::string& string_response)
+                               const HttpResponse& string_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
+  static void RecordLatency(absl::Time start,
+                     std::vector<google::protobuf::Duration>* latencies,
+                     const std::string& latency_type);
 
   State state_ ABSL_GUARDED_BY(mutex_);
   mutable absl::Mutex mutex_;
@@ -120,7 +123,7 @@ class Auth {
   std::shared_ptr<AuthAndSignResponse> auth_and_sign_response_
       ABSL_GUARDED_BY(mutex_);
 
-  void RaiseAuthFailureNotification() const
+  void RaiseAuthFailureNotification(absl::Status status) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   HttpFetcher http_fetcher_;
   OAuthInterface* oauth_;                // Not owned.
@@ -131,7 +134,12 @@ class Auth {
   std::atomic_bool stopped_ = false;
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
   std::vector<google::protobuf::Duration> latencies_ ABSL_GUARDED_BY(mutex_);
+  std::vector<google::protobuf::Duration> oauth_latencies_
+      ABSL_GUARDED_BY(mutex_);
+  std::vector<google::protobuf::Duration> zinc_latencies_
+      ABSL_GUARDED_BY(mutex_);
   absl::Time request_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
+  absl::Time zinc_call_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
   std::string signer_public_key_;
 };
 

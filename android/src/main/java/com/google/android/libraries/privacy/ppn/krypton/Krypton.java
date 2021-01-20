@@ -62,6 +62,12 @@ public interface Krypton {
   /** Pause PPN. Implicitly resumes on setNetwork. */
   void pause(int durationMilliseconds) throws KryptonException;
 
+  /** Update the state of the Safe Disconnect feature in Krypton. */
+  void setSafeDisconnectEnabled(boolean enable) throws KryptonException;
+
+  /** Returns whether Safe Disconnect is enabled in Krypton. */
+  boolean isSafeDisconnectEnabled() throws KryptonException;
+
   /** Collect telemetry data from Krypton, and resets it. */
   KryptonTelemetry collectTelemetry() throws KryptonException;
 

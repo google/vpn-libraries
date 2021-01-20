@@ -17,10 +17,12 @@
 #include <jni.h>
 #include <jni_md.h>
 
+#include <memory>
 #include <optional>
 #include <string>
 
 #include "base/logging.h"
+#include "privacy/net/krypton/fd_packet_pipe.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/jni/jni_utils.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
@@ -33,7 +35,8 @@ namespace privacy {
 namespace krypton {
 namespace jni {
 
-absl::StatusOr<int> VpnService::CreateTunFd(const TunFdData& tun_fd_data) {
+absl::StatusOr<std::unique_ptr<PacketPipe>> VpnService::CreateTunnel(
+    const TunFdData& tun_fd_data) {
   LOG(INFO) << "Requesting TUN fd from Java with tun data "
             << tun_fd_data.DebugString();
 
@@ -55,11 +58,12 @@ absl::StatusOr<int> VpnService::CreateTunFd(const TunFdData& tun_fd_data) {
     return absl::Status(absl::StatusCode::kUnavailable,
                         absl::StrCat("Unable to create TUN fd: ", fd));
   }
-  return fd;
+
+  return std::make_unique<FdPacketPipe>(fd);
 }
 
-absl::StatusOr<int> VpnService::CreateNetworkFd(
-    const NetworkInfo& network_info) {
+absl::StatusOr<std::unique_ptr<PacketPipe>>
+VpnService::CreateProtectedNetworkSocket(const NetworkInfo& network_info) {
   LOG(INFO) << "Requesting network fd from Java with network info "
             << network_info.DebugString();
 
@@ -82,7 +86,8 @@ absl::StatusOr<int> VpnService::CreateNetworkFd(
     return absl::Status(absl::StatusCode::kUnavailable,
                         absl::StrCat("Unable to create network fd: ", fd));
   }
-  return fd;
+
+  return std::make_unique<FdPacketPipe>(fd);
 }
 
 absl::Status VpnService::ConfigureIpSec(const IpSecTransformParams& params) {

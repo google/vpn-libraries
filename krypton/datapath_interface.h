@@ -20,6 +20,7 @@
 
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/crypto/suite.h"
+#include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/network_type.proto.h"
 #include "third_party/absl/status/status.h"
@@ -44,6 +45,10 @@ class DatapathInterface {
     // Datapath is established.
     virtual void DatapathEstablished() = 0;
     // Datapath failed with status.
+    // TODO: We need to figure out what to do with this when we move to
+    // datapaths that don't have an fd. We can either hardcode handling in the
+    // datapath itself to do the filtering, or we can have new datapaths always
+    // use 0 for the failed_fd, and ignore those.
     virtual void DatapathFailed(const absl::Status&, int failed_fd) = 0;
     // Permanent Datapath failure
     virtual void DatapathPermanentFailure(const absl::Status&) = 0;
@@ -68,12 +73,14 @@ class DatapathInterface {
   }
 
   // nullopt for NetworkInfo indicates there are no active networks.
-  // TunFd and NetworkFd ownership is owned by the datapath layer. Caller should
-  // not call |close| on the socket file descriptors.
+  // TunFd and NetworkFd ownership are borrowed from the caller, who retains
+  // ownership, but guarantees them to stay alive for the life of the datapath.
   virtual absl::Status SwitchNetwork(
-      bool is_ppn, uint32 session_id,
+      uint32 session_id,
       const std::vector<std::string>& egress_point_sock_addresses,
-      absl::optional<NetworkInfo> network_info, int counter, int tun_fd) = 0;
+      absl::optional<NetworkInfo> network_info,
+      const PacketPipe* network_socket, const PacketPipe* tunnel,
+      int counter) = 0;
 
   // Is datapath running or started.
   virtual bool is_running() const = 0;

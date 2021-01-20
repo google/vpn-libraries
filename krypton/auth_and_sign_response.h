@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#include "privacy/net/krypton/http_header.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
@@ -33,14 +33,14 @@ class PublicKeyResponse {
  public:
   PublicKeyResponse() = default;
   ~PublicKeyResponse() = default;
-  // Decodes the string to AuthAndSignResponse.
-  absl::Status DecodeFromJsonObject(absl::string_view json_string);
+
+  // Decodes the proto to AuthAndSignResponse.
+  absl::Status DecodeFromProto(const HttpResponse& response);
 
   absl::Status parsing_status() const { return parsing_status_; }
   const std::string& pem() const { return pem_; }
 
  private:
-  HttpResponse http_response_;
   std::string pem_;
   absl::Status DecodeJsonBody(Json::Value value);
   absl::Status parsing_status_ = absl::InternalError("Not initialized");
@@ -52,19 +52,17 @@ class AuthAndSignResponse {
   AuthAndSignResponse() = default;
   ~AuthAndSignResponse() = default;
 
-  // Decodes the string to AuthAndSignResponse.
-  absl::Status DecodeFromJsonObject(absl::string_view json_string);
+  // Decodes the proto to AuthAndSignResponse.
+  absl::Status DecodeFromProto(const HttpResponse& response);
 
   absl::Status parsing_status() const { return parsing_status_; }
   const std::string& jwt_token() const { return jwt_token_; }
-  const HttpResponse& http_response() const { return http_response_; }
   const std::vector<std::string>& blinded_token_signatures() const {
     return blinded_token_signatures_;
   }
 
  private:
-  HttpResponse http_response_;
-  // DecodeFromJsonObject Auth specific parameters
+  // Decode Auth specific parameters
   absl::Status DecodeJsonBody(Json::Value value);
   std::string jwt_token_;
   std::vector<std::string> blinded_token_signatures_;

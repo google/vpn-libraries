@@ -44,7 +44,6 @@ public class KryptonDebugJson {
   public static final String SESSION_STATE = "sessionState";
   public static final String SESSION_STATUS = "sessionStatus";
   public static final String SESSION_ACTIVE_TUN_FD = "sessionActiveTunFd";
-  public static final String SESSION_ACTIVE_NETWORK_FD = "sessionActiveNetworkFd";
   public static final String SESSION_ACTIVE_NETWORK_TYPE = "sessionActiveNetworkType";
   public static final String SESSION_PREVIOUS_TUN_FD = "sessionPreviousTunFd";
   public static final String SESSION_PREVIOUS_NETWORK_FD = "sessionPreviousNetworkFd";
@@ -90,12 +89,6 @@ public class KryptonDebugJson {
         Json.put(json, SESSION_ACTIVE_TUN_FD, debugInfo.getSession().getActiveTunFd());
       }
       if (debugInfo.getSession().hasActiveNetwork()) {
-        if (debugInfo.getSession().getActiveNetwork().hasProtectedFd()) {
-          Json.put(
-              json,
-              SESSION_ACTIVE_NETWORK_FD,
-              debugInfo.getSession().getActiveNetwork().getProtectedFd());
-        }
         if (debugInfo.getSession().getActiveNetwork().hasNetworkType()) {
           Json.put(
               json,
@@ -107,12 +100,6 @@ public class KryptonDebugJson {
         Json.put(json, SESSION_PREVIOUS_TUN_FD, debugInfo.getSession().getPreviousTunFd());
       }
       if (debugInfo.getSession().hasPreviousNetwork()) {
-        if (debugInfo.getSession().getPreviousNetwork().hasProtectedFd()) {
-          Json.put(
-              json,
-              SESSION_PREVIOUS_NETWORK_FD,
-              debugInfo.getSession().getPreviousNetwork().getProtectedFd());
-        }
         if (debugInfo.getSession().getPreviousNetwork().hasNetworkType()) {
           Json.put(
               json,

@@ -16,14 +16,14 @@
 
 namespace privacy {
 namespace krypton {
-const char JsonKeys::kJsonBodyKey[] = "json_body";
+// const char JsonKeys::kJsonBodyKey[] = "json_body";
 const char JsonKeys::kAuthTokenKey[] = "oauth_token";
 const char JsonKeys::kServiceTypeKey[] = "service_type";
 const char JsonKeys::kJwtTokenKey[] = "jwt";
-const char JsonKeys::kStatusKey[] = "status";
-const char JsonKeys::kStatusCodeKey[] = "code";
-const char JsonKeys::kMessageKey[] = "message";
-const char JsonKeys::kHeadersKey[] = "headers";
+// const char JsonKeys::kStatusKey[] = "status";
+// const char JsonKeys::kStatusCodeKey[] = "code";
+// const char JsonKeys::kMessageKey[] = "message";
+// const char JsonKeys::kHeadersKey[] = "headers";
 const char JsonKeys::kBlindedTokensKey[] = "blinded_token";
 
 // Egress

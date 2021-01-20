@@ -44,6 +44,18 @@ public interface PpnTelemetry {
   /** Returns the amount of time it took for egress to be established, every time it connected. */
   List<Duration> egressLatency();
 
+  /**
+   * Returns the amount of time it took for oauth token to be generated during auth request, every
+   * time it connected.
+   */
+  List<Duration> oauthLatency();
+
+  /**
+   * Returns the amount of time it took for the token to be checked by zinc during auth request,
+   * every time it connected.
+   */
+  List<Duration> zincLatency();
+
   /** Returns the number of successful rekeys since the last time telemetry was collected. */
   int successfulRekeys();
 

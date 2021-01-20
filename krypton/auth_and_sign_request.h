@@ -17,8 +17,7 @@
 
 #include <string>
 
-#include "privacy/net/krypton/http_header.h"
-#include "privacy/net/krypton/http_request_json.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/jsoncpp/value.h"
@@ -32,8 +31,7 @@ class PublicKeyRequest {
  public:
   PublicKeyRequest() = default;
   ~PublicKeyRequest() = default;
-  // Returns the corresponding headers and json_body separately.
-  absl::optional<HttpRequestJson> EncodeToJsonObject() const;
+  absl::optional<HttpRequest> EncodeToProto() const;
 
  private:
   HttpRequest http_request_;
@@ -49,12 +47,12 @@ class AuthAndSignRequest {
                      absl::optional<std::string> public_key_hash);
   ~AuthAndSignRequest() = default;
 
-  // Returns the corresponding headers and json_body separately.
-  absl::optional<HttpRequestJson> EncodeToJsonObject() const;
+  absl::optional<HttpRequest> EncodeToProto() const;
 
  private:
-  HttpRequest http_request_;
-  Json::Value BuildJson() const;
+  std::string BuildBody() const;
+  Json::Value BuildBodyJson() const;
+
   const std::string auth_token_;
   const std::string service_type_;
   const std::string selected_session_manager_ip_;

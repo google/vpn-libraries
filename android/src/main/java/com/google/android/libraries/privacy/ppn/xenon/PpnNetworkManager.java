@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn.xenon;
 import android.net.LinkProperties;
 import android.net.NetworkCapabilities;
 import androidx.annotation.Nullable;
+import com.google.android.gms.tasks.Task;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo;
 import java.util.List;
 import org.json.JSONObject;
@@ -36,8 +37,12 @@ public interface PpnNetworkManager {
   /**
    * Handles the Network onAvailable callback. Includes adding the new PpnNetwork and alerting the
    * change if deemed appropriate by the PpnNetworkSelector.
+   *
+   * <p>Returns a Task that completes when all of the work spawned off by this event has completed.
+   * The result of the Task indicates whether this event caused the network to be marked as
+   * available.
    */
-  void handleNetworkAvailable(PpnNetwork ppnNetwork);
+  Task<Boolean> handleNetworkAvailable(PpnNetwork ppnNetwork);
 
   /**
    * Handles the Network onLost callback. Includes removing the PpnNetwork, doing storage
@@ -48,15 +53,24 @@ public interface PpnNetworkManager {
   /**
    * Handles the Network onCapabilitiesChanged callback. Includes figuring out whether the changes
    * deems the Network still available and switching over to a different Network is necessary.
+   *
+   * <p>Returns a Task that completes when all of the work spawned off by this event has completed.
+   * The result of the Task indicates whether this event caused the network to be marked as
+   * available.
    */
-  void handleNetworkCapabilitiesChanged(
+  Task<Boolean> handleNetworkCapabilitiesChanged(
       PpnNetwork ppnNetwork, NetworkCapabilities networkCapabilities);
 
   /**
    * Handles the Network onLinkPropertiesChanged callback. Includes examining the new LinkProperty
    * and deciding whether to switch the network or not.
+   *
+   * <p>Returns a Task that completes when all of the work spawned off by this event has completed.
+   * The result of the Task indicates whether this event caused the network to be marked as
+   * available.
    */
-  void handleNetworkLinkPropertiesChanged(PpnNetwork ppnNetwork, LinkProperties linkProperties);
+  Task<Boolean> handleNetworkLinkPropertiesChanged(
+      PpnNetwork ppnNetwork, LinkProperties linkProperties);
 
   /**
    * Returns all the available networks that Xenon is tracking. This includes the current active

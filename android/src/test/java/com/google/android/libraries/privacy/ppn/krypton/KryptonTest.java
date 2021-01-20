@@ -60,17 +60,27 @@ public class KryptonTest {
     return message;
   }
 
-  private static JSONObject buildAddEgressRequestBody() throws JSONException {
-    JSONObject message = new JSONObject();
-    message.put("unblinded_token", "");
-    return message;
-  }
-
   private static KryptonConfig createConfig(String zincUrl, String brassUrl) {
     return KryptonConfig.newBuilder()
         .setZincUrl(zincUrl)
         .setBrassUrl(brassUrl)
         .setServiceType("some_service_type")
+        .setBridgeOverPpn(true)
+        .setIpsecDatapath(false)
+        .setEnableBlindSigning(false)
+        .build();
+  }
+
+  private static KryptonConfig createConfigSafeDisconnect(
+      String zincUrl, String brassUrl, boolean enable) {
+    return KryptonConfig.newBuilder()
+        .setZincUrl(zincUrl)
+        .setBrassUrl(brassUrl)
+        .setServiceType("some_service_type")
+        .setBridgeOverPpn(true)
+        .setIpsecDatapath(false)
+        .setEnableBlindSigning(false)
+        .setSafeDisconnectEnabled(enable)
         .build();
   }
 
@@ -213,8 +223,6 @@ public class KryptonTest {
 
       // Validate the AddEgressRequest
       final RecordedRequest addEgressRequest = mockBrass.takeRequest();
-      final String addEgressBody = addEgressRequest.getBody().readUtf8();
-      assertThat(addEgressBody).isEqualTo(buildAddEgressRequestBody().toString());
       assertThat(addEgressRequest.getHeader("Content-Type"))
           .isEqualTo("application/json; charset=utf-8");
 
@@ -269,6 +277,41 @@ public class KryptonTest {
       shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
 
       assertThat(connectedCondition.block(1000)).isTrue();
+    } finally {
+      krypton.stop();
+    }
+  }
+
+  @Test
+  public void start_passesSafeDisconnect() throws Exception {
+    Krypton krypton = createKrypton();
+    final ConditionVariable condition = new ConditionVariable(false);
+
+    mockZinc.start();
+    mockZinc.enqueuePositiveResponse();
+    mockBrass.start();
+    mockBrass.enqueuePositiveResponse();
+    doReturn(0xbeef).when(kryptonListener).onKryptonNeedsTunFd(any(TunFdData.class));
+    doReturn("some_auth_token").when(kryptonListener).onKryptonNeedsOAuthToken();
+
+    doAnswer(
+            invocation -> {
+              condition.open();
+              return null;
+            })
+        .when(kryptonListener)
+        .onKryptonControlPlaneConnected();
+
+    try {
+      krypton.start(createConfigSafeDisconnect(mockZinc.url(), mockBrass.url(), true));
+      assertThat(condition.block(1000)).isTrue();
+
+      // Validate the Safe Disconnect config value.
+      assertThat(krypton.isSafeDisconnectEnabled()).isTrue();
+
+      // Update Safe Disconnect while Krypton is alive.
+      krypton.setSafeDisconnectEnabled(false);
+      assertThat(krypton.isSafeDisconnectEnabled()).isFalse();
     } finally {
       krypton.stop();
     }

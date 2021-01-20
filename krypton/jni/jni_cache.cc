@@ -45,9 +45,7 @@ constexpr char kKryptonExceptionClass[] =
 // com.google.android.libraries.privacy.ppn.krypton.HttpFetcher
 // LINT.IfChange
 constexpr char kHttpFetcherPostJsonMethod[] = "postJson";
-constexpr char kHttpFetcherPostJsonMethodSignature[] =
-    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/"
-    "String;";
+constexpr char kHttpFetcherPostJsonMethodSignature[] = "([B)[B";
 // LINT.ThenChange(
 // //depot/google3/java/com/google/android/libraries/privacy/ppn/krypton/HttpFetcher.java)
 

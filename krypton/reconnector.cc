@@ -392,15 +392,6 @@ absl::Status Reconnector::SetNetwork(absl::optional<NetworkInfo> network_info) {
   // Always Store the active network info. This could be used when
   // reconnection timer expires and we might need to restart a session.
   active_network_info_ = network_info;
-  // TODO: We do not use the protected fd given by PpnImpl, we
-  // still need to close the protected fd given by PpnImpl. Clean up PpnImpl
-  // not send the protected fd.
-  if (active_network_info_) {
-    if (active_network_info_->has_protected_fd()) {
-      close(active_network_info_->protected_fd());
-    }
-    active_network_info_->clear_protected_fd();
-  }
 
   // Steps to do when we get Switch Network.
   // a. If going to Airplane mode |NetworkInfo| is nullopt, stop the session and

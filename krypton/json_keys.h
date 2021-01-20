@@ -21,16 +21,12 @@ namespace krypton {
 // Define all the JSON keys here.
 class JsonKeys {
  public:
-  static const char kJsonBodyKey[];
+  // static const char kJsonBodyKey[];
   static const char kAuthTokenKey[];
   static const char kServiceTypeKey[];
   static const char kPreviousSessionManagerIpKey[];
   static const char kSelectedSessionManagerIpKey[];
   static const char kJwtTokenKey[];
-  static const char kStatusKey[];
-  static const char kStatusCodeKey[];
-  static const char kMessageKey[];
-  static const char kHeadersKey[];
   static const char kBlindedTokensKey[];
 
   // Egress

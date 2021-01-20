@@ -38,38 +38,33 @@ const uint32 kClientSpi = 10;
 class AddEgressRequestTest : public ::testing::Test {};
 
 TEST_F(AddEgressRequestTest, TestBridgeRequest) {
-  AddEgressRequest request;
+  HttpResponse http_response;
+  http_response.mutable_status()->set_code(200);
+  http_response.mutable_status()->set_message("OK");
+  http_response.set_json_body(R"json(
+  {
+    "jwt": "some_jwt_token"
+  }
+  })json");
+
   // Construct an temporary auth response.
   auto auth_response = std::make_shared<AuthAndSignResponse>();
-
-  Json::Reader reader;
-  Json::Value response;
-  EXPECT_TRUE(reader.parse(R"json(
-  {
-    "http": {
-      "status":{
-        "code": 200,
-        "message" : "OK"
-      }
-    },
-    "json_body": {
-       "jwt": "some_jwt_token"
-    }
-  })json",
-                           response));
-
-  Json::FastWriter writer;
-  EXPECT_OK(auth_response->DecodeFromJsonObject(writer.write(response)));
-  auto json_objects = request.EncodeToJsonObjectForBridge(auth_response);
-  EXPECT_TRUE(json_objects);
+  EXPECT_OK(auth_response->DecodeFromProto(http_response));
+  AddEgressRequest request;
+  auto http_request = request.EncodeToProtoForBridge(auth_response);
+  EXPECT_TRUE(http_request);
 
   Json::Value expected;
-  // Order of the parameters do not matter.
+  Json::Reader reader;
   reader.parse(R"string({
       "unblinded_token" : "some_jwt_token"
    })string",
                expected);
-  EXPECT_EQ(json_objects.value().json_body, expected);
+
+  Json::Value actual;
+  reader.parse(http_request.value().json_body(), actual);
+
+  EXPECT_EQ(actual, expected);
 }
 
 class PpnAddEgressRequest : public AddEgressRequestTest,
@@ -83,18 +78,11 @@ TEST_P(PpnAddEgressRequest, TestPpnRequest) {
   crypto::SessionCrypto crypto;
   auto keys = crypto.GetMyKeyMaterial();
 
+  HttpResponse response;
+  response.set_json_body(R"json({"jwt": "some_jwt_token"})json");
   auto auth_response = std::make_shared<AuthAndSignResponse>();
-  Json::Reader reader;
-  Json::Value response;
-  Json::FastWriter writer;
-  EXPECT_TRUE(reader.parse(R"json(
-  {
-    "json_body": {
-      "jwt": "some_jwt_token"
-    }
-  })json",
-                           response));
-  EXPECT_OK(auth_response->DecodeFromJsonObject(writer.write(response)));
+  EXPECT_OK(auth_response->DecodeFromProto(response));
+
   AddEgressRequest::PpnDataplaneRequestParams params;
   params.auth_response = auth_response;
   params.crypto = &crypto;
@@ -109,29 +97,31 @@ TEST_P(PpnAddEgressRequest, TestPpnRequest) {
     params.unblinded_token_signature = "raw message signature";
   }
 
-  auto json_objects = request.EncodeToJsonObjectForPpn(params);
-  EXPECT_TRUE(json_objects);
+  auto http_request = request.EncodeToProtoForPpn(params);
+  EXPECT_TRUE(http_request);
 
-  Json::Value expected;
+  Json::Value actual;
+  Json::Reader reader;
+  reader.parse(http_request.value().json_body(), actual);
+
+  // Round-tripping through serialization causes int values to randomly be int
+  // or uint, so we need to test each value separately.
   if (GetParam()) {
-    expected["unblinded_token"] = "raw message";
-    expected["unblinded_token_signature"] = "raw message signature";
-    expected["is_unblinded_token"] = true;
+    EXPECT_EQ(actual["unblinded_token"], "raw message");
+    EXPECT_EQ(actual["unblinded_token_signature"], "raw message signature");
+    EXPECT_EQ(actual["is_unblinded_token"], true);
   } else {
-    expected["unblinded_token"] = "some_jwt_token";
+    EXPECT_EQ(actual["unblinded_token"], "some_jwt_token");
   }
-  expected["ppn"]["client_public_value"] = keys.public_value;
-  expected["ppn"]["client_nonce"] = keys.nonce;
-  expected["ppn"]["control_plane_sock_addr"] =
-      absl::StrCat(kCopperControlPlaneAddress, ":1849");
-  // JsonCpp expects the same type so assigning a int to uint32 will result in
-  // equality mismatch.
-  expected["ppn"]["downlink_spi"] = crypto.downlink_spi();
-  expected["ppn"]["suite"] = "AES128_GCM";
-  expected["ppn"]["dataplane_protocol"] = "BRIDGE";
-  expected["ppn"]["rekey_verification_key"] =
-      crypto.GetRekeyVerificationKey().ValueOrDie();
-  EXPECT_EQ(json_objects.value().json_body, expected);
+  EXPECT_EQ(actual["ppn"]["client_public_value"], keys.public_value);
+  EXPECT_EQ(actual["ppn"]["client_nonce"], keys.nonce);
+  EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
+            absl::StrCat(kCopperControlPlaneAddress, ":1849"));
+  EXPECT_EQ(actual["ppn"]["downlink_spi"].asUInt(), crypto.downlink_spi());
+  EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
+  EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
+  EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
+            crypto.GetRekeyVerificationKey().ValueOrDie());
 }
 
 INSTANTIATE_TEST_SUITE_P(BlindSigning, PpnAddEgressRequest, ::testing::Bool());
@@ -151,30 +141,27 @@ TEST_F(AddEgressRequestTest, TestRekeyParameters) {
   params.is_rekey = true;
   params.signature = "some_signature";
   params.uplink_spi = 1234;
-  auto json_objects = request.EncodeToJsonObjectForPpn(params);
-  EXPECT_TRUE(json_objects);
+  auto http_request = request.EncodeToProtoForPpn(params);
+  EXPECT_TRUE(http_request);
 
-  Json::Value expected;
+  Json::Value actual;
   Json::Reader reader;
-  reader.parse(R"string({
-    "unblinded_token": ""
-  })string",
-               expected);
-  expected["ppn"]["client_public_value"] = keys.public_value;
-  expected["ppn"]["client_nonce"] = keys.nonce;
-  expected["ppn"]["control_plane_sock_addr"] =
-      absl::StrCat(kCopperControlPlaneAddress, ":1849");
-  // JsonCpp expects the same type so assigning a int to uint32 will result in
-  // equality mismatch.
-  expected["ppn"]["downlink_spi"] = crypto.downlink_spi();
-  expected["ppn"]["suite"] = "AES128_GCM";
-  expected["ppn"]["dataplane_protocol"] = "BRIDGE";
-  expected["ppn"]["rekey_verification_key"] =
-      crypto.GetRekeyVerificationKey().ValueOrDie();
-  expected["ppn"]["rekey_signature"] = params.signature;
-  expected["ppn"]["previous_uplink_spi"] = params.uplink_spi;
+  reader.parse(http_request.value().json_body(), actual);
 
-  EXPECT_EQ(json_objects.value().json_body, expected);
+  // Round-tripping through serialization causes int values to randomly be int
+  // or uint, so we need to test each value separately.
+  EXPECT_EQ(actual["unblinded_token"], "");
+  EXPECT_EQ(actual["ppn"]["client_public_value"], keys.public_value);
+  EXPECT_EQ(actual["ppn"]["client_nonce"], keys.nonce);
+  EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
+            absl::StrCat(kCopperControlPlaneAddress, ":1849"));
+  EXPECT_EQ(actual["ppn"]["downlink_spi"].asUInt(), crypto.downlink_spi());
+  EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
+  EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
+  EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
+            crypto.GetRekeyVerificationKey().ValueOrDie());
+  EXPECT_EQ(actual["ppn"]["rekey_signature"], params.signature);
+  EXPECT_EQ(actual["ppn"]["previous_uplink_spi"].asUInt(), params.uplink_spi);
 }
 
 }  // namespace krypton

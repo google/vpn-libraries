@@ -39,7 +39,7 @@ public class PpnVpnService extends VpnService {
 
   @Override
   public int onStartCommand(Intent intent, int flags, int startId) {
-    return START_NOT_STICKY;
+    return PpnLibrary.getPpn().isStickyService() ? START_STICKY : START_NOT_STICKY;
   }
 
   @Override

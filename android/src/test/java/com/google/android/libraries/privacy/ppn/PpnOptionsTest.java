@@ -19,6 +19,7 @@ import static com.google.common.truth.Truth8.assertThat;
 import static org.junit.Assert.assertThrows;
 
 import java.time.Duration;
+import java.util.Arrays;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -387,5 +388,45 @@ public class PpnOptionsTest {
             .setReconnectorSessionConnectionDeadline(Duration.ofMillis(42))
             .build();
     assertThat(options.getReconnectorSessionConnectionDeadline().get().toMillis()).isEqualTo(42);
+  }
+
+  @Test
+  public void setStickyService_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.isStickyService()).isFalse();
+  }
+
+  @Test
+  public void setStickyService_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setStickyService(true).build();
+    assertThat(options.isStickyService()).isTrue();
+  }
+
+  @Test
+  public void setSafeDisconnectEnabled_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.isSafeDisconnectEnabled()).isFalse();
+  }
+
+  @Test
+  public void setSafeDisconnectEnabled_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setSafeDisconnectEnabled(true).build();
+    assertThat(options.isSafeDisconnectEnabled()).isTrue();
+  }
+
+  @Test
+  public void disallowedApplications_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.getDisallowedApplications()).isNotNull();
+    assertThat(options.getDisallowedApplications()).isEmpty();
+  }
+
+  @Test
+  public void setDisallowedOptions_setsValue() {
+    PpnOptions options =
+        new PpnOptions.Builder()
+            .setDisallowedApplications(Arrays.asList("foo", "bar", "baz"))
+            .build();
+    assertThat(options.getDisallowedApplications()).containsExactly("foo", "bar", "baz");
   }
 }

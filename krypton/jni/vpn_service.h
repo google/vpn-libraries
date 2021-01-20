@@ -30,10 +30,12 @@ class VpnService : public VpnServiceInterface {
   ~VpnService() override = default;
 
   // TUN fd creation
-  absl::StatusOr<int> CreateTunFd(const TunFdData& tun_fd_data) override;
+  absl::StatusOr<std::unique_ptr<PacketPipe>> CreateTunnel(
+      const TunFdData& tun_fd_data) override;
 
   // Network fd creation
-  absl::StatusOr<int> CreateNetworkFd(const NetworkInfo& network_info) override;
+  absl::StatusOr<std::unique_ptr<PacketPipe>> CreateProtectedNetworkSocket(
+      const NetworkInfo& network_info) override;
 
   absl::Status ConfigureIpSec(const IpSecTransformParams& params) override;
 };

@@ -97,6 +97,16 @@ absl::StatusOr<BIGNUM*> Shake256Fdh(const absl::string_view data,
   return hash_mod_n;
 }
 
+class CtxEnder {
+ public:
+  explicit CtxEnder(BN_CTX* bn_ctx) : bn_ctx_(bn_ctx) { BN_CTX_start(bn_ctx_); }
+
+  ~CtxEnder() { BN_CTX_end(bn_ctx_); }
+
+ private:
+  BN_CTX* bn_ctx_;  // not owned
+};
+
 }  // namespace
 
 RsaFdhBlinder::RsaFdhBlinder(bssl::UniquePtr<BIGNUM> r,
@@ -109,8 +119,7 @@ absl::StatusOr<std::unique_ptr<RsaFdhBlinder>> RsaFdhBlinder::Blind(
     const absl::string_view message, bssl::UniquePtr<RSA> signer_public_key,
     BN_CTX* bn_ctx) {
   // For use in blind construction.
-  BN_CTX_start(bn_ctx);
-  auto cleanup = absl::MakeCleanup([&]() { BN_CTX_end(bn_ctx); });
+  CtxEnder ender(bn_ctx);
 
   const auto n = RSA_get0_n(signer_public_key.get());
   const auto mod_size = RSA_size(signer_public_key.get());
@@ -119,7 +128,9 @@ absl::StatusOr<std::unique_ptr<RsaFdhBlinder>> RsaFdhBlinder::Blind(
   if (r.get() == nullptr) {
     return absl::InternalError("r allocation failed");
   }
-  if (BN_rand_range_ex(r.get(), 1, n) != kBsslSuccess) {
+  // Limit r between [2, n) so that an r of 1 never happens. An r of 1 doesn't
+  // blind.
+  if (BN_rand_range_ex(r.get(), 2, n) != kBsslSuccess) {
     return absl::InternalError("BN_rand_range_ex failed");
   }
 
@@ -155,8 +166,6 @@ absl::StatusOr<std::unique_ptr<RsaFdhBlinder>> RsaFdhBlinder::Blind(
   return blinded;
 }
 
-// TODO: Consider validating the unblinded sig against the known
-// public key. It is more work on the client so leaving as a note.
 absl::StatusOr<std::string> RsaFdhBlinder::Unblind(
     const absl::string_view blind_signature, BN_CTX* bn_ctx) const {
   if (r_.get() == nullptr) {
@@ -166,8 +175,7 @@ absl::StatusOr<std::string> RsaFdhBlinder::Unblind(
     return absl::InternalError("public_key_ null.");
   }
 
-  BN_CTX_start(bn_ctx);
-  auto cleanup = absl::MakeCleanup([&]() { BN_CTX_end(bn_ctx); });
+  CtxEnder ender(bn_ctx);
 
   unsigned int mod_size = RSA_size(public_key_.get());
 
@@ -184,13 +192,13 @@ absl::StatusOr<std::string> RsaFdhBlinder::Unblind(
   auto bn_mont_ctx =
       BN_MONT_CTX_new_for_modulus(RSA_get0_n(public_key_.get()), bn_ctx);
   int out_noinverse;
-  auto mont_cleanup =
-      absl::MakeCleanup([&]() { BN_MONT_CTX_free(bn_mont_ctx); });
   if (BN_mod_inverse_blinded(r_inv, &out_noinverse, r_.get(), bn_mont_ctx,
                              bn_ctx) != kBsslSuccess) {
+    BN_MONT_CTX_free(bn_mont_ctx);
     return absl::InternalError(
         absl::StrCat("BN_mod_inverse failed out_noinverse=", out_noinverse));
   }
+  BN_MONT_CTX_free(bn_mont_ctx);
 
   auto unblinded_sig_big = BN_CTX_get(bn_ctx);
   if (BN_mod_mul(unblinded_sig_big, signed_big, r_inv,
@@ -249,6 +257,8 @@ absl::StatusOr<std::unique_ptr<RsaFdhVerifier>> RsaFdhVerifier::New(
 absl::Status RsaFdhVerifier::Verify(const absl::string_view message,
                                     const absl::string_view signature,
                                     BN_CTX* bn_ctx) const {
+  CtxEnder ender(bn_ctx);
+
   const uint32_t mod_size = RSA_size(verification_key_.get());
 
   PPN_ASSIGN_OR_RETURN(const BIGNUM* hash_bn,
@@ -256,10 +266,6 @@ absl::Status RsaFdhVerifier::Verify(const absl::string_view message,
   PPN_ASSIGN_OR_RETURN(const std::string hash,
                        BignumToString(hash_bn, mod_size));
 
-  BN_CTX_start(bn_ctx);
-  auto cleanup = absl::MakeCleanup([&]() { BN_CTX_end(bn_ctx); });
-
-  // Decrypt the sig into
   size_t out_len;
   std::vector<uint8_t> resulting_hash(mod_size);
   if (RSA_verify_raw(verification_key_.get(), &out_len, resulting_hash.data(),

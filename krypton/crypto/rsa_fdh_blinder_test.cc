@@ -45,6 +45,7 @@ class RsaFdhBlinderTest : public ::testing::Test {
     EXPECT_THAT(::crypto::tink::subtle::SubtleUtilBoringSSL::GetNewRsaKeyPair(
                     2048, rsa_f4_, &private_key_, &public_key_),
                 IsOk());
+    BN_CTX_end(bn_ctx_.get());
   }
 
  protected:
@@ -58,8 +59,6 @@ class RsaFdhBlinderTest : public ::testing::Test {
                          ::crypto::tink::subtle::SubtleUtilBoringSSL::
                              BoringSslRsaFromRsaPrivateKey(private_key_));
   }
-
-  void TearDown() override { BN_CTX_end(bn_ctx_.get()); }
 
   RSA* public_key() { return rsa_public_key_.get(); }
 

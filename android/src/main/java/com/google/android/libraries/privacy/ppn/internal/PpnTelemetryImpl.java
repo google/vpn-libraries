@@ -37,6 +37,14 @@ abstract class PpnTelemetryImpl implements PpnTelemetry {
 
   @Override
   @SuppressWarnings("AutoValueImmutableFields")
+  public abstract List<Duration> oauthLatency();
+
+  @Override
+  @SuppressWarnings("AutoValueImmutableFields")
+  public abstract List<Duration> zincLatency();
+
+  @Override
+  @SuppressWarnings("AutoValueImmutableFields")
   public abstract List<Duration> egressLatency();
 
   @Override
@@ -49,6 +57,8 @@ abstract class PpnTelemetryImpl implements PpnTelemetry {
     // Assign default values for optional fields here.
     return new AutoValue_PpnTelemetryImpl.Builder()
         .setAuthLatency(new ArrayList<>())
+        .setOauthLatency(new ArrayList<>())
+        .setZincLatency(new ArrayList<>())
         .setEgressLatency(new ArrayList<>())
         .setNetworkSwitches(0)
         .setSuccessfulRekeys(0);
@@ -63,6 +73,10 @@ abstract class PpnTelemetryImpl implements PpnTelemetry {
     public abstract Builder setPpnServiceUptime(Duration value);
 
     public abstract Builder setAuthLatency(List<Duration> value);
+
+    public abstract Builder setOauthLatency(List<Duration> value);
+
+    public abstract Builder setZincLatency(List<Duration> value);
 
     public abstract Builder setEgressLatency(List<Duration> value);
 

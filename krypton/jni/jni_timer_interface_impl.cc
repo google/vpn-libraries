@@ -44,7 +44,7 @@ absl::Status JniTimerInterfaceImpl::StartTimer(int timer_id,
       jni_ppn->GetTimerIdManagerStartTimerMethod(), timer_id,
       duration / absl::Milliseconds(1)));
 
-  if (result == false) {
+  if (result == 0) {
     return absl::InternalError("Start timer failed");
   }
   return absl::OkStatus();
@@ -64,7 +64,7 @@ void JniTimerInterfaceImpl::CancelTimer(int timer_id) {
       jni_ppn->GetTimerIdManagerObject(),
       jni_ppn->GetTimerIdManagerCancelTimerMethod(), timer_id));
 
-  if (result == false) {
+  if (result == 0) {
     LOG(ERROR) << "Error cancelling timer with id" << timer_id;
     return;
   }

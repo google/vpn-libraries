@@ -39,17 +39,14 @@
 #include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/time/time.h"
 
-using privacy::krypton::IpSecTransformParams;
 using privacy::krypton::Krypton;
 using privacy::krypton::KryptonConfig;
 using privacy::krypton::KryptonDebugInfo;
 using privacy::krypton::KryptonTelemetry;
 using privacy::krypton::NetworkInfo;
-using privacy::krypton::NetworkType;
 using privacy::krypton::TimerManager;
 using privacy::krypton::jni::ConvertJavaByteArrayToString;
 using privacy::krypton::jni::HttpFetcher;
-using privacy::krypton::jni::JavaByteArray;
 using privacy::krypton::jni::JniCache;
 using privacy::krypton::jni::JniTimerInterfaceImpl;
 using privacy::krypton::jni::KryptonNotification;
@@ -94,6 +91,16 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_timerExpired(
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_pause(
     JNIEnv* env, jobject krypton_instance, int duration_msecs);
+
+// SetSafeDisconnectEnabled
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setSafeDisconnectEnabled(
+    JNIEnv* env, jobject krypton_instance, jboolean enable);
+
+// IsSafeDisconnectEnabled
+JNIEXPORT bool JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_isSafeDisconnectEnabled(
+    JNIEnv* env, jobject krypton_instance);
 
 // CollectTelemetry
 JNIEXPORT jbyteArray JNICALL
@@ -176,7 +183,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_init(
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_startNative(
-    JNIEnv* env, jobject krypton_instance, jbyteArray config_byte_array) {
+    JNIEnv* env, jobject  /*krypton_instance*/, jbyteArray config_byte_array) {
   LOG(INFO) << "Starting Krypton native library";
   if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
     JniCache::Get()->ThrowKryptonException("Krypton was not initialized.");
@@ -197,7 +204,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_startNative(
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_stop(
-    JNIEnv* env, jobject /*thiz*/) {
+    JNIEnv*  /*env*/, jobject /*thiz*/) {
   // Initialize the Krypton library.
   LOG(INFO) << "Stopping Krypton native library";
   if (krypton_cache != nullptr) {
@@ -208,7 +215,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_stop(
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setNoNetworkAvailable(
-    JNIEnv* env, jobject krypton_instance) {
+    JNIEnv*  /*env*/, jobject  /*krypton_instance*/) {
   LOG(INFO) << "SetNoNetworkAvailable is called";
 
   if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
@@ -225,7 +232,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setNoNetworkAv
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setNetworkNative(
-    JNIEnv* env, jobject krypton_instance, jbyteArray request_byte_array) {
+    JNIEnv* env, jobject  /*krypton_instance*/, jbyteArray request_byte_array) {
   NetworkInfo request;
   std::string request_bytes =
       ConvertJavaByteArrayToString(env, request_byte_array);
@@ -248,7 +255,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setNetworkNati
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_timerExpired(
-    JNIEnv* env, jobject krypton_instance, int timer_id) {
+    JNIEnv*  /*env*/, jobject  /*krypton_instance*/, int timer_id) {
   if (krypton_cache == nullptr || krypton_cache->timer_manager == nullptr) {
     JniCache::Get()->ThrowKryptonException(
         "Krypton or TimerManager is not running");
@@ -259,7 +266,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_timerExpired(
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_pause(
-    JNIEnv* env, jobject krypton_instance, int duration_msecs) {
+    JNIEnv*  /*env*/, jobject  /*krypton_instance*/, int duration_msecs) {
   if (krypton_cache == nullptr || krypton_cache->timer_manager == nullptr) {
     JniCache::Get()->ThrowKryptonException(
         "Krypton or TimerManager is not running");
@@ -273,9 +280,31 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_pause(
   }
 }
 
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setSafeDisconnectEnabled(
+    JNIEnv* /*env*/, jobject /*krypton_instance*/, jboolean enable) {
+  LOG(INFO) << "setSafeDisconnectEnabled is called";
+  if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
+    JniCache::Get()->ThrowKryptonException("Krypton is not running");
+    return;
+  }
+  krypton_cache->krypton->SetSafeDisconnectEnabled(enable != 0u);
+}
+
+JNIEXPORT bool JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_isSafeDisconnectEnabled(
+    JNIEnv* /*env*/, jobject /*krypton_instance*/) {
+  LOG(INFO) << "isSafeDisconnectEnabled is called";
+  if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
+    JniCache::Get()->ThrowKryptonException("Krypton is not running");
+    return false;
+  }
+  return krypton_cache->krypton->IsSafeDisconnectEnabled();
+}
+
 JNIEXPORT jbyteArray JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_collectTelemetryNative(
-    JNIEnv* env, jobject krypton_instance) {
+    JNIEnv* env, jobject  /*krypton_instance*/) {
   LOG(INFO) << "collectTelemetry is called";
 
   if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
@@ -296,7 +325,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_collectTelemet
 
 JNIEXPORT jbyteArray JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_getDebugInfoNative(
-    JNIEnv* env, jobject krypton_instance) {
+    JNIEnv* env, jobject  /*krypton_instance*/) {
   LOG(INFO) << "getDebugInfoBytes is called";
 
   if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {

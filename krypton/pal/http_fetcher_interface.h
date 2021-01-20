@@ -21,6 +21,7 @@
 #include <string>
 #include <thread>  //NOLINT
 
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/jsoncpp/value.h"
 
@@ -42,9 +43,7 @@ class HttpFetcherInterface {
 
   // This is a synchronous call that fetches from a remote server.
   // headers: Http headers
-  virtual std::string PostJson(absl::string_view url,
-                               const Json::Value& headers,
-                               const Json::Value& json_body) = 0;
+  virtual HttpResponse PostJson(const HttpRequest& request) = 0;
 };
 
 }  // namespace krypton

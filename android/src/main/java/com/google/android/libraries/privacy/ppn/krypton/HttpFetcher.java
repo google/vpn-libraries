@@ -14,16 +14,29 @@
 
 package com.google.android.libraries.privacy.ppn.krypton;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+
 import android.util.Log;
-import androidx.annotation.Nullable;
-import com.google.android.libraries.privacy.ppn.internal.json.Json;
+import com.google.android.gms.tasks.Task;
+import com.google.android.gms.tasks.TaskCompletionSource;
+import com.google.android.gms.tasks.Tasks;
+import com.google.android.libraries.privacy.ppn.internal.HttpRequest;
+import com.google.android.libraries.privacy.ppn.internal.HttpResponse;
+import com.google.android.libraries.privacy.ppn.internal.HttpStatus;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.protobuf.ExtensionRegistryLite;
+import com.google.protobuf.InvalidProtocolBufferException;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Iterator;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.TimeoutException;
+import javax.net.SocketFactory;
 import okhttp3.CacheControl;
 import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.Dns;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -37,10 +50,19 @@ import org.json.JSONObject;
  * request are in JSON string format.
  */
 public class HttpFetcher {
+
   private static final String TAG = "HttpFetcher";
   private static final String JSON_CONTENT_TYPE = "application/json; charset=utf-8";
-  // TODO: Timeout should be customizable.
-  private static Duration requestTimeout = Duration.ofSeconds(30);
+
+  // The overall timeout for POST requests.
+  private Duration requestTimeout = Duration.ofSeconds(30);
+  // The overall timeout for GET requests.
+  private static final Duration CHECK_GET_TIMEOUT = Duration.ofSeconds(1);
+  // Additional time before stopping a request if okhttp fails to enforce timeouts.
+  private static final Duration FALLBACK_TIMEOUT = Duration.ofSeconds(1);
+
+  // The DNS provider to use.
+  private Dns dns = Dns.SYSTEM;
 
   private final BoundSocketFactoryFactory socketFactory;
 
@@ -50,8 +72,14 @@ public class HttpFetcher {
 
   /** Sets timeout for the request, use it only for testing */
   @VisibleForTesting
-  static void setTimeout(Duration duration) {
-    requestTimeout = duration;
+  void setTimeout(Duration duration) {
+    this.requestTimeout = duration;
+  }
+
+  /** Sets the DNS provider to use for the request. Only for testing. */
+  @VisibleForTesting
+  void setDns(Dns dns) {
+    this.dns = dns;
   }
 
   /**
@@ -59,12 +87,10 @@ public class HttpFetcher {
    *
    * @throws JSONException if either of the JSON Strings is malformed.
    */
-  static Request buildPostRequest(String url, @Nullable String headers, String jsonBody)
-      throws JSONException {
-    Request.Builder reqBuilder = getGenericRequestBuilder(url, headers);
+  static Request buildPostRequest(HttpRequest request) throws JSONException {
+    Request.Builder reqBuilder = getGenericRequestBuilder(request);
 
-    JSONObject jsonBodyObject = new JSONObject(jsonBody);
-    // Put the body as a mime.
+    JSONObject jsonBodyObject = new JSONObject(request.getJsonBody());
     reqBuilder.post(
         RequestBody.create(MediaType.parse(JSON_CONTENT_TYPE), jsonBodyObject.toString()));
     return reqBuilder.build();
@@ -75,31 +101,25 @@ public class HttpFetcher {
    *
    * @throws JSONException if any JSON Strings are maltformed.
    */
-  static Request buildCheckGetRequest(String url, @Nullable String headers) throws JSONException {
-    Request.Builder reqBuilder = getGenericRequestBuilder(url, headers);
+  static Request buildCheckGetRequest(String url) throws JSONException {
+    HttpRequest proto = HttpRequest.newBuilder().setUrl(url).build();
+
+    Request.Builder reqBuilder = getGenericRequestBuilder(proto);
     // For checkGet request, we want to make sure these calls are not Cached.
     reqBuilder.cacheControl(CacheControl.FORCE_NETWORK);
     reqBuilder.get();
     return reqBuilder.build();
   }
 
-  private static Request.Builder getGenericRequestBuilder(String url, @Nullable String headers)
+  private static Request.Builder getGenericRequestBuilder(HttpRequest request)
       throws JSONException {
     Request.Builder reqBuilder = new Request.Builder();
 
-    reqBuilder.url(url);
+    reqBuilder.url(request.getUrl());
 
-    // Add the headers
-    if (headers != null && !headers.isEmpty()) {
-      JSONObject httpHeaders = new JSONObject(headers);
-
-      Iterator<String> keys = httpHeaders.keys();
-      while (keys.hasNext()) {
-        String key = keys.next();
-        reqBuilder.addHeader(key, httpHeaders.getString(key));
-      }
-    } else {
-      Log.i(TAG, "Request has no HTTP headers");
+    // Add the headers.
+    for (Map.Entry<String, String> header : request.getHeadersMap().entrySet()) {
+      reqBuilder.addHeader(header.getKey(), header.getValue());
     }
 
     return reqBuilder;
@@ -110,113 +130,182 @@ public class HttpFetcher {
    * only checks whether the response was successful or not, aka response code [200, 300). This is a
    * synchronous API and is blocking.
    */
-  public boolean checkGet(String url, @Nullable String headers, PpnNetwork ppnNetwork) {
+  public boolean checkGet(String url, PpnNetwork ppnNetwork) {
     Log.w(TAG, "HTTP GET (checkGet) to " + url);
     Request req;
     try {
-      req = buildCheckGetRequest(url, headers);
+      req = buildCheckGetRequest(url);
     } catch (JSONException e) {
       // The malformed headers could have sensitive info, so don't log the Exception itself.
       Log.w(TAG, "GET (checkGet) has malformed headers; returning false.");
       return false;
     }
 
-    OkHttpClient.Builder builder = new OkHttpClient().newBuilder();
-    OkHttpClient client =
-        builder
-            // Set the timeout to be a very short time period for checkGet calls.
-            .callTimeout(Duration.ofSeconds(1))
-            .socketFactory(socketFactory.withNetwork(ppnNetwork))
-            .build();
-    Call call = client.newCall(req);
-
-    Response response;
-    try {
-      response = call.execute();
-    } catch (IOException e) {
-      // It should be safe to log an IOException.
-      Log.w(TAG, "GET (checkGet) failed; returning false.", e);
-      return false;
-    }
+    // Set the timeout to be a very short time period for checkGet calls.
+    HttpResponse response = doRequest(req, CHECK_GET_TIMEOUT, false, Optional.of(ppnNetwork));
 
     // Whether the response has response code [200, 300).
-    boolean success = response.isSuccessful();
-    response.close();
-    return success;
+    int status = response.getStatus().getCode();
+    return status >= 200 && status < 300;
   }
 
-  JSONObject buildHttpResponseJson(int code, String message) {
-    JSONObject jsonResponse = new JSONObject();
-    JSONObject http = new JSONObject();
-    Json.put(jsonResponse, "status", http);
-    Json.put(http, "code", code);
-    Json.put(http, "message", message);
-    return jsonResponse;
+  HttpResponse buildHttpResponse(int code, String message) {
+    return HttpResponse.newBuilder()
+        .setStatus(HttpStatus.newBuilder().setCode(code).setMessage(message).build())
+        .build();
   }
 
-  // Post request that sends MIME of JSON and expects a JSON response.
-  // On failure, timeout or any other unknown failures, A response JSON is constructed and send to
-  // the caller.
-  // This is a synchronous API and is blocking.
-  public String postJson(String url, @Nullable String headers, String jsonBody) {
-    Log.w(TAG, "HTTP POST to " + url);
+  /**
+   * Executes the given encoded HttpRequest proto as a POST and returns an encoded HttpResponse
+   * proto once the request is complete. The HttpResponse's HTTP status will indicate success or
+   * failure.
+   */
+  public byte[] postJson(byte[] requestBytes) {
+    HttpRequest request = null;
+    try {
+      request = HttpRequest.parseFrom(requestBytes, ExtensionRegistryLite.getEmptyRegistry());
+    } catch (InvalidProtocolBufferException e) {
+      return buildHttpResponse(400, "invalid request proto").toByteArray();
+    }
+    return postJson(request).toByteArray();
+  }
+
+  /**
+   * Executes the given HttpRequest as a POST and returns an HttpResponse once the request is
+   * complete. The HttpResponse's HTTP status will indicate success or failure.
+   */
+  public HttpResponse postJson(HttpRequest request) {
+    Log.w(TAG, "HTTP POST to " + request.getUrl());
 
     Request req;
     try {
-      req = buildPostRequest(url, headers, jsonBody);
+      req = buildPostRequest(request);
     } catch (JSONException e) {
       // The malformed request JSON may have sensitive info, so don't log it.
       Log.w(TAG, "POST request has invalid JSON.");
-      return buildHttpResponseJson(400, "invalid request JSON").toString();
+      return buildHttpResponse(400, "invalid request JSON");
     }
+
+    return doRequest(req, requestTimeout, true, Optional.empty());
+  }
+
+  /**
+   * Executes the given okhttp Request synchronously and returns an HttpResponse once the request is
+   * complete. The HttpResponse's HTTP status will indicate success or failure.
+   *
+   * @param request the okhttp request to perform.
+   * @param timeout the call timeout to use for okhttp.
+   * @param parseJsonBody whether to try to parse the body as JSON and validate it.
+   * @param network optional network to perform the request on. If empty, uses the current network.
+   */
+  private HttpResponse doRequest(
+      Request request, Duration timeout, boolean parseJsonBody, Optional<PpnNetwork> network) {
+    try {
+      // Add a higher-level timeout to the await, in case okhttp's timeout fails.
+      Duration awaitTimeout = timeout.plus(FALLBACK_TIMEOUT);
+      return Tasks.await(
+          doRequestAsync(request, timeout, parseJsonBody, network),
+          awaitTimeout.toMillis(),
+          MILLISECONDS);
+    } catch (TimeoutException e) {
+      Log.w(TAG, "http request timed out.");
+      return buildHttpResponse(504, "request timed out");
+    } catch (InterruptedException e) {
+      Log.w(TAG, "Unable to enqueue http request.");
+      return buildHttpResponse(500, "http request was interrupted");
+    } catch (Exception e) {
+      // This should ideally not happen, but it's a catch-all in case we missed some exception.
+      Log.w(TAG, "Unable to enqueue http request.");
+      return buildHttpResponse(500, "http request failed");
+    }
+  }
+
+  /**
+   * Executes the given okhttp Request asynchronously and returns a Task that will be resolved with
+   * a result once the request is complete. The task should never fail. If the request failed, the
+   * task will be completed with an HttpResponse whose HTTP status will indicate success or failure.
+   *
+   * @param request the okhttp request to perform.
+   * @param timeout the call timeout to use for okhttp.
+   * @param parseJsonBody whether to try to parse the body as JSON and validate it.
+   * @param network optional network to perform the request on. If empty, uses the current network.
+   */
+  private Task<HttpResponse> doRequestAsync(
+      Request request, Duration timeout, boolean parseJsonBody, Optional<PpnNetwork> network) {
+    SocketFactory factory =
+        network.isPresent()
+            ? socketFactory.withNetwork(network.get())
+            : socketFactory.withCurrentNetwork();
 
     OkHttpClient.Builder builder = new OkHttpClient().newBuilder();
-    OkHttpClient client =
-        builder
-            .callTimeout(requestTimeout)
-            .socketFactory(socketFactory.withCurrentNetwork())
-            .build();
-    Call call = client.newCall(req);
+    OkHttpClient client = builder.callTimeout(timeout).dns(dns).socketFactory(factory).build();
+    Call call = client.newCall(request);
 
-    Response response;
-    try {
-      response = call.execute();
-    } catch (IOException e) {
-      // The failed request may have sensitive info, so don't log it.
-      Log.w(TAG, "Failed to POST JSON request.");
-      return buildHttpResponseJson(500, "IOException executing request").toString();
-    }
+    TaskCompletionSource<HttpResponse> tcs = new TaskCompletionSource<>();
 
-    // Construct a response that starts with the http response.
-    JSONObject jsonResponse = buildHttpResponseJson(response.code(), response.message());
+    call.enqueue(
+        new Callback() {
+          @Override
+          public void onFailure(Call call, IOException e) {
+            // The failed request may have sensitive info, so don't log it.
+            Log.w(TAG, "Failed http request.");
+            tcs.setResult(buildHttpResponse(500, "IOException executing request"));
+          }
 
-    // Only try to read the body if the response is OK.
-    if (response.code() != 200) {
-      response.body().close();
-      return jsonResponse.toString();
-    }
+          @Override
+          public void onResponse(Call call, Response response) {
+            // Construct a response that starts with the http response.
+            HttpResponse.Builder responseBuilder =
+                HttpResponse.newBuilder()
+                    .setStatus(
+                        HttpStatus.newBuilder()
+                            .setCode(response.code())
+                            .setMessage(response.message())
+                            .build());
 
-    // Read the response body.
-    String body;
-    try {
-      body = response.body().string();
-    } catch (IOException e) {
-      // The failed response may have sensitive info, so don't log it.
-      Log.w(TAG, "Failed to read POST response body.");
-      return buildHttpResponseJson(500, "IOException reading response body").toString();
-    }
+            // Only try to read the body if the response is OK.
+            if (response.code() != 200) {
+              response.body().close();
+              tcs.setResult(responseBuilder.build());
+              return;
+            }
 
-    // Parse the response body as JSON.
-    JSONObject message;
-    try {
-      message = new JSONObject(body);
-    } catch (JSONException e) {
-      // The failed response may have sensitive info, so don't log it.
-      Log.w(TAG, "Response body has malformed JSON.");
-      return buildHttpResponseJson(500, "invalid response JSON").toString();
-    }
+            // Read the response body.
+            String body;
+            try {
+              body = response.body().string();
+            } catch (IOException e) {
+              // The failed response may have sensitive info, so don't log it.
+              Log.w(TAG, "Failed to read http response body.");
+              tcs.setResult(buildHttpResponse(500, "IOException reading response body"));
+              return;
+            }
 
-    Json.put(jsonResponse, "json_body", message);
-    return jsonResponse.toString();
+            // Limit response length to 1 MB before JSON parsing.
+            if (body.length() > 1024 * 1024) {
+              Log.w(TAG, "Response body length exceeds limit of 1MB.");
+              tcs.setResult(buildHttpResponse(500, "response length exceeds limit of 1MB"));
+              return;
+            }
+
+            if (parseJsonBody) {
+              // Parse the response body as JSON.
+              JSONObject message;
+              try {
+                message = new JSONObject(body);
+              } catch (JSONException e) {
+                // The failed response may have sensitive info, so don't log it.
+                Log.w(TAG, "Response body has malformed JSON.");
+                tcs.setResult(buildHttpResponse(500, "invalid response JSON"));
+                return;
+              }
+              responseBuilder.setJsonBody(message.toString());
+            }
+
+            tcs.setResult(responseBuilder.build());
+          }
+        });
+
+    return tcs.getTask();
   }
 }

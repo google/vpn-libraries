@@ -57,7 +57,7 @@ class SessionManager : public SessionManagerInterface {
 
   void TerminateSession() override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::optional<Session*> session() const {
+  absl::optional<Session*> session() const override {
     absl::MutexLock l(&mutex_);
     if (session_ == nullptr) {
       return absl::nullopt;

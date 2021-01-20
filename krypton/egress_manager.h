@@ -99,11 +99,6 @@ class EgressManager {
 
   void GetDebugInfo(EgressDebugInfo* debug_info) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  virtual bool is_ppn() const ABSL_LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock l(&mutex_);
-    return is_ppn_;
-  }
-
   uint32 uplink_spi() const {
     absl::MutexLock l(&mutex_);
     return uplink_spi_;
@@ -127,8 +122,7 @@ class EgressManager {
   }
 
  private:
-  void DecodeAddEgressResponse(bool is_rekey,
-                               const std::string& string_response)
+  void DecodeAddEgressResponse(bool is_rekey, const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
   void SetState(State state) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   absl::Status SaveEgressDetails(
@@ -147,7 +141,6 @@ class EgressManager {
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
   uint32 uplink_spi_ ABSL_GUARDED_BY(mutex_) = -1;
   std::vector<std::string> egress_node_sock_addresses_ ABSL_GUARDED_BY(mutex_);
-  bool is_ppn_ ABSL_GUARDED_BY(mutex_) = false;
   std::vector<google::protobuf::Duration> latencies_ ABSL_GUARDED_BY(mutex_);
   absl::Time request_time_ ABSL_GUARDED_BY(mutex_) = absl::InfinitePast();
 };

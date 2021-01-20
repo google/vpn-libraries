@@ -83,6 +83,12 @@ class Krypton {
   // No network is available.
   absl::Status SetNoNetworkAvailable();
 
+  // Set state of the Safe Disconnect feature.
+  void SetSafeDisconnectEnabled(bool enable);
+
+  // Returns state of the Safe Disconnect feature.
+  bool IsSafeDisconnectEnabled();
+
   // Collects telemetry to determine how well Krypton is running.
   void CollectTelemetry(KryptonTelemetry* telemetry);
 
@@ -110,6 +116,7 @@ class Krypton {
   absl::CondVar stopped_condition_ ABSL_GUARDED_BY(stopped_lock_);
 
   KryptonConfig config_;
+  bool safe_disconnect_enabled_;
 };
 
 }  // namespace krypton

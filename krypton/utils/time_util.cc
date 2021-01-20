@@ -14,6 +14,8 @@
 
 #include "privacy/net/krypton/utils/time_util.h"
 
+#include "privacy/net/krypton/utils/status.h"
+
 namespace privacy {
 namespace krypton {
 namespace utils {
@@ -45,6 +47,28 @@ absl::Status ToProtoDuration(absl::Duration d,
   proto->set_nanos(n);
   PPN_RETURN_IF_ERROR(ValidateDuration(*proto));
   return absl::OkStatus();
+}
+
+absl::Status ToProtoTime(absl::Time t, google::protobuf::Timestamp* proto) {
+  // A Timestamp is stored as a duration since epoch.
+  absl::Duration since_epoch = t - absl::UnixEpoch();
+  google::protobuf::Duration duration_proto;
+  PPN_RETURN_IF_ERROR(ToProtoDuration(since_epoch, &duration_proto));
+
+  proto->set_seconds(duration_proto.seconds());
+  proto->set_nanos(duration_proto.nanos());
+  return absl::OkStatus();
+}
+
+absl::StatusOr<absl::Time> ParseTimestamp(absl::string_view s) {
+  absl::Time time;
+  std::string error;
+  if (!absl::ParseTime(absl::RFC3339_full, s, &time, &error)) {
+    LOG(ERROR) << "Unable to parse timestamp [" << s << "]";
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to parse timestamp [", s, "]"));
+  }
+  return time;
 }
 
 }  // namespace utils

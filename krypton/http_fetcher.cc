@@ -43,35 +43,33 @@ void HttpFetcher::CancelAsync() {
 }
 
 void HttpFetcher::PostJsonAsync(
-    absl::string_view url, const Json::Value& headers,
-    const Json::Value& json_body,
-    std::function<void(const std::string&)> callback) {
+    const HttpRequest& request,
+    std::function<void(const HttpResponse&)> callback) {
   if (callback == nullptr) {
     LOG(FATAL) << "callback cannot be null, use |PostJson| instead.";
   }
-  LOG(INFO) << "Requesting PostJsonAsync to url: " << url;
+  LOG(INFO) << "Requesting PostJsonAsync to url: " << request.url();
 
   callback_info_ = std::make_shared<CallbackInfo>(std::move(callback));
 
   callback_info_->looper = notification_thread_;
-  std::string url_copy(url);
-  thread_.Post([this, url_copy, headers, json_body] {
-    this->PostJsonAsyncInternal(url_copy, headers, json_body, callback_info_);
+  HttpRequest request_copy(request);
+  thread_.Post([this, request] {
+    this->PostJsonAsyncInternal(request, callback_info_);
   });
 }
 
 void HttpFetcher::PostJsonAsyncInternal(
-    const std::string& url, const Json::Value& headers,
-    const Json::Value json_body, std::shared_ptr<CallbackInfo> callback_info) {
-  LOG(INFO) << "Performing PostJsonAsync to url: " << url;
-  auto response = pal_interface_->PostJson(url, headers, json_body);
+    const HttpRequest& request, std::shared_ptr<CallbackInfo> callback_info) {
+  LOG(INFO) << "Performing PostJsonAsync to url: " << request.url();
+  auto response = pal_interface_->PostJson(request);
 
   // Lock the mutex and check for cancellation before calling the callback.
   {
     absl::MutexLock l(&callback_info->mutex);
     if (callback_info->cancelled) {
       LOG(ERROR)
-          << "Call back is cancelled for PostJson, dropping the response.";
+          << "Callback is cancelled for PostJson, dropping the response.";
       return;
     }
     if (callback_info->callback == nullptr) {

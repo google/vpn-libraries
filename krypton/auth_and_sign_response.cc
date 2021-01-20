@@ -19,8 +19,8 @@
 #include <string>
 
 #include "base/logging.h"
-#include "privacy/net/krypton/http_header.h"
 #include "privacy/net/krypton/json_keys.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
@@ -33,65 +33,52 @@
 namespace privacy {
 namespace krypton {
 
-absl::Status AuthAndSignResponse::DecodeFromJsonObject(
-    absl::string_view json_string) {
-  Json::Reader reader;
-  Json::Value root;
-  auto parsing_status = reader.parse(std::string(json_string), root);
-  if (!parsing_status) {
-    parsing_status_ = absl::InvalidArgumentError("Error parsing HttpResponse");
-    LOG(ERROR) << parsing_status_;
-    return parsing_status_;
-  }
+absl::Status AuthAndSignResponse::DecodeFromProto(
+    const HttpResponse& response) {
+  if (!response.json_body().empty()) {
+    Json::Reader reader;
+    Json::Value body_root;
+    auto parsing_status = reader.parse(response.json_body(), body_root);
+    if (!parsing_status) {
+      parsing_status_ = absl::InvalidArgumentError("Error parsing json body");
+      LOG(ERROR) << parsing_status_;
+      return parsing_status_;
+    }
 
-  for (auto it = root.begin(); it != root.end(); ++it) {
-    Json::FastWriter writer;
-    if (it.name() == JsonKeys::kStatusKey) {
-      auto status = http_response_.DecodeFromJsonObject(*it);
-      if (!status.ok()) {
-        parsing_status_ = absl::InvalidArgumentError(
-            "Error parsing HttpResponse with status ");
-        LOG(ERROR) << parsing_status_;
-        return parsing_status_;
-      }
-    } else if (it.name() == JsonKeys::kHeadersKey) {
-      auto status = http_response_.MutableHeader()->DecodeFromJsonObject(*it);
-      if (!status.ok()) {
-        parsing_status_ =
-            absl::InvalidArgumentError("Error parsing HttpResponse header");
-        LOG(ERROR) << parsing_status_;
-        return parsing_status_;
-      }
-    } else if (it.name() == JsonKeys::kJsonBodyKey) {
-      parsing_status_ = DecodeJsonBody(*it);
-      if (!parsing_status_.ok()) {
-        LOG(ERROR) << parsing_status_;
-        return parsing_status_;
-      }
+    parsing_status_ = DecodeJsonBody(body_root);
+    if (!parsing_status_.ok()) {
+      LOG(ERROR) << parsing_status_;
+      return parsing_status_;
     }
   }
+
   return parsing_status_ = absl::OkStatus();
 }
 
 absl::Status AuthAndSignResponse::DecodeJsonBody(Json::Value value) {
   if (!value.isObject()) {
-    return absl::InvalidArgumentError("JSON body was not a JSON object.");
+    return absl::InvalidArgumentError("JSON body is not of type JSON object");
   }
   if (value.isMember(JsonKeys::kJwtTokenKey)) {
     jwt_token_ = value[JsonKeys::kJwtTokenKey].asString();
   }
 
+  // TODO: Consider whether to reject any response that doesn't contain
+  // blind token signatures.
+
+  blinded_token_signatures_.clear();
   if (value.isMember(JsonKeys::kBlindedTokenSignature)) {
     auto signature_array = value[JsonKeys::kBlindedTokenSignature];
     if (!signature_array.isArray()) {
-      return absl::InvalidArgumentError("BlindedTokens is not of type Array");
+      return absl::InvalidArgumentError(
+          "blinded_token_signature is not an array");
     }
     for (const auto& i : signature_array) {
       if (i.isString()) {
         blinded_token_signatures_.push_back(i.asString());
       } else {
-        LOG(ERROR)
-            << "Received blind_token_signature that is not of type string";
+        return absl::InvalidArgumentError(
+            "blinded_token_signature value is not a string");
       }
     }
   }
@@ -99,44 +86,37 @@ absl::Status AuthAndSignResponse::DecodeJsonBody(Json::Value value) {
   return absl::OkStatus();
 }
 
-absl::Status PublicKeyResponse::DecodeFromJsonObject(
-    absl::string_view json_string) {
-  Json::Reader reader;
-  Json::Value root;
-  auto parsing_status = reader.parse(std::string(json_string), root);
-  if (!parsing_status) {
-    parsing_status_ = absl::InvalidArgumentError("Error parsing HttpResponse");
+absl::Status PublicKeyResponse::DecodeFromProto(const HttpResponse& response) {
+  if (response.json_body().empty()) {
+    parsing_status_ = absl::InvalidArgumentError("response missing json body");
     LOG(ERROR) << parsing_status_;
     return parsing_status_;
   }
-  for (auto it = root.begin(); it != root.end(); ++it) {
-    Json::FastWriter writer;
-    if (it.name() == JsonKeys::kStatusKey) {
-      PPN_RETURN_IF_ERROR(http_response_.DecodeFromJsonObject(*it));
 
-      if (!http_response_.is_successful()) {
-        parsing_status_ = absl::Status(
-            utils::GetStatusCodeForHttpStatus(http_response_.status()),
-            "Content obfuscated");
-        LOG(ERROR) << parsing_status_;
-        return parsing_status_;
-      }
-    } else if (it.name() == JsonKeys::kHeadersKey) {
-      PPN_RETURN_IF_ERROR(
-          http_response_.MutableHeader()->DecodeFromJsonObject(*it));
-    } else if (it.name() == JsonKeys::kJsonBodyKey) {
-      PPN_RETURN_IF_ERROR(DecodeJsonBody(*it));
-    }
+  // Try to parse the JSON in the body.
+  Json::Reader reader;
+  Json::Value body_root;
+  auto parsing_status = reader.parse(response.json_body(), body_root);
+  if (!parsing_status) {
+    parsing_status_ = absl::InvalidArgumentError("error parsing json body");
+    LOG(ERROR) << parsing_status_;
+    return parsing_status_;
   }
+
+  PPN_RETURN_IF_ERROR(parsing_status_ = DecodeJsonBody(body_root));
+
   return parsing_status_ = absl::OkStatus();
 }
 
 absl::Status PublicKeyResponse::DecodeJsonBody(Json::Value value) {
   if (!value.isObject()) {
-    return absl::InvalidArgumentError("JSON body was not a JSON object.");
+    return absl::InvalidArgumentError("JSON body is not a JSON object");
   }
   if (!value.isMember(JsonKeys::kPem)) {
-    return absl::FailedPreconditionError("No pem field found");
+    return absl::InvalidArgumentError("missing pem");
+  }
+  if (!value[JsonKeys::kPem].isString()) {
+    return absl::InvalidArgumentError("pem is not a string");
   }
   pem_ = value[JsonKeys::kPem].asString();
   return absl::OkStatus();

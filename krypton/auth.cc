@@ -25,7 +25,6 @@
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/http_fetcher.h"
-#include "privacy/net/krypton/http_header.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
@@ -76,19 +75,10 @@ Auth::~Auth() {
 }
 
 void Auth::HandleAuthAndSignResponse(bool is_rekey,
-                                     const std::string& string_response) {
+                                     const HttpResponse& http_response) {
   absl::MutexLock l(&mutex_);
-  google::protobuf::Duration latency;
-  if (!utils::ToProtoDuration(absl::Now() - request_time_, &latency).ok()) {
-    LOG(ERROR) << "Unable to calculate latency.";
-  } else {
-    if (latencies_.size() < kLatencyCollectionLimit) {
-      latencies_.emplace_back(latency);
-    } else {
-      LOG(ERROR) << "Max latency collection limit reached, not adding latency:"
-                 << absl::Now() - request_time_;
-    }
-  }
+  RecordLatency(request_time_, &latencies_, "auth");
+  RecordLatency(zinc_call_time_, &zinc_latencies_, "zinc");
 
   request_time_ = ::absl::InfinitePast();
 
@@ -100,23 +90,26 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
     return;
   }
 
+  if (http_response.status().code() != 200) {
+    SetState(State::kUnauthenticated);
+    RaiseAuthFailureNotification(absl::Status(
+        utils::GetStatusCodeForHttpStatus(http_response.status().code()),
+        http_response.status().message()));
+    return;
+  }
+
   auto auth_and_sign_response = std::make_shared<AuthAndSignResponse>();
 
-  auto decode_status =
-      auth_and_sign_response->DecodeFromJsonObject(string_response);
+  auto decode_status = auth_and_sign_response->DecodeFromProto(http_response);
   auth_and_sign_response_ = std::move(auth_and_sign_response);
 
   if (!decode_status.ok()) {
     SetState(State::kUnauthenticated);
-    RaiseAuthFailureNotification();
-    LOG(ERROR) << "Error decoding AuthResponse " << string_response;
+    RaiseAuthFailureNotification(decode_status);
+    LOG(ERROR) << "Error decoding AuthResponse";
     return;
   }
-  if (!auth_and_sign_response_->http_response().is_successful()) {
-    SetState(State::kUnauthenticated);
-    RaiseAuthFailureNotification();
-    return;
-  }
+
   SetState(State::kAuthenticated);
   auto* notification = notification_;
   looper_thread_->Post(
@@ -130,7 +123,7 @@ std::shared_ptr<AuthAndSignResponse> Auth::auth_response() const {
 }
 
 void Auth::HandlePublicKeyResponse(bool is_rekey,
-                                   const std::string& string_response) {
+                                   const HttpResponse& http_response) {
   {
     absl::MutexLock l(&mutex_);
     google::protobuf::Duration latency;
@@ -152,22 +145,29 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
       return;
     }
 
-    PublicKeyResponse response;
-    if (const auto decode_status =
-            response.DecodeFromJsonObject(string_response);
-        !decode_status.ok()) {
-      latest_status_ = decode_status;
+    if (http_response.status().code() < 200 ||
+        http_response.status().code() >= 300) {
       SetState(State::kUnauthenticated);
-      RaiseAuthFailureNotification();
-      LOG(ERROR) << "Error decoding PublicKeyResponse " << string_response;
+      RaiseAuthFailureNotification(absl::Status(
+          utils::GetStatusCodeForHttpStatus(http_response.status().code()),
+          http_response.status().message()));
+      LOG(ERROR) << "PublicKeyResponse failed";
+      return;
+    }
+
+    PublicKeyResponse response;
+    const auto decode_status = response.DecodeFromProto(http_response);
+    if (!decode_status.ok()) {
+      SetState(State::kUnauthenticated);
+      RaiseAuthFailureNotification(decode_status);
+      LOG(ERROR) << "Error decoding PublicKeyResponse";
       return;
     }
     DCHECK_NE(key_material_, nullptr);
     auto blinding_status = key_material_->SetBlindingPublicKey(response.pem());
     if (!blinding_status.ok()) {
-      latest_status_ = blinding_status;
       SetState(State::kUnauthenticated);
-      RaiseAuthFailureNotification();
+      RaiseAuthFailureNotification(blinding_status);
       return;
     }
   }
@@ -199,20 +199,19 @@ void Auth::RequestKeyForBlindSigning(bool is_rekey) {
   absl::MutexLock l(&mutex_);
   request_time_ = absl::Now();
   PublicKeyRequest request;
-  auto public_key_json_object = request.EncodeToJsonObject();
-  if (!public_key_json_object) {
+  auto public_key_proto = request.EncodeToProto();
+  if (!public_key_proto) {
     LOG(ERROR) << "Cannot build PublicKeyRequest";
-    latest_status_ =
-        absl::PermissionDeniedError("Cannot build PublicKeyRequest");
     SetState(State::kUnauthenticated);
-    RaiseAuthFailureNotification();
+    RaiseAuthFailureNotification(
+        absl::PermissionDeniedError("Cannot build PublicKeyRequest"));
     return;
   }
 
+  public_key_proto->set_url(config_->zinc_public_signing_key_url());
+
   http_fetcher_.PostJsonAsync(
-      config_->zinc_public_signing_key_url(),
-      public_key_json_object.value().http_headers,
-      public_key_json_object.value().json_body,
+      public_key_proto.value(),
       absl::bind_front(&Auth::HandlePublicKeyResponse, this, is_rekey));
 }
 
@@ -222,11 +221,12 @@ void Auth::Authenticate(bool is_rekey) {
   auto status_or_auth_token = oauth_->GetOAuthToken();
   if (!status_or_auth_token.ok()) {
     LOG(ERROR) << "Error fetching oauth token";
-    latest_status_ = absl::InternalError("Error fetching Oauth token");
     SetState(State::kUnauthenticated);
-    RaiseAuthFailureNotification();
+    RaiseAuthFailureNotification(
+        absl::InternalError("Error fetching Oauth token"));
     return;
   }
+  RecordLatency(request_time_, &oauth_latencies_, "oauth");
   auto auth_token = status_or_auth_token.value();
   AuthAndSignRequest sign_request(
       auth_token, config_->service_type(), std::string(),
@@ -236,46 +236,26 @@ void Auth::Authenticate(bool is_rekey) {
           ? key_material_->blind_signing_public_key_hash()
           : absl::nullopt);
 
-  auto auth_json_object = sign_request.EncodeToJsonObject();
-  if (!auth_json_object) {
+  auto auth_http_request = sign_request.EncodeToProto();
+  if (!auth_http_request) {
     LOG(ERROR) << "Cannot build AuthAndSignRequest";
-    latest_status_ =
-        absl::PermissionDeniedError("Cannot build AuthAndSignRequest");
     SetState(State::kUnauthenticated);
-    RaiseAuthFailureNotification();
+    RaiseAuthFailureNotification(
+        absl::PermissionDeniedError("Cannot build AuthAndSignRequest"));
     return;
   }
 
+  auth_http_request->set_url(config_->zinc_url());
+  zinc_call_time_ = absl::Now();
   http_fetcher_.PostJsonAsync(
-      config_->zinc_url(), auth_json_object.value().http_headers,
-      auth_json_object.value().json_body,
+      auth_http_request.value(),
       absl::bind_front(&Auth::HandleAuthAndSignResponse, this, is_rekey));
 }
 
-void Auth::RaiseAuthFailureNotification() const {
-  // If the status is set, send it else calculate the status.
-  if (!latest_status_.ok()) {
-    auto* notification = notification_;
-    auto status = latest_status_;
-    looper_thread_->Post(
-        [notification, status] { notification->AuthFailure(status); });
-    return;
-  }
-
-  if (auth_and_sign_response_ == nullptr) {
-    absl::Status status(absl::StatusCode::kUnavailable,
-                        "Authentication response is null");
-    auto* notification = notification_;
-    looper_thread_->Post(
-        [notification, status] { notification->AuthFailure(status); });
-    return;
-  }
-
-  // Build status from the HTTP response.
-  absl::Status status(utils::GetStatusCodeForHttpStatus(
-                          auth_and_sign_response_->http_response().status()),
-                      auth_and_sign_response_->http_response().message());
+void Auth::RaiseAuthFailureNotification(absl::Status status) const {
   auto* notification = notification_;
+  // Make a copy of the status to show in the debug info.
+  auto latest_status_ = status;
   looper_thread_->Post(
       [notification, status] { notification->AuthFailure(status); });
 }
@@ -303,7 +283,15 @@ void Auth::CollectTelemetry(KryptonTelemetry* telemetry) {
   for (const auto& latency : latencies_) {
     *telemetry->add_auth_latency() = latency;
   }
+  for (const auto& latency : oauth_latencies_) {
+    *telemetry->add_oauth_latency() = latency;
+  }
+  for (const auto& latency : zinc_latencies_) {
+    *telemetry->add_zinc_latency() = latency;
+  }
   latencies_.clear();
+  oauth_latencies_.clear();
+  zinc_latencies_.clear();
 }
 
 void Auth::GetDebugInfo(AuthDebugInfo* debug_info) {
@@ -313,6 +301,26 @@ void Auth::GetDebugInfo(AuthDebugInfo* debug_info) {
   for (const auto& latency : latencies_) {
     *debug_info->add_latency() = latency;
   }
+}
+
+void Auth::RecordLatency(absl::Time start,
+                         std::vector<google::protobuf::Duration>* latencies,
+                         const std::string& latency_type) {
+  google::protobuf::Duration latency;
+  absl::Duration latency_durition = absl::Now() - start;
+  auto latency_status = utils::ToProtoDuration(latency_durition, &latency);
+  if (!latency_status.ok()) {
+    LOG(ERROR) << "Unable to calculate " << latency_type
+               << " latency with status:" << latency_status;
+    return;
+  }
+  if (latencies->size() >= kLatencyCollectionLimit) {
+    LOG(ERROR) << "Max " << latency_type
+               << " latency collection limit reached, not adding latency:"
+               << latency_durition;
+    return;
+  }
+  latencies->emplace_back(latency);
 }
 
 }  // namespace krypton

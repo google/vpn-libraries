@@ -38,6 +38,7 @@ namespace privacy {
 namespace krypton {
 using ::testing::_;
 using ::testing::Eq;
+using ::testing::EqualsProto;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
 
@@ -51,55 +52,34 @@ class MockEgressManagerNotification
 
 class HttpFetcherImplForAddEgress : public HttpFetcherInterface {
  public:
-  MOCK_METHOD(std::string, PostJson,
-              (absl::string_view, const Json::Value&, const Json::Value&),
-              (override));
+  MOCK_METHOD(HttpResponse, PostJson, (const HttpRequest&), (override));
 };
 
 class EgressManagerTest : public ::testing::Test {
  public:
   MockEgressManagerNotification mock_notification_;
   crypto::SessionCrypto crypto_;
+
   std::shared_ptr<AuthAndSignResponse> BuildFakeAuthResponse() {
     auto fake_auth_response = std::make_shared<AuthAndSignResponse>();
 
     // Preconstruct some basic auth response parameters and construct json_body.
-    Json::Reader reader;
-    Json::Value response;
-    EXPECT_TRUE(reader.parse(R"json(
-  {
-    "http": {
-      "status":{
-        "code": 200,
-        "message" : "OK"
-      }
-    },
-    "json_body": {
-       "jwt": "some_jwt_token"
-    }
-  })json",
-                             response));
+    HttpResponse response;
+    response.mutable_status()->set_code(200);
+    response.mutable_status()->set_message("OK");
+    response.set_json_body(R"json({"jwt": "some_jwt_token"})json");
 
-    Json::FastWriter writer;
-    EXPECT_OK(fake_auth_response->DecodeFromJsonObject(writer.write(response)));
+    EXPECT_OK(fake_auth_response->DecodeFromProto(response));
     return fake_auth_response;
   }
 
-  Json::Value buildHttpHeaders() {
-    Json::Value headers;
-    // Empty headers.
-    return headers;
-  }
-  // Request from AddEgress.
-  Json::Value buildJsonBodyForAddEgressRequest() {
-    Json::Value expected;
-    Json::Reader reader;
-    // Order of the parameters do not matter.
-    reader.parse(R"string({
-      "unblinded_token" : "some_jwt_token"
-   })string",
-                 expected);
-    return expected;
+  HttpRequest buildAddEgressRequestPpnIpSec(absl::string_view url, uint32 spi) {
+    Json::FastWriter writer;
+    HttpRequest request;
+    request.set_url(url);
+    request.set_json_body(
+        writer.write(buildJsonBodyForAddEgressRequestPpnIpSec(spi)));
+    return request;
   }
 
   // Request from AddEgress.
@@ -125,35 +105,22 @@ class EgressManagerTest : public ::testing::Test {
         crypto_.GetRekeyVerificationKey().ValueOrDie();
     return expected;
   }
-  // Add Egress response that doesn't contain any data path.
-  Json::Value buildAddEgressResponseWithNoDataPath() {
-    Json::Reader reader;
-    Json::Value response;
-    reader.parse(R"json({
-    "status":{
-      "code": 200,
-      "message" : "OK"
-    },
-    "json_body": {
-    }
-  })json",
-                 response);
 
+  // Add Egress response that doesn't contain any data path.
+  HttpResponse buildAddEgressResponseWithNoDataPath() {
+    HttpResponse response;
+    response.mutable_status()->set_code(200);
+    response.mutable_status()->set_message("OK");
     return response;
   }
 
-  Json::Value buildAddEgressResponseForPpnIpSec() {
+  HttpResponse buildAddEgressResponseForPpnIpSec() {
     crypto::SessionCrypto server_crypto;
     auto keys = crypto_.GetMyKeyMaterial();
     Json::Reader reader;
-    Json::Value response;
+    Json::Value json_body;
     reader.parse(R"json({
-    "status":{
-      "code": 200,
-      "message" : "OK"
-    },
-    "json_body": {
-       "ppn_dataplane": {
+      "ppn_dataplane": {
         "user_private_ip": [{
           "ipv4_range": "127.0.0.1"
         }],
@@ -165,13 +132,18 @@ class EgressManagerTest : public ::testing::Test {
         "uplink_spi": 123,
         "expiry": "2020-08-07T01:06:13+00:00"
       }
-    }
-  })json",
-                 response);
-    response[JsonKeys::kJsonBodyKey][JsonKeys::kPpn]
-            [JsonKeys::kEgressPointPublicValue] = keys.public_value;
-    response[JsonKeys::kJsonBodyKey][JsonKeys::kPpn][JsonKeys::kServerNonce] =
-        keys.nonce;
+    })json",
+                 json_body);
+    json_body[JsonKeys::kPpn][JsonKeys::kEgressPointPublicValue] =
+        keys.public_value;
+    json_body[JsonKeys::kPpn][JsonKeys::kServerNonce] = keys.nonce;
+
+    Json::FastWriter writer;
+
+    HttpResponse response;
+    response.mutable_status()->set_code(200);
+    response.mutable_status()->set_message("OK");
+    response.set_json_body(writer.write(json_body));
     return response;
   }
   utils::LooperThread looper_thread_{"EgressManager Test"};
@@ -186,12 +158,12 @@ TEST_F(EgressManagerTest, SuccessfulEgress) {
 
   auto fake_auth_response = BuildFakeAuthResponse();
   absl::Notification http_fetcher_done;
-  Json::FastWriter writer;
 
-  EXPECT_CALL(http_fetcher, PostJson(Eq("http://www.example.com/addegress"),
-                                     Eq(buildHttpHeaders()),
-                                     Eq(buildJsonBodyForAddEgressRequest())))
-      .WillOnce(Return(writer.write(buildAddEgressResponseForPpnIpSec())));
+  EXPECT_CALL(http_fetcher, PostJson(EqualsProto(R"pb(
+                url: "http://www.example.com/addegress"
+                json_body: "{\"unblinded_token\":\"some_jwt_token\"}\n"
+              )pb")))
+      .WillOnce(Return(buildAddEgressResponseForPpnIpSec()));
 
   EXPECT_CALL(mock_notification_, EgressAvailable)
       .WillOnce(
@@ -218,12 +190,12 @@ TEST_F(EgressManagerTest, TestNoDataPath) {
   egress_manager.RegisterNotificationHandler(&mock_notification_);
   auto fake_auth_response = BuildFakeAuthResponse();
   absl::Notification http_fetcher_done;
-  Json::FastWriter writer;
 
-  EXPECT_CALL(http_fetcher, PostJson(Eq("http://www.example.com/addegress"),
-                                     Eq(buildHttpHeaders()),
-                                     Eq(buildJsonBodyForAddEgressRequest())))
-      .WillOnce(Return(writer.write(buildAddEgressResponseWithNoDataPath())));
+  EXPECT_CALL(http_fetcher, PostJson(EqualsProto(R"pb(
+                url: "http://www.example.com/addegress",
+                json_body: "{\"unblinded_token\":\"some_jwt_token\"}\n"
+              )pb")))
+      .WillOnce(Return(buildAddEgressResponseWithNoDataPath()));
 
   EXPECT_CALL(mock_notification_, EgressUnavailable(_))
       .WillOnce(
@@ -248,14 +220,11 @@ TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
 
   auto fake_auth_response = BuildFakeAuthResponse();
   absl::Notification http_fetcher_done;
-  Json::FastWriter writer;
 
-  EXPECT_CALL(
-      http_fetcher,
-      PostJson(
-          Eq("http://www.example.com/addegress"), Eq(buildHttpHeaders()),
-          Eq(buildJsonBodyForAddEgressRequestPpnIpSec(crypto_.downlink_spi()))))
-      .WillOnce(Return(writer.write(buildAddEgressResponseForPpnIpSec())));
+  EXPECT_CALL(http_fetcher,
+              PostJson(EqualsProto(buildAddEgressRequestPpnIpSec(
+                  "http://www.example.com/addegress", crypto_.downlink_spi()))))
+      .WillOnce(Return(buildAddEgressResponseForPpnIpSec()));
 
   EXPECT_CALL(mock_notification_, EgressAvailable)
       .WillOnce(

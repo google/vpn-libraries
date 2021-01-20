@@ -23,17 +23,52 @@
 namespace privacy {
 namespace krypton {
 
+enum class IPProtocol {
+  kUnknown = 0,
+  kIPv4 = 1,
+  kIPv6 = 2,
+};
+
+// Represents a single network packet.
+struct Packet {
+  // The raw bytes data for a single packet.
+  absl::string_view data;
+  // The protocol of the packet data.
+  IPProtocol protocol;
+};
+
+// An interface for a two-way channel that can read and write packets.
+class PacketPipe {
+ public:
+  virtual ~PacketPipe() {}
+
+  virtual absl::Status WritePacket(Packet packets) = 0;
+  virtual void ReadPacket(void handler(absl::Status status,
+                                       Packet packets)) = 0;
+
+  // Returns a file descriptor if this tunnel is backed by one, else an error.
+  virtual absl::StatusOr<int> GetFd() const = 0;
+
+  // Closing the VPN's tunnel should also be the signal to the system that
+  // traffic should stop going through the VPN.
+  virtual void Close() = 0;
+
+  // Returns a human-readable description of the pipe, for debugging.
+  virtual std::string DebugString() = 0;
+};
+
 class VpnServiceInterface {
  public:
   VpnServiceInterface() = default;
   virtual ~VpnServiceInterface() = default;
 
-  // Establishes TUN fds.
-  virtual absl::StatusOr<int> CreateTunFd(const TunFdData& tun_fd_data) = 0;
+  // Establishes the tunnel.
+  virtual absl::StatusOr<std::unique_ptr<PacketPipe>> CreateTunnel(
+      const TunFdData& tun_fd_data) = 0;
 
-  // Creates network fds.
-  virtual absl::StatusOr<int> CreateNetworkFd(
-      const NetworkInfo& network_info) = 0;
+  // Creates network sockets.
+  virtual absl::StatusOr<std::unique_ptr<PacketPipe>>
+  CreateProtectedNetworkSocket(const NetworkInfo& network_info) = 0;
 
   virtual absl::Status ConfigureIpSec(const IpSecTransformParams& params) = 0;
 };

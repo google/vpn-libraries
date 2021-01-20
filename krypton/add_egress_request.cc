@@ -25,8 +25,6 @@
 #include "base/logging.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
-#include "privacy/net/krypton/http_header.h"
-#include "privacy/net/krypton/http_request_json.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/utils/ip_range.h"
 #include "third_party/absl/status/status.h"
@@ -77,23 +75,23 @@ void AddJwtTokenAsUnblindedToken(
 }  // namespace
 
 // Returns the corresponding headers and json_body separately.
-absl::optional<HttpRequestJson> AddEgressRequest::EncodeToJsonObjectForBridge(
+absl::optional<HttpRequest> AddEgressRequest::EncodeToProtoForBridge(
     std::shared_ptr<AuthAndSignResponse> auth_response) {
-  const auto http_request_json = http_request_.EncodeToJsonObject();
-  return HttpRequestJson(
-      http_request_json ? http_request_json.value() : Json::Value(),
-      BuildJson(std::move(auth_response)));
+  HttpRequest request;
+  Json::FastWriter writer;
+  request.set_json_body(writer.write(BuildBodyJson(std::move(auth_response))));
+  return request;
 }
 
-absl::optional<HttpRequestJson> AddEgressRequest::EncodeToJsonObjectForPpn(
+absl::optional<HttpRequest> AddEgressRequest::EncodeToProtoForPpn(
     const PpnDataplaneRequestParams& params) {
-  const auto http_request_json = http_request_.EncodeToJsonObject();
-  return HttpRequestJson(
-      http_request_json ? http_request_json.value() : Json::Value(),
-      BuildJson(params));
+  HttpRequest request;
+  Json::FastWriter writer;
+  request.set_json_body(writer.write(BuildBodyJson(params)));
+  return request;
 }
 
-Json::Value AddEgressRequest::BuildJson(
+Json::Value AddEgressRequest::BuildBodyJson(
     std::shared_ptr<AuthAndSignResponse> auth_response) {
   Json::Value json_body;
   AddJwtTokenAsUnblindedToken(json_body, auth_response);
@@ -104,7 +102,7 @@ Json::Value AddEgressRequest::BuildJson(
   return json_body;
 }
 
-Json::Value AddEgressRequest::BuildJson(
+Json::Value AddEgressRequest::BuildBodyJson(
     const PpnDataplaneRequestParams& params) {
   Json::Value json_body;
   Json::Value ppn;

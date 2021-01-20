@@ -16,7 +16,10 @@ package com.google.android.libraries.privacy.ppn;
 
 import androidx.annotation.Nullable;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -60,6 +63,11 @@ public class PpnOptions {
   private final Optional<Duration> reconnectorInitialTimeToReconnect;
   private final Optional<Duration> reconnectorSessionConnectionDeadline;
 
+  private final boolean isStickyService;
+  private final boolean safeDisconnectEnabled;
+
+  private final Set<String> disallowedApplications;
+
   private final ExecutorService backgroundExecutor;
   private final Optional<PpnAccountManager> accountManager;
 
@@ -85,6 +93,11 @@ public class PpnOptions {
 
     this.reconnectorInitialTimeToReconnect = builder.reconnectorInitialTimeToReconnect;
     this.reconnectorSessionConnectionDeadline = builder.reconnectorSessionConnectionDeadline;
+
+    this.isStickyService = builder.isStickyService;
+    this.safeDisconnectEnabled = builder.safeDisconnectEnabled;
+
+    this.disallowedApplications = Collections.unmodifiableSet(builder.disallowedApplications);
 
     this.backgroundExecutor =
         builder.backgroundExecutor.isPresent()
@@ -161,6 +174,18 @@ public class PpnOptions {
     return reconnectorSessionConnectionDeadline;
   }
 
+  public boolean isStickyService() {
+    return isStickyService;
+  }
+
+  public boolean isSafeDisconnectEnabled() {
+    return safeDisconnectEnabled;
+  }
+
+  public Set<String> getDisallowedApplications() {
+    return disallowedApplications;
+  }
+
   public ExecutorService getBackgroundExecutor() {
     return backgroundExecutor;
   }
@@ -190,6 +215,11 @@ public class PpnOptions {
 
     private Optional<Duration> reconnectorInitialTimeToReconnect = Optional.empty();
     private Optional<Duration> reconnectorSessionConnectionDeadline = Optional.empty();
+
+    private boolean isStickyService = false;
+    private boolean safeDisconnectEnabled = false;
+
+    private Set<String> disallowedApplications = Collections.emptySet();
 
     private Optional<ExecutorService> backgroundExecutor = Optional.empty();
     private Optional<PpnAccountManager> accountManager = Optional.empty();
@@ -375,6 +405,26 @@ public class PpnOptions {
       if (duration != null) {
         this.reconnectorSessionConnectionDeadline = Optional.of(duration);
       }
+      return this;
+    }
+
+    public Builder setStickyService(boolean isStickyService) {
+      this.isStickyService = isStickyService;
+      return this;
+    }
+
+    public Builder setSafeDisconnectEnabled(boolean enable) {
+      this.safeDisconnectEnabled = enable;
+      return this;
+    }
+
+    /** Sets the list of apps that will bypass the VPN, as package names. */
+    public Builder setDisallowedApplications(Iterable<String> packageNames) {
+      HashSet<String> copy = new HashSet<>();
+      for (String packageName : packageNames) {
+        copy.add(packageName);
+      }
+      this.disallowedApplications = Collections.unmodifiableSet(copy);
       return this;
     }
 

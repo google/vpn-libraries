@@ -14,9 +14,8 @@
 
 #include "privacy/net/krypton/auth_and_sign_request.h"
 
-#include "privacy/net/krypton/http_header.h"
-#include "privacy/net/krypton/http_request_json.h"
 #include "privacy/net/krypton/json_keys.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/jsoncpp/value.h"
@@ -35,14 +34,18 @@ AuthAndSignRequest::AuthAndSignRequest(
       blinded_token_(blinded_token),
       public_key_hash_(public_key_hash) {}
 
-absl::optional<HttpRequestJson> AuthAndSignRequest::EncodeToJsonObject() const {
-  auto http_request_json = http_request_.EncodeToJsonObject();
-  return HttpRequestJson(
-      http_request_json ? http_request_json.value() : Json::Value(),
-      BuildJson());
+absl::optional<HttpRequest> AuthAndSignRequest::EncodeToProto() const {
+  HttpRequest http_request;
+  http_request.set_json_body(BuildBody());
+  return http_request;
 }
 
-Json::Value AuthAndSignRequest::BuildJson() const {
+std::string AuthAndSignRequest::BuildBody() const {
+  Json::FastWriter writer;
+  return writer.write(BuildBodyJson());
+}
+
+Json::Value AuthAndSignRequest::BuildBodyJson() const {
   Json::Value json_body;
   json_body[JsonKeys::kAuthTokenKey] = auth_token_;
   json_body[JsonKeys::kServiceTypeKey] = service_type_;
@@ -59,14 +62,18 @@ Json::Value AuthAndSignRequest::BuildJson() const {
   return json_body;
 }
 
-absl::optional<HttpRequestJson> PublicKeyRequest::EncodeToJsonObject() const {
-  auto http_request_json = http_request_.EncodeToJsonObject();
+absl::optional<HttpRequest> PublicKeyRequest::EncodeToProto() const {
+  HttpRequest request;
+
   // TODO: We don't need to send this parameter after the GET
   // request is implemented.
   Json::Value json_body;
   json_body["get_public_key"] = true;
-  return HttpRequestJson(
-      http_request_json ? http_request_json.value() : Json::Value(), json_body);
+
+  Json::FastWriter writer;
+  request.set_json_body(writer.write(json_body));
+  return request;
 }
+
 }  // namespace krypton
 }  // namespace privacy

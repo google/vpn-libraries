@@ -17,6 +17,7 @@
 #include <tuple>
 #include <type_traits>
 
+#include "google/protobuf/timestamp.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/statusor.h"
@@ -24,106 +25,62 @@
 namespace privacy {
 namespace krypton {
 
-// TODO: Write fuzz testing of the JSON responses.
-TEST(AuthAndSignResponse, TestAuthAndSignResponse) {
-  AddEgressResponse add_egress_response;
-  ASSERT_OK(add_egress_response.DecodeFromJsonObject(R"string(
-  {
-    "http": {
-      "status":{
-        "code": 200,
-        "message" : "OK"
-      }
-    },
-    "json_body": {
-       "bridge": {
-          "session_id": 1234,
-          "error": "no error",
-          "session_token": "A89C39",
-          "client_crypto_key": "some_client_crypto_key",
-          "server_crypto_key": "some_server_crypto_key",
-          "ip_ranges":["10.2.2.123","fec2:0001"],
-          "data_plane_sock_addrs": ["10.2.2.124","fec2:0002"],
-          "control_plane_sock_addrs": ["10.2.2.125","fec2:0003"]
-       }
-    }
-  })string"));
-
-  ASSERT_OK(add_egress_response.bridge_dataplane_response());
-  auto status_or_bridge_response =
-      add_egress_response.bridge_dataplane_response();
-  EXPECT_THAT(status_or_bridge_response.value()->GetSessionId(),
-              ::testing::status::IsOkAndHolds(1234));
-  EXPECT_THAT(status_or_bridge_response.value()->GetError(),
-              ::testing::status::IsOkAndHolds("no error"));
-  EXPECT_THAT(status_or_bridge_response.value()->GetSessionToken(),
-              ::testing::status::IsOkAndHolds("A89C39"));
-  EXPECT_THAT(status_or_bridge_response.value()->GetClientCryptoKey(),
-              ::testing::status::IsOkAndHolds("some_client_crypto_key"));
-  EXPECT_THAT(status_or_bridge_response.value()->GetServerCryptoKey(),
-              ::testing::status::IsOkAndHolds("some_server_crypto_key"));
-  EXPECT_THAT(status_or_bridge_response.value()->GetIpRanges(),
-              ::testing::status::IsOkAndHolds(
-                  ::testing::ElementsAre("10.2.2.123", "fec2:0001")));
-  EXPECT_THAT(status_or_bridge_response.value()->GetDataplaneSockAddresses(),
-              ::testing::status::IsOkAndHolds(
-                  ::testing::ElementsAre("10.2.2.124", "fec2:0002")));
-  EXPECT_THAT(status_or_bridge_response.value()->GetControlPlaneSockAddresses(),
-              ::testing::status::IsOkAndHolds(
-                  ::testing::ElementsAre("10.2.2.125", "fec2:0003")));
-}
+using ::testing::EqualsProto;
+using ::testing::proto::Partially;
 
 TEST(AddEgressResponse, TestAddEgressResponse) {
-  AddEgressResponse add_egress_response;
-  ASSERT_OK(add_egress_response.DecodeFromJsonObject(R"string(
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(R"string(
   {
-    "http": {
-      "status": {
-        "code": 200,
-        "message": "OK"
-      }
-    },
-    "json_body": {
-      "ppn_dataplane": {
-        "user_private_ip": [
-          {"ipv4_range": "127.0.0.1"},
-          {"ipv6_range": "fe80::1"}
-        ],
-        "egress_point_sock_addr": [
-          "addr1"
-        ],
-        "egress_point_public_value": "1234567890abcdef",
-        "server_nonce": "abcd",
-        "uplink_spi": 123,
-        "expiry": "2020-08-07T01:06:13+00:00"
-      }
+    "ppn_dataplane": {
+      "user_private_ip": [
+        {"ipv4_range": "127.0.0.1"},
+        {"ipv6_range": "fe80::1"}
+      ],
+      "egress_point_sock_addr": [
+        "addr1"
+      ],
+      "egress_point_public_value": "1234567890abcdef",
+      "server_nonce": "abcd",
+      "uplink_spi": 123,
+      "expiry": "2020-08-07T01:06:13+00:00"
     }
+  })string");
 
-  })string"));
+  AddEgressResponse add_egress_response;
+  ASSERT_OK(add_egress_response.DecodeFromProto(proto));
 
   ASSERT_OK(add_egress_response.ppn_dataplane_response());
-  auto status_or_ppn_response = add_egress_response.ppn_dataplane_response();
-  EXPECT_THAT(status_or_ppn_response.value()->GetUserPrivateIp(),
-              ::testing::status::IsOkAndHolds(
-                  ::testing::UnorderedElementsAre("127.0.0.1", "fe80::1")));
-  EXPECT_THAT(status_or_ppn_response.value()->GetEgressPointSockAddr(),
-              ::testing::status::IsOk());
-  EXPECT_EQ(
-      status_or_ppn_response.value()->GetEgressPointSockAddr().value().size(),
-      1);
-  EXPECT_THAT(
-      status_or_ppn_response.value()->GetEgressPointSockAddr().value()[0],
-      "addr1");
-  EXPECT_THAT(status_or_ppn_response.value()->GetEgressPointPublicKey(),
-              ::testing::status::IsOkAndHolds("1234567890abcdef"));
-  EXPECT_THAT(status_or_ppn_response.value()->GetServerNonce(),
-              ::testing::status::IsOkAndHolds("abcd"));
-  EXPECT_THAT(status_or_ppn_response.value()->GetUplinkSpi(),
-              ::testing::status::IsOkAndHolds(123));
-  // 2020-08-07T01:06:13+00:00 == 1596762373000ms since epoch.
-  absl::Time expected_time = absl::FromUnixMillis(1596762373000);
-  EXPECT_THAT(status_or_ppn_response.value()->GetExpiry(),
-              ::testing::status::IsOkAndHolds(expected_time));
+  auto ppn_response = add_egress_response.ppn_dataplane_response().value();
+
+  EXPECT_THAT(*ppn_response, EqualsProto(R"pb(
+    user_private_ip: { ipv4_range: "127.0.0.1" },
+    user_private_ip: { ipv6_range: "fe80::1" },
+    egress_point_sock_addr: "addr1"
+    egress_point_public_value: "1234567890abcdef",
+    server_nonce: "abcd",
+    uplink_spi: 123,
+    expiry: { seconds: 1596762373 nanos: 0 }
+  )pb"));
+
+  EXPECT_THAT(ppn_response->user_private_ip(),
+              ::testing::UnorderedElementsAre(
+                  Partially(EqualsProto(R"pb(ipv4_range: "127.0.0.1")pb")),
+                  Partially(EqualsProto(R"pb(ipv6_range: "fe80::1")pb"))));
+
+  EXPECT_EQ(ppn_response->egress_point_sock_addr_size(), 1);
+  EXPECT_EQ(ppn_response->egress_point_sock_addr(0), "addr1");
+  EXPECT_EQ(ppn_response->egress_point_public_value(), "1234567890abcdef");
+  EXPECT_EQ(ppn_response->server_nonce(), "abcd");
+  EXPECT_EQ(ppn_response->uplink_spi(), 123);
+
+  // 2020-08-07T01:06:13+00:00 == 1596762373s since epoch.
+  EXPECT_THAT(ppn_response->expiry(), EqualsProto(R"pb(
+                seconds: 1596762373
+                nanos: 0
+              )pb"));
 }
 
 }  // namespace krypton

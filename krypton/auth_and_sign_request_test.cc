@@ -25,33 +25,37 @@
 namespace privacy {
 namespace krypton {
 
-// TODO: Write fuzz testing of the JSON responses.
+// TODO: Write fuzz testing of the JSON body.
 TEST(AuthAndSignRequest, TestAuthAndSignRequest) {
   AuthAndSignRequest request("abc", "123", "aaaa", absl::nullopt,
                              absl::nullopt);
-  auto json_objects = request.EncodeToJsonObject();
-  EXPECT_TRUE(json_objects);
+  auto proto = request.EncodeToProto();
+  EXPECT_TRUE(proto);
 
   Json::Reader reader;
+
   Json::Value expected;
-  // Order of the parameters do not matter.
   reader.parse(R"string({
       "oauth_token" : "abc",
       "service_type" : "123",
    })string",
                expected);
-  EXPECT_EQ(json_objects.value().json_body, expected);
+
+  Json::Value actual;
+  reader.parse(proto.value().json_body(), actual);
+
+  EXPECT_EQ(actual, expected);
 }
 
 TEST(AuthAndSignRequest, TestAuthAndSignRequestWithBlindSigning) {
   AuthAndSignRequest request("abc", "123", "aaaa", "some_blind",
                              "hash of blind");
-  auto json_objects = request.EncodeToJsonObject();
-  EXPECT_TRUE(json_objects);
+  auto proto = request.EncodeToProto();
+  EXPECT_TRUE(proto);
 
   Json::Reader reader;
+
   Json::Value expected;
-  // Order of the parameters do not matter.
   reader.parse(R"string({
       "oauth_token" : "abc",
       "service_type" : "123",
@@ -59,16 +63,26 @@ TEST(AuthAndSignRequest, TestAuthAndSignRequestWithBlindSigning) {
       "public_key_hash" : "hash of blind"
    })string",
                expected);
-  EXPECT_EQ(json_objects.value().json_body, expected);
+
+  Json::Value actual;
+  reader.parse(proto.value().json_body(), actual);
+
+  EXPECT_EQ(actual, expected);
 }
 
 TEST(AuthAndSignRequest, TestPublicKeyRequest) {
   PublicKeyRequest request;
-  auto json_objects = request.EncodeToJsonObject();
-  EXPECT_TRUE(json_objects);
+  auto proto = request.EncodeToProto();
+  EXPECT_TRUE(proto);
+
   Json::Value expected;
   expected["get_public_key"] = true;
-  EXPECT_EQ(json_objects.value().json_body, expected);
+
+  Json::Reader reader;
+  Json::Value actual;
+  reader.parse(proto.value().json_body(), actual);
+
+  EXPECT_EQ(actual, expected);
 }
 
 }  // namespace krypton

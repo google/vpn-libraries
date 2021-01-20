@@ -15,11 +15,10 @@
 package com.google.android.libraries.privacy.ppn.xenon.impl;
 
 import static com.google.common.truth.Truth.assertThat;
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -37,8 +36,10 @@ import android.net.NetworkInfo;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
+import android.os.ConditionVariable;
 import android.os.Looper;
 import androidx.test.core.app.ApplicationProvider;
+import com.google.android.gms.tasks.Task;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus.ConnectionQuality;
@@ -55,6 +56,8 @@ import java.net.DatagramSocket;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Rule;
@@ -84,16 +87,20 @@ public final class PpnNetworkManagerImplTest {
   @Mock private NetworkInfo wifiNetworkInfo;
   @Mock private NetworkInfo cellNetworkInfo;
   @Mock private HttpFetcher mockHttpFetcher;
+  @Mock private PpnOptions mockPpnOptions;
 
   private Network wifiAndroidNetwork;
   private Network cellAndroidNetwork;
-  private PpnOptions ppnOptions;
 
   @Mock private Network mockCellAndroidNetwork;
 
   @Before
   public void setUp() {
-    ppnOptions = new PpnOptions.Builder().setConnectivityCheckUrl(CONNECTIVITY_CHECK_URL).build();
+    ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
+    when(mockPpnOptions.getBackgroundExecutor()).thenReturn(backgroundExecutor);
+    when(mockPpnOptions.getConnectivityCheckUrl()).thenReturn(CONNECTIVITY_CHECK_URL);
+    when(mockPpnOptions.getConnectivityCheckMaxRetries()).thenReturn(3);
+    when(mockPpnOptions.getConnectivityCheckRetryDelay()).thenReturn(Duration.ofSeconds(15));
 
     wifiAndroidNetwork = ShadowNetwork.newInstance(/* netId= */ 1);
     cellAndroidNetwork = ShadowNetwork.newInstance(/* netId= */ 2);
@@ -118,7 +125,7 @@ public final class PpnNetworkManagerImplTest {
     when(wifiNetworkInfo.isConnected()).thenReturn(true);
     when(cellNetworkInfo.isConnected()).thenReturn(true);
 
-    when(mockHttpFetcher.checkGet(eq(CONNECTIVITY_CHECK_URL), isNull(), any(PpnNetwork.class)))
+    when(mockHttpFetcher.checkGet(eq(CONNECTIVITY_CHECK_URL), any(PpnNetwork.class)))
         .thenReturn(true);
   }
 
@@ -175,8 +182,7 @@ public final class PpnNetworkManagerImplTest {
   public void testStopNetworkRequests_clearsState() throws Exception {
     // Add a new avaiable Network.
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     verify(mockListener).onNetworkAvailable(wifiNetwork);
@@ -198,8 +204,7 @@ public final class PpnNetworkManagerImplTest {
 
     // Add a new avaiable Network.
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     // Verify that we have 1 available network as expected.
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
@@ -222,8 +227,7 @@ public final class PpnNetworkManagerImplTest {
     assertThat(networkCallbacksSecondAfter).hasSize(2);
 
     // Another network is available.
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
 
     // We expect onAvailable callback to have happened twice -- once in the beginning and once now.
@@ -234,8 +238,7 @@ public final class PpnNetworkManagerImplTest {
   public void testHandleNetworkAvailable() throws Exception {
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
 
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     verify(mockListener).onNetworkAvailable(wifiNetwork);
@@ -253,8 +256,7 @@ public final class PpnNetworkManagerImplTest {
   @Test
   public void testHandleNetworkAvailable_newNetworkIsNotBetter() throws Exception {
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
         .isEqualTo(wifiNetwork);
@@ -263,9 +265,10 @@ public final class PpnNetworkManagerImplTest {
     verify(mockListener).onNetworkAvailable(wifiNetwork);
 
     PpnNetwork cellularNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR);
-    ppnNetworkManager.handleNetworkAvailable(cellularNetwork);
-    ppnNetworkManager.handleNetworkLinkPropertiesChanged(cellularNetwork, new LinkProperties());
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
+    await(
+        ppnNetworkManager.handleNetworkLinkPropertiesChanged(
+            cellularNetwork, new LinkProperties()));
 
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(2);
     verify(mockListener).onNetworkAvailable(wifiNetwork);
@@ -288,9 +291,10 @@ public final class PpnNetworkManagerImplTest {
   @Test
   public void testHandleNetworkAvailable_newNetworkIsBetter() throws Exception {
     PpnNetwork cellularNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR);
-    ppnNetworkManager.handleNetworkAvailable(cellularNetwork);
-    ppnNetworkManager.handleNetworkLinkPropertiesChanged(cellularNetwork, new LinkProperties());
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
+    await(
+        ppnNetworkManager.handleNetworkLinkPropertiesChanged(
+            cellularNetwork, new LinkProperties()));
 
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
         .isEqualTo(cellularNetwork);
@@ -299,8 +303,7 @@ public final class PpnNetworkManagerImplTest {
     verify(mockListener).onNetworkAvailable(cellularNetwork);
 
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(2);
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
@@ -324,23 +327,42 @@ public final class PpnNetworkManagerImplTest {
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
 
     // Mock the connectivity check to be false.
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, null, wifiNetwork)).thenReturn(false);
+    ConditionVariable checkGetStarted1 = new ConditionVariable(false);
+    doAnswer(
+            invocation -> {
+              checkGetStarted1.open();
+              return false;
+            })
+        .when(mockHttpFetcher)
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork);
 
     // Tell the network manager to try the network.
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    Task<Boolean> handledTask = ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
     // Verify that we checked the connectivity.
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, null, wifiNetwork);
+    assertThat(checkGetStarted1.block(1000)).isTrue();
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork);
     // Verify that it didn't get added to the active network list.
     assertThat(ppnNetworkManager.getAllNetworks()).isEmpty();
 
     // Mock the connectivity check to be true now.
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, null, wifiNetwork)).thenReturn(true);
+    ConditionVariable checkGetStarted2 = new ConditionVariable(false);
+    doAnswer(
+            invocation -> {
+              checkGetStarted2.open();
+              return true;
+            })
+        .when(mockHttpFetcher)
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork);
 
     // Now, link properties change should check connectivity again.
-    ppnNetworkManager.handleNetworkLinkPropertiesChanged(wifiNetwork, new LinkProperties());
-    shadowOf(Looper.getMainLooper()).idle();
-    verify(mockHttpFetcher, times(2)).checkGet(CONNECTIVITY_CHECK_URL, null, wifiNetwork);
+    await(ppnNetworkManager.handleNetworkLinkPropertiesChanged(wifiNetwork, new LinkProperties()));
+    assertThat(checkGetStarted2.block(1000)).isTrue();
+    verify(mockHttpFetcher, times(2)).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork);
+
+    // The original handleNetworkAvailable is still waiting to retry, so advance time enough for it
+    // to notice that the network is no longer pending and stop.
+    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(16));
+    await(handledTask);
 
     // Verify that the WifiNetwork is now available.
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
@@ -362,28 +384,41 @@ public final class PpnNetworkManagerImplTest {
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
 
     // Mock the connectivity check to be false.
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, null, wifiNetwork)).thenReturn(false);
+    ConditionVariable checkGetStarted1 = new ConditionVariable(false);
+    doAnswer(
+            invocation -> {
+              checkGetStarted1.open();
+              return false;
+            })
+        .when(mockHttpFetcher)
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork);
 
     // Make sure the connectivity test fails once.
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    // Idle the Looper to make sure handleNetworkAvailable has done everything it's gonna do.
-    shadowOf(Looper.getMainLooper()).idle();
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, null, wifiNetwork);
+    Task<Boolean> handleTask = ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
+    assertThat(checkGetStarted1.block(1000)).isTrue();
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork);
     // Assert that the network wasn't added to the list.
     assertThat(ppnNetworkManager.getAllNetworks()).isEmpty();
 
     // Mock the connectivity check to be true now.
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, null, wifiNetwork)).thenReturn(true);
+    ConditionVariable checkGetStarted2 = new ConditionVariable(false);
+    doAnswer(
+            invocation -> {
+              checkGetStarted2.open();
+              return true;
+            })
+        .when(mockHttpFetcher)
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork);
 
     // Idle the Looper long enough for it to retry the connectivity check.
     shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(16));
-    // Let the background executor catch up to complete the connectivity check.
-    ppnOptions.getBackgroundExecutor().submit(() -> {}).get(10, SECONDS);
-    // Then idle the Looper again to finish moving the network to active.
-    shadowOf(Looper.getMainLooper()).idle();
+
+    // Wait for the second network check to complete.
+    assertThat(checkGetStarted2.block(1000)).isTrue();
+    verify(mockHttpFetcher, times(2)).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork);
 
     // Verify that the WifiNetwork is now available.
-    verify(mockHttpFetcher, times(2)).checkGet(CONNECTIVITY_CHECK_URL, null, wifiNetwork);
+    await(handleTask);
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
         .isEqualTo(wifiNetwork);
@@ -402,8 +437,7 @@ public final class PpnNetworkManagerImplTest {
   public void testHandleNetworkLost_networkStillAvailable_activeNetworkLost() throws Exception {
     // First, need to populate 2 available networks.
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
@@ -411,9 +445,10 @@ public final class PpnNetworkManagerImplTest {
 
     PpnNetwork cellularNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR);
 
-    ppnNetworkManager.handleNetworkAvailable(cellularNetwork);
-    ppnNetworkManager.handleNetworkLinkPropertiesChanged(cellularNetwork, new LinkProperties());
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
+    await(
+        ppnNetworkManager.handleNetworkLinkPropertiesChanged(
+            cellularNetwork, new LinkProperties()));
 
     // Verify the precondition that we have 2 networks available and that the Active Network is Wifi
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(2);
@@ -451,8 +486,7 @@ public final class PpnNetworkManagerImplTest {
   public void testHandleNetworkLost_networkStillAvailable_nonActiveNetworkLost() throws Exception {
     // First, need to populate 2 available networks.
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
         .isEqualTo(wifiNetwork);
@@ -461,8 +495,10 @@ public final class PpnNetworkManagerImplTest {
     verify(mockListener).onNetworkAvailable(wifiNetwork);
 
     PpnNetwork cellularNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR);
-    ppnNetworkManager.handleNetworkAvailable(cellularNetwork);
-    ppnNetworkManager.handleNetworkLinkPropertiesChanged(cellularNetwork, new LinkProperties());
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
+    await(
+        ppnNetworkManager.handleNetworkLinkPropertiesChanged(
+            cellularNetwork, new LinkProperties()));
 
     // Verify the precondition that we have 2 networks available and that the Active Network is Wifi
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(2);
@@ -497,8 +533,7 @@ public final class PpnNetworkManagerImplTest {
   public void testHandleNetworkLost_networkUnavailable() throws Exception {
     // First, need to populate available networks.
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
         .isEqualTo(wifiNetwork);
@@ -527,8 +562,7 @@ public final class PpnNetworkManagerImplTest {
   public void testHandleNetworkCapabilitiesChanged() throws Exception {
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
     NetworkCapabilities wifiNetworkCapabilities = ShadowNetworkCapabilities.newInstance();
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
         .isEqualTo(wifiNetwork);
@@ -538,8 +572,7 @@ public final class PpnNetworkManagerImplTest {
     shadowWifiNetworkCapabilities.addCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED);
     shadowWifiNetworkCapabilities.addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
 
-    ppnNetworkManager.handleNetworkCapabilitiesChanged(wifiNetwork, wifiNetworkCapabilities);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkCapabilitiesChanged(wifiNetwork, wifiNetworkCapabilities));
 
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
@@ -551,8 +584,7 @@ public final class PpnNetworkManagerImplTest {
   public void testHandleNetworkCapabilitiesChanged_networkCapabilitiesBad() throws Exception {
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
     NetworkCapabilities wifiNetworkCapabilities = ShadowNetworkCapabilities.newInstance();
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
         .isEqualTo(wifiNetwork);
@@ -562,8 +594,7 @@ public final class PpnNetworkManagerImplTest {
     shadowWifiNetworkCapabilities.removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED);
     shadowWifiNetworkCapabilities.removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
 
-    ppnNetworkManager.handleNetworkCapabilitiesChanged(wifiNetwork, wifiNetworkCapabilities);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkCapabilitiesChanged(wifiNetwork, wifiNetworkCapabilities));
 
     // The Network should no longer be active given that the NetworkCapabilities changed to
     // something we no longer accept.
@@ -578,8 +609,7 @@ public final class PpnNetworkManagerImplTest {
     // Explicitly set the ConnectionQuality in the initial state.
     ((PpnNetworkManagerImpl) ppnNetworkManager).setConnectionQuality(ConnectionQuality.FAIR);
 
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
@@ -616,8 +646,7 @@ public final class PpnNetworkManagerImplTest {
 
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
     NetworkCapabilities wifiNetworkCapabilities = ShadowNetworkCapabilities.newInstance();
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     // Verify the initial state
     verify(mockListener).onNetworkAvailable(wifiNetwork);
@@ -632,8 +661,7 @@ public final class PpnNetworkManagerImplTest {
     shadowWifiNetworkCapabilities.addCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED);
     shadowWifiNetworkCapabilities.addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
 
-    ppnNetworkManager.handleNetworkCapabilitiesChanged(wifiNetwork, wifiNetworkCapabilities);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkCapabilitiesChanged(wifiNetwork, wifiNetworkCapabilities));
 
     // Verify that the ConnectionStatus object has an UPDATED ConnectionQuality of FAIR, as
     // according to the RSSI we mocked to return.
@@ -669,8 +697,7 @@ public final class PpnNetworkManagerImplTest {
 
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
     NetworkCapabilities wifiNetworkCapabilities = ShadowNetworkCapabilities.newInstance();
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     // Verify the initial state
     ((PpnNetworkManagerImpl) ppnNetworkManager).setConnectionQuality(ConnectionQuality.GOOD);
@@ -686,7 +713,7 @@ public final class PpnNetworkManagerImplTest {
     shadowWifiNetworkCapabilities.addCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED);
     shadowWifiNetworkCapabilities.addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
 
-    ppnNetworkManager.handleNetworkCapabilitiesChanged(wifiNetwork, wifiNetworkCapabilities);
+    await(ppnNetworkManager.handleNetworkCapabilitiesChanged(wifiNetwork, wifiNetworkCapabilities));
     shadowOf(Looper.getMainLooper()).idle();
 
     // Verify that the we only publish a NetworkStatus change ONCE for the initial NetworkSwitch.
@@ -712,14 +739,14 @@ public final class PpnNetworkManagerImplTest {
   @Test
   public void testHandleNetworkLinkPropertiesChanged_addPendingNetwork() throws Exception {
     PpnNetwork cellularNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR);
-    ppnNetworkManager.handleNetworkAvailable(cellularNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
 
     // This cellular network should NOT have been added to the available networks yet.
     assertThat(ppnNetworkManager.getAllNetworks()).isEmpty();
 
-    ppnNetworkManager.handleNetworkLinkPropertiesChanged(cellularNetwork, new LinkProperties());
-    shadowOf(Looper.getMainLooper()).idle();
+    await(
+        ppnNetworkManager.handleNetworkLinkPropertiesChanged(
+            cellularNetwork, new LinkProperties()));
 
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
@@ -731,18 +758,22 @@ public final class PpnNetworkManagerImplTest {
     // Throw an exception when trying to bind a socket for this network.
     doThrow(new IOException()).when(mockCellAndroidNetwork).bindSocket(any(DatagramSocket.class));
 
+    // Turn off retries so that handleNetworkLinkPropertiesChanged can complete its work without
+    // manually advancing the looper.
+    when(mockPpnOptions.getConnectivityCheckMaxRetries()).thenReturn(0);
+
     // Note: We are relying on NetworkCapabilities to return null for this network so that the
     // evaluation for pending and available networks passes.
 
     PpnNetwork cellularNetwork = new PpnNetwork(mockCellAndroidNetwork, NetworkType.CELLULAR);
-    ppnNetworkManager.handleNetworkAvailable(cellularNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
 
     // This cellular network should NOT have been added to the available networks yet.
     assertThat(ppnNetworkManager.getAllNetworks()).isEmpty();
 
-    ppnNetworkManager.handleNetworkLinkPropertiesChanged(cellularNetwork, new LinkProperties());
-    shadowOf(Looper.getMainLooper()).idle();
+    await(
+        ppnNetworkManager.handleNetworkLinkPropertiesChanged(
+            cellularNetwork, new LinkProperties()));
 
     // This network failed to bind to a socket so it should not be added as a network option.
     assertThat(ppnNetworkManager.getAllNetworks()).isEmpty();
@@ -751,13 +782,13 @@ public final class PpnNetworkManagerImplTest {
   @Test
   public void testCleanupNetworks_keepConnectedNetworks() {
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     PpnNetwork cellularNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR);
-    ppnNetworkManager.handleNetworkAvailable(cellularNetwork);
-    ppnNetworkManager.handleNetworkLinkPropertiesChanged(cellularNetwork, new LinkProperties());
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
+    await(
+        ppnNetworkManager.handleNetworkLinkPropertiesChanged(
+            cellularNetwork, new LinkProperties()));
 
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(2);
 
@@ -773,12 +804,10 @@ public final class PpnNetworkManagerImplTest {
     when(cellNetworkInfo.isConnected()).thenReturn(false);
 
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     PpnNetwork cellularNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR);
-    ppnNetworkManager.handleNetworkAvailable(cellularNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
 
     ((PpnNetworkManagerImpl) ppnNetworkManager).cleanUpNetworkMaps();
 
@@ -798,8 +827,7 @@ public final class PpnNetworkManagerImplTest {
 
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
 
-    ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
-    shadowOf(Looper.getMainLooper()).idle();
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     verify(mockListener).onNetworkAvailable(wifiNetwork);
@@ -818,9 +846,13 @@ public final class PpnNetworkManagerImplTest {
   @Test
   public void getDebugInfo_isPopulated() {
     PpnNetwork cellularNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR);
-    ppnNetworkManager.handleNetworkAvailable(cellularNetwork);
-    ppnNetworkManager.handleNetworkLinkPropertiesChanged(cellularNetwork, new LinkProperties());
-    ppnNetworkManager.handleNetworkAvailable(new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI));
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
+    await(
+        ppnNetworkManager.handleNetworkLinkPropertiesChanged(
+            cellularNetwork, new LinkProperties()));
+    await(
+        ppnNetworkManager.handleNetworkAvailable(
+            new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI)));
     shadowOf(Looper.getMainLooper()).idle();
 
     JSONObject debugInfo = ppnNetworkManager.getDebugJson();
@@ -842,6 +874,19 @@ public final class PpnNetworkManagerImplTest {
   }
 
   private PpnNetworkManagerImpl createPpnNetworkManagerImpl() {
-    return new PpnNetworkManagerImpl(context, mockListener, mockHttpFetcher, ppnOptions);
+    return new PpnNetworkManagerImpl(context, mockListener, mockHttpFetcher, mockPpnOptions);
+  }
+
+  /**
+   * Blocks until the given task is complete. This can't use Tasks.await, because the async work may
+   * need to run on the main thread.
+   */
+  private static <T> T await(Task<T> task) {
+    while (!task.isComplete()) {
+      // Allow the main looper to clear itself out.
+      shadowOf(Looper.getMainLooper()).idle();
+    }
+    shadowOf(Looper.getMainLooper()).idle();
+    return task.getResult();
   }
 }

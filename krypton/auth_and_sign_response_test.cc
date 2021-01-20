@@ -30,72 +30,85 @@ namespace krypton {
 namespace {
 
 using ::testing::HasSubstr;
-using ::testing::status::IsOkAndHolds;
 using ::testing::status::StatusIs;
 
 constexpr char kGoldenZincResponse[] = R"string(
-  {"http":{"status":{"code":200,"message":"OK"}},"json_body":{"jwt":"TODO","blinded_token_signature":["token1","token2"],"session_manager_ips":[""]}})string";
+  {"jwt":"TODO","blinded_token_signature":["token1","token2"],"session_manager_ips":[""]})string";
 
 constexpr char kGoldenPublicKeyResponse[] =
-    R"string({"status":{"code":200,"message":"OK"},"json_body":{"pem": "some_pem"}})string";
+    R"string({"pem": "some_pem"}})string";
 
-// TODO: Write fuzz testing of the JSON responses.
+// TODO: Write fuzz testing of the JSON body.
 TEST(AuthAndSignResponse, TestAuthParameter) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(R"string({"jwt": "some_jwt_token"})string");
+
   AuthAndSignResponse auth_response;
-  ASSERT_OK(auth_response.DecodeFromJsonObject(R"string(
-  {
-    "http": {
-      "status":{
-        "code": 200,
-        "message" : "OK"
-      }
-    },
-    "json_body": {
-       "jwt": "some_jwt_token"
-    }
-  })string"));
+  ASSERT_OK(auth_response.DecodeFromProto(proto));
   EXPECT_EQ(auth_response.jwt_token(), "some_jwt_token");
 }
+
 TEST(AuthAndSignResponse, TestAllParametersFromGolden) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(kGoldenZincResponse);
+
   AuthAndSignResponse auth_response;
-  ASSERT_OK(auth_response.DecodeFromJsonObject(kGoldenZincResponse));
+  ASSERT_OK(auth_response.DecodeFromProto(proto));
   EXPECT_EQ(auth_response.jwt_token(), "TODO");
   EXPECT_THAT(auth_response.blinded_token_signatures(),
               testing::ElementsAre("token1", "token2"));
 }
 
 TEST(PublicKeyResponse, TestSuccessful) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(kGoldenPublicKeyResponse);
+
   PublicKeyResponse response;
-  ASSERT_OK(response.DecodeFromJsonObject(kGoldenPublicKeyResponse));
+  ASSERT_OK(response.DecodeFromProto(proto));
   EXPECT_EQ(response.pem(), "some_pem");
   EXPECT_OK(response.parsing_status());
 }
 
-TEST(PublicKeyResponse, TestFailure) {
+TEST(PublicKeyResponse, TestMissingBody) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+
   PublicKeyResponse response;
-  // Test failure due to no http headers.
-  EXPECT_THAT(response.DecodeFromJsonObject(R"string()string"),
+  EXPECT_THAT(response.DecodeFromProto(proto),
               StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Error parsing HttpResponse")));
+                       HasSubstr("response missing json body")));
 }
 
-TEST(PublicKeyResponse, TestHttpFailure) {
+TEST(PublicKeyResponse, TestEmptyBody) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body("");
+
   PublicKeyResponse response;
-  // Test failure due to missing pem attribute.
-  EXPECT_THAT(
-      response.DecodeFromJsonObject(
-          R"string({"status":{"code":500,"message":"Something Wrong"}})string"),
-      StatusIs(absl::StatusCode::kInternal, HasSubstr("Content obfuscated")));
+  EXPECT_THAT(response.DecodeFromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("response missing json body")));
 }
 
 TEST(PublicKeyResponse, TestMissingPem) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body("{}");
+
   PublicKeyResponse response;
   // Test failure due to missing pem attribute.
   EXPECT_THAT(
-      response.DecodeFromJsonObject(
-          R"string({"status":{"code":200,"message":"OK"},"json_body":{}})string"),
-      StatusIs(absl::StatusCode::kFailedPrecondition,
-               HasSubstr("No pem field found")));
+      response.DecodeFromProto(proto),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("missing pem")));
 }
 }  // namespace
 }  // namespace krypton

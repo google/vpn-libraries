@@ -95,6 +95,8 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
   private Xenon xenon;
 
+  private boolean safeDisconnectEnabled;
+
   /*
    * Cached account that was used to enable PPN.
    * This is volatile because it is updated from a background thread.
@@ -215,7 +217,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     this.backgroundExecutor = options.getBackgroundExecutor();
     this.notificationManager = new PpnNotificationManager();
     this.telemetry = new PpnTelemetryManager();
-    this.vpnManager = new VpnManager(context);
+    this.vpnManager = new VpnManager(context, options);
     this.httpFetcher = new HttpFetcher(new ProtectedSocketFactoryFactory(vpnManager));
     this.kryptonFactory =
         (KryptonListener kryptonListener, Executor bgExecutor) -> {
@@ -228,6 +230,8 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
     this.xenon = new XenonImpl(context, this, httpFetcher, options);
 
+    this.safeDisconnectEnabled = options.isSafeDisconnectEnabled();
+
     PpnLibrary.init(this);
   }
 
@@ -236,11 +240,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   void clearCachedAccount() {
     cachedAccount = null;
   }
-
-  private PpnOptions getOptions() {
-    return options;
-  }
-
+  
   @Override
   public void start(Account account) throws PpnException {
     Log.w(TAG, "PPN status: " + getDebugJson());
@@ -266,6 +266,28 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
       kryptonStoppedStatus = status;
       vpnManager.stopService();
     }
+  }
+
+  @Override
+  public void setSafeDisconnectEnabled(boolean enable) {
+    this.safeDisconnectEnabled = enable;
+    try {
+      synchronized (kryptonLock) {
+        if (krypton != null) {
+          // Call a setter that injects feature state into Krypton.
+          krypton.setSafeDisconnectEnabled(enable);
+        }
+        // If Krypton isn't running, feature state will be passed on Krypton startup through config.
+      }
+    } catch (KryptonException e) {
+      Log.e(TAG, "Unable to set Safe Disconnect in Krypton.", e);
+    }
+  }
+
+  /** Returns the current Safe Disconnect state. */
+  @Override
+  public boolean isSafeDisconnectEnabled() {
+    return safeDisconnectEnabled;
   }
 
   @Override
@@ -445,6 +467,13 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     return accountManager.getOAuthToken(context, account, options.getZincOAuthScopes());
   }
 
+  /**
+   * Returns whether the underlying VpnService should set the STICKY bit to be restarted by Android.
+   */
+  public boolean isStickyService() {
+    return options.isStickyService();
+  }
+
   /** Changes the factory used to create Krypton instances. For testing only. */
   @VisibleForTesting
   void setKryptonFactory(KryptonFactory factory) {
@@ -463,9 +492,9 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     this.xenon = xenon;
   }
 
-  /** Creates a KryptonConfig using the provided options. */
+  /** Creates a KryptonConfig.Builder using the provided options. */
   @VisibleForTesting
-  static KryptonConfig createKryptonConfig(PpnOptions options) {
+  static KryptonConfig.Builder createKryptonConfigBuilder(PpnOptions options) {
     ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
     if (options.getReconnectorInitialTimeToReconnect().isPresent()) {
       reconnectorBuilder.setInitialTimeToReconnectMsec(
@@ -512,8 +541,16 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
               .build();
       builder.setRekeyDuration(proto);
     }
+    builder.setSafeDisconnectEnabled(options.isSafeDisconnectEnabled());
 
-    return builder.build();
+    return builder;
+  }
+
+  /** Creates a KryptonConfig with the options and feature state of this PPN instance. */
+  private KryptonConfig createKryptonConfig() {
+    return createKryptonConfigBuilder(this.options)
+        .setSafeDisconnectEnabled(this.safeDisconnectEnabled)
+        .build();
   }
 
   /**
@@ -530,7 +567,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
       krypton = kryptonFactory.createKrypton(this, backgroundExecutor);
       try {
         Log.w(TAG, "PPN starting Krypton.");
-        krypton.start(createKryptonConfig(getOptions()));
+        krypton.start(createKryptonConfig());
       } catch (KryptonException e) {
         krypton = null;
         throw new PpnException("Unable to start Krypton.", e);
@@ -640,10 +677,8 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
           try {
             synchronized (kryptonLock) {
               if (krypton != null) {
-                int fd = vpnManager.createProtectedDatagramSocket(ppnNetwork);
                 NetworkInfo networkInfo =
                     NetworkInfo.newBuilder()
-                        .setProtectedFd(fd)
                         .setNetworkType(ppnNetwork.getNetworkType())
                         .setNetworkId(ppnNetwork.getNetworkId())
                         .build();
@@ -652,7 +687,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
                 vpnManager.setNetwork(ppnNetwork);
               }
             }
-          } catch (KryptonException | PpnException e) {
+          } catch (KryptonException e) {
             Log.e(TAG, "Unable to switch networks.", e);
           }
         });

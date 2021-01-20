@@ -124,6 +124,8 @@ class PpnTelemetryManager {
       builder =
           builder
               .setAuthLatency(convertDurationList(kryptonTelemetry.getAuthLatencyList()))
+              .setOauthLatency(convertDurationList(kryptonTelemetry.getOauthLatencyList()))
+              .setZincLatency(convertDurationList(kryptonTelemetry.getZincLatencyList()))
               .setEgressLatency(convertDurationList(kryptonTelemetry.getEgressLatencyList()))
               .setSuccessfulRekeys(kryptonTelemetry.getSuccessfulRekeys())
               .setNetworkSwitches(kryptonTelemetry.getNetworkSwitches());

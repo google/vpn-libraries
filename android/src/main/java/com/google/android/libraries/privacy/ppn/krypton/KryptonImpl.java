@@ -105,6 +105,7 @@ public class KryptonImpl implements Krypton, TimerListener {
    *
    * <p>Implemented by the native library in |Krypton::SetNoNetworkAvailable|
    */
+  @Override
   public native void setNoNetworkAvailable() throws KryptonException;
 
   // Native method for timer expiry.
@@ -113,6 +114,22 @@ public class KryptonImpl implements Krypton, TimerListener {
   // Native method for Pause
   @Override
   public native void pause(int durationMilliseconds) throws KryptonException;
+
+  /**
+   * Sets the state of the Safe Disconnect feature in Krypton.
+   *
+   * <p>Implemented by the native library in |Krypton::SetSafeDisconnectEnabled|
+   */
+  @Override
+  public native void setSafeDisconnectEnabled(boolean enable) throws KryptonException;
+
+  /**
+   * Returns whether Safe Disconnect is enabled in Krypton.
+   *
+   * <p>Implemented by the native library in |Krypton::IsSafeDisconnectEnabled|
+   */
+  @Override
+  public native boolean isSafeDisconnectEnabled() throws KryptonException;
 
   /**
    * Native method for collecting telemetry.

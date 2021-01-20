@@ -30,7 +30,6 @@
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/http_fetcher.h"
-#include "privacy/net/krypton/http_header.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/utils/ip_range.h"
@@ -100,6 +99,8 @@ EgressManager::GetEgressSessionDetails() const {
   return egress_node_response_;
 }
 
+// TODO: Refactor egress_manager error status handling to work the same
+// as the error handling in auth.cc.
 void EgressManager::SetState(State state) {
   LOG(INFO) << "Transitioning from " << StateString(state_) << " to "
             << StateString(state);
@@ -124,41 +125,32 @@ void EgressManager::SetState(State state) {
 
 absl::Status EgressManager::SaveEgressDetails(
     std::shared_ptr<AddEgressResponse> egress_response) {
-  // Store the key parameters for the response.  Response could be Bridge or
-  // PPN.
+  // Store the key parameters for the response.
 
-  // For PPN:
-  auto status_or_ppn_data_plane_response =
-      egress_response->ppn_dataplane_response();
-  if (status_or_ppn_data_plane_response.ok()) {
-    is_ppn_ = true;
-    PPN_ASSIGN_OR_RETURN(
-        uplink_spi_, status_or_ppn_data_plane_response.value()->GetUplinkSpi());
-    PPN_ASSIGN_OR_RETURN(
-        auto egress_nodes,
-        status_or_ppn_data_plane_response.value()->GetEgressPointSockAddr());
-    std::copy(egress_nodes.begin(), egress_nodes.end(),
-              std::back_inserter(egress_node_sock_addresses_));
-  }
+  PPN_ASSIGN_OR_RETURN(auto ppn_data_plane_response,
+                       egress_response->ppn_dataplane_response());
 
-  // For Bridge
-  auto status_or_bridge_response = egress_response->bridge_dataplane_response();
-  if (status_or_bridge_response.ok()) {
-    is_ppn_ = false;
-    PPN_ASSIGN_OR_RETURN(uplink_spi_,
-                         status_or_bridge_response.value()->GetSessionId());
-    LOG(INFO) << "Session Id " << uplink_spi_;
-    PPN_ASSIGN_OR_RETURN(
-        auto egress_nodes,
-        status_or_bridge_response.value()->GetDataplaneSockAddresses());
-    std::copy(egress_nodes.begin(), egress_nodes.end(),
-              std::back_inserter(egress_node_sock_addresses_));
+  if (ppn_data_plane_response->uplink_spi() == 0) {
+    return absl::InvalidArgumentError(
+        "PPN dataplane response missing uplink SPI.");
   }
+  uplink_spi_ = ppn_data_plane_response->uplink_spi();
+
+  if (ppn_data_plane_response->egress_point_sock_addr_size() == 0) {
+    return absl::InvalidArgumentError(
+        "PPN dataplane response missing uplink SPI.");
+  }
+  auto* egress_nodes =
+      ppn_data_plane_response->mutable_egress_point_sock_addr();
+  egress_node_sock_addresses_.clear();
+  std::copy(egress_nodes->begin(), egress_nodes->end(),
+            std::back_inserter(egress_node_sock_addresses_));
+
   return absl::OkStatus();
 }
 
-void EgressManager::DecodeAddEgressResponse(
-    bool is_rekey, const std::string& string_response) {
+void EgressManager::DecodeAddEgressResponse(bool is_rekey,
+                                            const HttpResponse& http_response) {
   absl::MutexLock l(&mutex_);
   google::protobuf::Duration latency;
   if (!utils::ToProtoDuration(absl::Now() - request_time_, &latency).ok()) {
@@ -182,8 +174,16 @@ void EgressManager::DecodeAddEgressResponse(
 
   auto add_egress_response = std::make_shared<AddEgressResponse>();
 
-  latest_status_ = add_egress_response->DecodeFromJsonObject(string_response);
+  if (http_response.status().code() != 200) {
+    latest_status_ = absl::Status(
+        utils::GetStatusCodeForHttpStatus(http_response.status().code()),
+        absl::StrCat("AddEgressRequest failed with code ",
+                     http_response.status().code(), ": Content obfuscated"));
+    SetState(State::kEgressSessionError);
+    return;
+  }
 
+  latest_status_ = add_egress_response->DecodeFromProto(http_response);
   if (!latest_status_.ok()) {
     SetState(State::kEgressSessionError);
     LOG(ERROR) << "Error decoding AddEgressResponse";
@@ -195,28 +195,17 @@ void EgressManager::DecodeAddEgressResponse(
   }
   egress_node_response_ = std::move(add_egress_response);
 
-  int http_status = egress_node_response_->http_response().status();
-  if (http_status == 200) {
-    SetState(State::kEgressSessionCreated);
-    // Save the parameters only if it's not Rekey.
-    if (!is_rekey) {
-      auto save_status = SaveEgressDetails(egress_node_response_);
-      if (!save_status.ok()) {
-        LOG(ERROR) << "Saving egress details failed with status "
-                   << save_status;
-      }
+  SetState(State::kEgressSessionCreated);
+  // Save the parameters only if it's not Rekey.
+  if (!is_rekey) {
+    auto save_status = SaveEgressDetails(egress_node_response_);
+    if (!save_status.ok()) {
+      LOG(ERROR) << "Saving egress details failed with status " << save_status;
     }
-    NotificationInterface* notification = notification_;
-    notification_thread_->Post(
-        [notification, is_rekey] { notification->EgressAvailable(is_rekey); });
-
-  } else {
-    latest_status_ =
-        absl::Status(utils::GetStatusCodeForHttpStatus(http_status),
-                     absl::StrCat("AddEgressRequest failed with code ",
-                                  http_status, "Content obfuscated"));
-    SetState(State::kEgressSessionError);
   }
+  NotificationInterface* notification = notification_;
+  notification_thread_->Post(
+      [notification, is_rekey] { notification->EgressAvailable(is_rekey); });
 }
 
 // Gets an egress node based on the auth response parameter.
@@ -226,16 +215,17 @@ absl::Status EgressManager::GetEgressNodeForBridge(
   absl::MutexLock l(&mutex_);
   request_time_ = absl::Now();
   AddEgressRequest add_egress_request;
-  auto add_egress_json =
-      add_egress_request.EncodeToJsonObjectForBridge(std::move(auth_response));
-  if (!add_egress_json) {
+
+  auto add_egress_http_request =
+      add_egress_request.EncodeToProtoForBridge(std::move(auth_response));
+  if (!add_egress_http_request) {
     LOG(ERROR) << "Cannot build AddEgressRequest";
     return absl::FailedPreconditionError("Cannot build AddEgressRequest");
   }
 
+  add_egress_http_request->set_url(brass_url_);
   http_fetcher_.PostJsonAsync(
-      brass_url_, add_egress_json.value().http_headers,
-      add_egress_json.value().json_body,
+      add_egress_http_request.value(),
       absl::bind_front(&EgressManager::DecodeAddEgressResponse, this, false));
 
   return absl::OkStatus();
@@ -247,29 +237,18 @@ absl::Status EgressManager::GetEgressNodeForPpnIpSec(
 
   DCHECK(notification_);
   AddEgressRequest add_egress_request;
-  absl::optional<uint32> uplink_spi;
   request_time_ = absl::Now();
 
-  if (egress_node_response_ != nullptr &&
-      egress_node_response_->ppn_dataplane_response().ok()) {
-    auto status_or_spi =
-        egress_node_response_->ppn_dataplane_response().value()->GetUplinkSpi();
-    if (status_or_spi.ok()) {
-      uplink_spi = status_or_spi.value();
-    }
-  }
-  auto add_egress_json = add_egress_request.EncodeToJsonObjectForPpn(params);
-  if (!add_egress_json) {
+  auto add_egress_http_request = add_egress_request.EncodeToProtoForPpn(params);
+  if (!add_egress_http_request) {
     LOG(ERROR) << "Cannot build AddEgressRequest for PPN IpSec";
     return absl::FailedPreconditionError(
         "Cannot build AddEgressRequest for PPN IPSec");
   }
 
-  Json::FastWriter writer;
-
+  add_egress_http_request->set_url(brass_url_);
   http_fetcher_.PostJsonAsync(
-      brass_url_, add_egress_json.value().http_headers,
-      add_egress_json.value().json_body,
+      add_egress_http_request.value(),
       absl::bind_front(&EgressManager::DecodeAddEgressResponse, this,
                        params.is_rekey));
 

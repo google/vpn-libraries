@@ -355,6 +355,47 @@ public class PpnImplTest {
   }
 
   @Test
+  public void setSafeDisconnectEnabled_updatesBoolean() {
+    boolean expectedSafeDisconnectState = true;
+
+    PpnImpl ppn = createPpn();
+    ppn.setSafeDisconnectEnabled(expectedSafeDisconnectState);
+
+    assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(expectedSafeDisconnectState);
+  }
+
+  @Test
+  public void setEnableSafeDisconnect_persistsAfterRestart() throws Exception {
+    boolean expectedSafeDisconnectState = true;
+
+    PpnImpl ppn = createPpn();
+    ppn.start(account);
+    ppn.setSafeDisconnectEnabled(expectedSafeDisconnectState);
+
+    assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(expectedSafeDisconnectState);
+
+    ppn.stop();
+    ppn.start(account);
+
+    assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(expectedSafeDisconnectState);
+  }
+
+  @Test
+  public void setSafeDisconnectEnabled_updatesWhilePpnStopped() throws Exception {
+    boolean originalSafeDisconnectState = false;
+    boolean expectedSafeDisconnectState = true;
+
+    PpnImpl ppn = createPpn();
+    ppn.start(account);
+    ppn.setSafeDisconnectEnabled(originalSafeDisconnectState);
+    assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(originalSafeDisconnectState);
+
+    ppn.stop();
+    ppn.setSafeDisconnectEnabled(expectedSafeDisconnectState);
+    assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(expectedSafeDisconnectState);
+  }
+
+  @Test
   public void options_populateKryptonConfig() {
     PpnOptions options =
         new PpnOptions.Builder()
@@ -372,9 +413,10 @@ public class PpnImplTest {
             .setRekeyDuration(Duration.ofMillis(1005))
             .setReconnectorInitialTimeToReconnect(Duration.ofMillis(2))
             .setReconnectorSessionConnectionDeadline(Duration.ofMillis(4))
+            .setSafeDisconnectEnabled(true)
             .build();
 
-    KryptonConfig config = PpnImpl.createKryptonConfig(options);
+    KryptonConfig config = PpnImpl.createKryptonConfigBuilder(options).build();
 
     assertThat(config.getZincUrl()).isEqualTo("a");
     assertThat(config.getZincPublicSigningKeyUrl()).isEqualTo("psk");
@@ -391,13 +433,14 @@ public class PpnImplTest {
     assertThat(config.hasReconnectorConfig()).isTrue();
     assertThat(config.getReconnectorConfig().getInitialTimeToReconnectMsec()).isEqualTo(2);
     assertThat(config.getReconnectorConfig().getSessionConnectionDeadlineMsec()).isEqualTo(4);
+    assertThat(config.getSafeDisconnectEnabled()).isTrue();
   }
 
   @Test
-  public void emptyOtions_populateKryptonConfig() {
+  public void emptyOptions_populateKryptonConfig() {
     PpnOptions options = new PpnOptions.Builder().build();
 
-    KryptonConfig config = PpnImpl.createKryptonConfig(options);
+    KryptonConfig config = PpnImpl.createKryptonConfigBuilder(options).build();
 
     assertThat(config.getZincUrl()).isNotEmpty();
     assertThat(config.getBrassUrl()).isNotEmpty();
@@ -412,6 +455,7 @@ public class PpnImplTest {
     assertThat(config.hasReconnectorConfig()).isTrue();
     assertThat(config.getReconnectorConfig().hasInitialTimeToReconnectMsec()).isFalse();
     assertThat(config.getReconnectorConfig().hasSessionConnectionDeadlineMsec()).isFalse();
+    assertThat(config.getSafeDisconnectEnabled()).isFalse();
   }
 
   @Test

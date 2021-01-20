@@ -41,7 +41,8 @@ namespace krypton {
 void Krypton::Start(const KryptonConfig& config) {
   LOG(INFO) << "Starting Krypton with zinc=" << config.zinc_url()
             << " brass=" << config.brass_url()
-            << " service_type=" << config.service_type();
+            << " service_type=" << config.service_type()
+            << " safe_disconnect_enabled=" << config.safe_disconnect_enabled();
 
   if (config.install_crash_signal_handler()) {
     LOG(INFO) << "Installing Krypton crash signal handler.";
@@ -58,6 +59,7 @@ void Krypton::Start(const KryptonConfig& config) {
                                                 session_manager_.get(),
                                                 notification_thread_.get());
   reconnector_->RegisterNotificationInterface(notification_);
+  safe_disconnect_enabled_ = config.safe_disconnect_enabled();
 
   notification_thread_->Post([this] { Init(); });
 
@@ -76,7 +78,7 @@ Krypton::~Krypton() {
   }
 }
 
-void Krypton::Stop(const absl::Status& status) {
+void Krypton::Stop(const absl::Status& /*status*/) {
   if (reconnector_ != nullptr) {
     reconnector_->Stop();
   }
@@ -121,11 +123,9 @@ void Krypton::Init() {
 }
 
 absl::Status Krypton::SetNetwork(const NetworkInfo& network_info) {
-  int network_fd = network_info.protected_fd();
   NetworkType network_type = network_info.network_type();
 
-  LOG(INFO) << "Switching to network with fd=" << network_fd
-            << ", type=" << network_type;
+  LOG(INFO) << "Switching to network with type=" << network_type;
   if (network_type < 0 || network_type > privacy::krypton::NetworkType_MAX) {
     return absl::OutOfRangeError(
         absl::StrCat("Invalid network type ", network_type));
@@ -144,6 +144,13 @@ absl::Status Krypton::SetNoNetworkAvailable() {
 absl::Status Krypton::Pause(absl::Duration duration) {
   return reconnector_->Pause(duration);
 }
+
+void Krypton::SetSafeDisconnectEnabled(bool enable) {
+  safe_disconnect_enabled_ = enable;
+  // TODO: Send the changed feature state to session_manager.
+}
+
+bool Krypton::IsSafeDisconnectEnabled() { return safe_disconnect_enabled_; }
 
 void Krypton::CollectTelemetry(KryptonTelemetry* telemetry) {
   if (session_manager_ != nullptr) {

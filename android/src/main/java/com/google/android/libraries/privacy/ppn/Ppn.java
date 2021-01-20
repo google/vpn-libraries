@@ -49,6 +49,16 @@ public interface Ppn {
    */
   void stop();
 
+  /**
+   * Updates the state of the Safe Disconnect feature. If Safe Disconnect is enabled, the network
+   * will fail closed when PPN is disconnected. The default disconnection behavior without Safe
+   * Disconnect is to fail-open and allow unprotected traffic.
+   */
+  void setSafeDisconnectEnabled(boolean enable);
+
+  /** Returns whether Safe Disconnect is enabled in PPN. */
+  boolean isSafeDisconnectEnabled();
+
   /** Sets a listener for PPN events, such as connection and disconnections. */
   void setPpnListener(PpnListener listener);
 

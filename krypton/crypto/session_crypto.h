@@ -109,6 +109,8 @@ class SessionCrypto {
     return absl::Base64Escape(blind_signing_public_key_hash_);
   }
 
+  BN_CTX* bn_ctx() { return bn_ctx_.get(); }
+
  private:
   absl::Status ComputeIpSecKeyMaterial();
   absl::Status ComputeBridgeKeyMaterial(CryptoSuite suite);

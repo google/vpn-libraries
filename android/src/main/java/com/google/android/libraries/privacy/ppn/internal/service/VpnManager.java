@@ -15,6 +15,7 @@
 package com.google.android.libraries.privacy.ppn.internal.service;
 
 import android.content.Context;
+import android.content.pm.PackageManager.NameNotFoundException;
 import android.net.Network;
 import android.net.VpnService;
 import android.os.Build;
@@ -23,6 +24,7 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import com.google.android.libraries.privacy.ppn.PpnException;
+import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.IpSecTransformParams;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonException;
@@ -48,6 +50,7 @@ public class VpnManager {
   @Nullable private KryptonIpSecHelper ipSecHelper = null;
 
   private final Context context;
+  private final PpnOptions options;
 
   // The underlying VpnService this manager is managing.
   // This may be null if the service is not running.
@@ -55,8 +58,9 @@ public class VpnManager {
 
   @Nullable private volatile PpnNetwork network;
 
-  public VpnManager(Context context) {
+  public VpnManager(Context context, PpnOptions options) {
     this.context = context;
+    this.options = options;
   }
 
   /**
@@ -140,8 +144,8 @@ public class VpnManager {
     }
 
     VpnService.Builder builder = service.newBuilder();
-    // Sets the parameters into the passed in builder.
-    setVpnServiceParameters(builder, tunFdData);
+    setVpnServiceParametersFromOptions(builder, options);
+    setVpnServiceParametersFromTunFdData(builder, tunFdData);
 
     ParcelFileDescriptor tunFds;
     try {
@@ -161,7 +165,19 @@ public class VpnManager {
     return fd;
   }
 
-  private static void setVpnServiceParameters(VpnService.Builder builder, TunFdData tunFdData) {
+  private static void setVpnServiceParametersFromOptions(
+      VpnService.Builder builder, PpnOptions options) {
+    for (String packageName : options.getDisallowedApplications()) {
+      try {
+        builder.addDisallowedApplication(packageName);
+      } catch (NameNotFoundException e) {
+        Log.e(TAG, "Disallowed application package not found: " + packageName, e);
+      }
+    }
+  }
+
+  private static void setVpnServiceParametersFromTunFdData(
+      VpnService.Builder builder, TunFdData tunFdData) {
     if (tunFdData.hasSessionName()) {
       builder.setSession(tunFdData.getSessionName());
     }

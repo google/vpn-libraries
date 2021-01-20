@@ -20,9 +20,9 @@
 #include <string>
 
 #include "base/logging.h"
-#include "privacy/net/krypton/http_header.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/jni/jni_utils.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/jsoncpp/value.h"
 #include "third_party/jsoncpp/writer.h"
@@ -31,32 +31,47 @@ namespace privacy {
 namespace krypton {
 namespace jni {
 
-std::string HttpFetcher::PostJson(absl::string_view url,
-                                  const Json::Value& headers,
-                                  const Json::Value& json_body) {
-  LOG(INFO) << "Calling HttpFetcher JNI method to " << url;
+HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
+  LOG(INFO) << "Calling HttpFetcher JNI method to " << request.url();
   auto jni_ppn = JniCache::Get();
   auto env = jni_ppn->GetJavaEnv();
   if (!env) {
-    return HttpResponse::BuildResponse(503, "Java Env is not found").asString();
+    HttpResponse response;
+    response.mutable_status()->set_code(503);
+    response.mutable_status()->set_message("Java Env is not found");
+    return response;
   }
 
-  Json::FastWriter writer;
+  std::string request_bytes;
+  request.SerializeToString(&request_bytes);
 
-  jstring java_response_string =
-      static_cast<jstring>(env.value()->CallObjectMethod(
+  jbyteArray java_response_array =
+      static_cast<jbyteArray>(env.value()->CallObjectMethod(
           jni_ppn->GetHttpFetcherObject(),
           jni_ppn->GetHttpFetcherPostJsonMethod(),
-          JavaString(env.value(), std::string(url)).get(),
-          headers.empty()
-              ? nullptr
-              : JavaString(env.value(), writer.write(headers)).get(),
-          JavaString(env.value(), writer.write(json_body)).get()));
+          JavaByteArray(env.value(), request_bytes).get()));
 
-  if (java_response_string == nullptr) {
-    return std::string();
+  HttpResponse response;
+
+  // If Java returned null, then treat it as a 500 Internal error.
+  if (java_response_array == nullptr) {
+    response.mutable_status()->set_code(500);
+    response.mutable_status()->set_message("empty response from java");
+    return response;
   }
-  return ConvertJavaStringToUTF8(env.value(), java_response_string);
+
+  // Try to parse the proto returned from Java.
+  jsize len = env.value()->GetArrayLength(java_response_array);
+  jbyte* bytes =
+      env.value()->GetByteArrayElements(java_response_array, nullptr);
+  if (!response.ParseFromArray(bytes, len)) {
+    response.mutable_status()->set_code(500);
+    response.mutable_status()->set_message("invalid proto response from java");
+    return response;
+  }
+  env.value()->ReleaseByteArrayElements(java_response_array, bytes, 0);
+
+  return response;
 }
 
 }  // namespace jni

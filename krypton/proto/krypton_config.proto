@@ -40,8 +40,10 @@ message ReconnectorConfig {
   optional uint32 datapath_watchdog_timer_msec = 5 [default = 2000];  // 2 secs.
 }
 
-// NextId:13;
+// NextId:15;
 message KryptonConfig {
+  reserved 13;
+
   optional string zinc_url = 1;
   optional string zinc_public_signing_key_url = 11;
   optional string brass_url = 2;
@@ -50,20 +52,22 @@ message KryptonConfig {
   optional ReconnectorConfig reconnector_config = 4;
 
   // Use IpSec datapath.
-  optional bool ipsec_datapath = 5 [default = false];
+  optional bool ipsec_datapath = 5 [default = true];
   // Could be DNS address or v4/v6 address of the copper controller.
   optional string copper_controller_address = 6;
   // Running bridge over PPN.
   optional bool bridge_over_ppn = 7 [default = false];
   // AES128 to AES256 in bits.  128 or 16 bytes is for AES128. 256 or 32 bytes
   // is for AES256.
-  optional uint32 cipher_suite_key_length = 8 [default = 128];
+  optional uint32 cipher_suite_key_length = 8 [default = 256];
   // Duration between Rekeys. Defaulted to 1 day = 24 * 3600
   optional google.protobuf.Duration rekey_duration = 9;
 
   // Whether Krypton should install a signal handler to intercept crashes and
   // notify listeners before crashing.
   optional bool install_crash_signal_handler = 10 [default = false];
-  optional bool enable_blind_signing = 12 [default = false];
-  optional bool validate_blind_signing_signature = 13 [default = true];
+  optional bool enable_blind_signing = 12 [default = true];
+
+  // Whether Krypton should enable Safe Disconnect on startup.
+  optional bool safe_disconnect_enabled = 14 [default = false];
 }

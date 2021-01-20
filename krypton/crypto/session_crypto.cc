@@ -45,6 +45,7 @@
 #include "third_party/tink/cc/subtle/common_enums.h"
 #include "third_party/tink/cc/subtle/hkdf.h"
 #include "third_party/tink/cc/subtle/pem_parser_boringssl.h"
+#include "third_party/tink/cc/subtle/random.h"
 #include "third_party/tink/cc/subtle/subtle_util_boringssl.h"
 #include "third_party/tink/cc/util/secret_data.h"
 
@@ -86,11 +87,11 @@ absl::StatusOr<std::string> SerializePublicKeyset(
 }
 
 std::string RandomUTF8String(size_t len, absl::string_view alphabet) {
-  absl::BitGen gen;
   std::string result(len, '\0');
   const int k = alphabet.size();
   for (char &c : result) {
-    c = alphabet[absl::Uniform<int>(gen, 0, k - 1)];
+    auto idx = ::crypto::tink::subtle::Random::GetRandomUInt8();
+    c = alphabet[idx % k];
   }
   // Add a structure, for more context
   return absl::StrCat("blind:", result);
@@ -110,8 +111,6 @@ SessionCrypto::SessionCrypto() : bn_ctx_(BN_CTX_new()) {
   public_value_ = std::string(reinterpret_cast<const char *>(public_value),
                               X25519_PUBLIC_VALUE_LEN);
 
-  absl::BitGen gen;
-
   uint8_t rand_bytes[kNonceLength];
   if (RAND_bytes(rand_bytes, kNonceLength) != 1) {
     LOG(ERROR) << "Error generating Salt random bytes";
@@ -119,7 +118,7 @@ SessionCrypto::SessionCrypto() : bn_ctx_(BN_CTX_new()) {
   local_nonce_ =
       std::string(reinterpret_cast<const char *>(rand_bytes), kNonceLength);
 
-  downlink_spi_ = absl::Uniform<uint32>(gen, 1, UINT32_MAX);
+  downlink_spi_ = ::crypto::tink::subtle::Random::GetRandomUInt32();
 
   // Generate another random 32 byte string that is used as blind message.
   original_message_ = RandomUTF8String(32, kAlphabet);
@@ -322,6 +321,7 @@ absl::StatusOr<BridgeTransformParams> SessionCrypto::GetBridgeTransformParams(
 }
 
 absl::Status SessionCrypto::SetBlindingPublicKey(absl::string_view rsa_public) {
+  using ::crypto::tink::subtle::SubtleUtilBoringSSL;
   PPN_ASSIGN_OR_RETURN(
       const auto subtle_rsa_public_key,
       ::crypto::tink::subtle::PemParser::ParseRsaPublicKey(rsa_public));
@@ -330,6 +330,16 @@ absl::Status SessionCrypto::SetBlindingPublicKey(absl::string_view rsa_public) {
     LOG(ERROR) << "RSA public key is null";
     return absl::FailedPreconditionError("RSA public key is null");
   }
+  // Ensure the modulus is large enough to be considered a safe key.
+  // https://www.keylength.com/en/4/
+  PPN_ASSIGN_OR_RETURN(const auto n_big,
+                       SubtleUtilBoringSSL::str2bn(subtle_rsa_public_key->n));
+  PPN_RETURN_IF_ERROR(
+      SubtleUtilBoringSSL::ValidateRsaModulusSize(BN_num_bits(n_big.get())));
+
+  // Ensure the exponent is large enough as well.
+  PPN_RETURN_IF_ERROR(
+      SubtleUtilBoringSSL::ValidateRsaPublicExponent(subtle_rsa_public_key->e));
 
   PPN_ASSIGN_OR_RETURN(
       auto bssl_unique_rsa,
@@ -374,9 +384,14 @@ absl::optional<std::string> SessionCrypto::GetBrassUnblindedToken(
   if (!status_or_unblind_signature.ok()) {
     return absl::nullopt;
   }
+  ::absl::Status verify_result = verifier_->Verify(
+      original_message_, status_or_unblind_signature.value(), bn_ctx_.get());
+  if (!verify_result.ok()) {
+    LOG(ERROR) << "Verify of original message_ failed" << verify_result;
+    return absl::nullopt;
+  }
   return absl::Base64Escape(status_or_unblind_signature.value());
 }
-
 
 }  // namespace crypto
 }  // namespace krypton
