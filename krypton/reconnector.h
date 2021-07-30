@@ -16,14 +16,18 @@
 #define PRIVACY_NET_KRYPTON_RECONNECTOR_H_
 
 #include <atomic>
+#include <cstdint>
+#include <memory>
 
 #include "privacy/net/krypton/datapath_interface.h"
+#include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/session.h"
 #include "privacy/net/krypton/session_manager_interface.h"
 #include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/tunnel_manager_interface.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/call_once.h"
 #include "third_party/absl/base/thread_annotations.h"
@@ -44,7 +48,8 @@ class Reconnector : public Session::NotificationInterface {
  public:
   Reconnector(TimerManager* timer_manager, const KryptonConfig& config,
               SessionManagerInterface* session,
-              utils::LooperThread* notification_thread);
+              TunnelManagerInterface* tunnel_manager,
+              utils::LooperThread* notification_thread, KryptonClock* clock);
   ~Reconnector() override = default;
 
   enum State {
@@ -55,6 +60,7 @@ class Reconnector : public Session::NotificationInterface {
     kConnected,           // Session is connected.
     kPermanentFailure,    // Non recoverable state and is a terminal state.
     kPaused,              // Paused by application, ex: Airplane mode.
+    kSnoozed,             // Snoozed by user.
   };
 
   struct TelemetryData {
@@ -78,8 +84,15 @@ class Reconnector : public Session::NotificationInterface {
   // Register the notification interface.
   void RegisterNotificationInterface(KryptonNotificationInterface* interface);
 
-  // Pause
-  absl::Status Pause(absl::Duration duration) ABSL_LOCKS_EXCLUDED(mutex_);
+  // Snooze
+  absl::Status Snooze(absl::Duration duration) ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Resume
+  absl::Status Resume() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Extends Snooze
+  absl::Status ExtendSnooze(absl::Duration extend_duration)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   void CollectTelemetry(KryptonTelemetry* telemetry)
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -88,15 +101,18 @@ class Reconnector : public Session::NotificationInterface {
 
   void DatapathConnected() ABSL_LOCKS_EXCLUDED(mutex_) override;
   void DatapathDisconnected(const NetworkInfo& network,
-                            const absl::Status& status)
+                            const absl::Status& reason)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  void ControlPlaneDisconnected(const absl::Status& status)
+  void ControlPlaneDisconnected(const absl::Status& reason)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
-  void PermanentFailure(const absl::Status& status)
+  void PermanentFailure(const absl::Status& disconnect_status)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
   void StatusUpdated() ABSL_LOCKS_EXCLUDED(mutex_) override {
-    notification_->StatusUpdated();
+    // TODO: Currently, this status is ignored, and we don't have the
+    // data available to fill it in properly, so just use an empty one.
+    ConnectionStatus status;
+    notification_->StatusUpdated(status);
   }
 
   State state() const {
@@ -104,7 +120,7 @@ class Reconnector : public Session::NotificationInterface {
     return state_;
   }
 
-  void TestOnlySessionConnectionTimerExpired() ABSL_LOCKS_EXCLUDED(mutex_){
+  void TestOnlySessionConnectionTimerExpired() ABSL_LOCKS_EXCLUDED(mutex_) {
     SessionConnectionTimerExpired();
   }
 
@@ -113,6 +129,8 @@ class Reconnector : public Session::NotificationInterface {
   // nullopt indicates that are no existing network to send tunnel data.
   absl::Status SetNetwork(absl::optional<NetworkInfo> network_info)
       ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void SetSimulatedNetworkFailure(bool simulated_network_failure);
 
   void GetDebugInfo(ReconnectorDebugInfo* debug_info)
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -137,15 +155,20 @@ class Reconnector : public Session::NotificationInterface {
   void SetState(State state) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void StartReconnection() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   absl::Duration GetReconnectDuration() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void ResetFailureCounters() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Timer Expires
   void ReconnectTimerExpired() ABSL_LOCKS_EXCLUDED(mutex_);
   void SessionConnectionTimerExpired() ABSL_LOCKS_EXCLUDED(mutex_);
   void DatapathWatchdogTimerExpired() ABSL_LOCKS_EXCLUDED(mutex_);
+  void SnoozeTimerExpired() ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Reconnection Timer.
   absl::Status StartReconnectorTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  absl::Status StartSnoozeTimer(absl::Duration duration)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelReconnectorTimerIfRunning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void CancelSnoozeTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Connection deadline timer
   absl::Status StartConnectionDeadlineTimer()
@@ -157,16 +180,25 @@ class Reconnector : public Session::NotificationInterface {
   absl::Status StartDatapathWatchdogTimer()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelDatapathWatchdogTimerIfRunning()
+
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void CancelAllTimersIfRunning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  DisconnectionStatus GetDisconnectionStatus(const absl::Status& reason)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   void EstablishSession() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  TimerManager* timer_manager_;                   // Not owned.
-  KryptonNotificationInterface* notification_;    // Not owned.
-  SessionManagerInterface* session_manager_;      // Not owned.
+  void TerminateSession(const absl::Status& reason, bool forceFailOpen)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  TimerManager* timer_manager_;                 // Not owned.
+  KryptonNotificationInterface* notification_;  // Not owned.
+  SessionManagerInterface* session_manager_;    // Not owned.
+  TunnelManagerInterface* tunnel_manager_;      // Not owned.
   const KryptonConfig config_;
   utils::LooperThread* notification_thread_;
+  KryptonClock* clock_;
 
   mutable absl::Mutex mutex_;
   State state_ ABSL_GUARDED_BY(mutex_);
@@ -174,12 +206,14 @@ class Reconnector : public Session::NotificationInterface {
   int reconnector_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int connection_deadline_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int datapath_watchdog_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
+  int snooze_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   absl::optional<NetworkInfo> active_network_info_ ABSL_GUARDED_BY(mutex_);
   // Represents the successive datapath failures after control plane is
   // connected.
-  uint32 successive_datapath_failures_ ABSL_GUARDED_BY(mutex_) = 0;
-  uint32 successive_control_plane_failures_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint32_t successive_datapath_failures_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint32_t successive_control_plane_failures_ ABSL_GUARDED_BY(mutex_) = 0;
   TelemetryData telemetry_data_;
+  absl::Time snooze_end_time_;
 };
 
 }  // namespace krypton

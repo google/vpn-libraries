@@ -41,28 +41,6 @@ namespace krypton {
 namespace {
 constexpr int kCopperPort = 1849;
 
-absl::StatusOr<std::string> ResolveIPV4Address(const std::string& hostname) {
-  // Temporary memory allocation that is needed for gethostbyname_r to work on.
-  // There is no particular reason this has to be 8192.
-  static const int kTmpLen = 8192;
-  struct hostent hbuf, *output;
-  char tmp[kTmpLen];
-  int error_number;
-
-  auto get_host_status = gethostbyname_r(hostname.c_str(), &hbuf, tmp, kTmpLen,
-                                         &output, &error_number);
-  if (get_host_status != 0) {
-    return absl::UnavailableError(
-        absl::StrCat("gethostbyname_r error: ", hstrerror(error_number)));
-  }
-  // Return the first address.
-  if (output->h_addr_list[0] != nullptr) {
-    return inet_ntoa(*reinterpret_cast<in_addr*>(output->h_addr_list[0]));
-  }
-
-  return absl::NotFoundError("Cannot convert host to IP address");
-}
-
 void AddJwtTokenAsUnblindedToken(
     Json::Value& json_body,
     std::shared_ptr<AuthAndSignResponse> auth_response) {
@@ -117,14 +95,18 @@ Json::Value AddEgressRequest::BuildBodyJson(
         params.unblinded_token_signature;
   }
 
+  json_body[JsonKeys::kRegionTokenAndSignature] =
+      params.region_token_and_signature;
+
   auto my_keys = params.crypto->GetMyKeyMaterial();
   ppn[JsonKeys::kClientPublicValue] = my_keys.public_value;
   ppn[JsonKeys::kClientNonce] = my_keys.nonce;
   ppn[JsonKeys::kDownlinkSpi] = params.crypto->downlink_spi();
-
+  ppn[JsonKeys::kApnType] = params.apn_type;
   ppn[JsonKeys::kDataplaneProtocol] =
-      DataplaneProtocolName(params.dataplane_protocol);
-  ppn[JsonKeys::kSuite] = CryptoSuiteName(params.suite);
+      KryptonConfig::DatapathProtocol_Name(params.dataplane_protocol);
+  ppn[JsonKeys::kSuite] =
+      ppn::PpnDataplaneRequest::CryptoSuite_Name(params.suite);
 
   auto ip_range = utils::IPRange::Parse(params.copper_control_plane_address);
   if (ip_range.status().ok()) {

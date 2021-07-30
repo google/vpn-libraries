@@ -24,16 +24,13 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import com.google.android.libraries.privacy.ppn.PpnException;
-import com.google.android.libraries.privacy.ppn.PpnOptions;
-import com.google.android.libraries.privacy.ppn.internal.IpSecTransformParams;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
-import com.google.android.libraries.privacy.ppn.krypton.KryptonException;
-import com.google.android.libraries.privacy.ppn.krypton.KryptonIpSecHelper;
-import com.google.android.libraries.privacy.ppn.krypton.KryptonIpSecHelperImpl;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.Socket;
+import java.util.Collections;
+import java.util.Set;
 
 /**
  * Wrapper around a mutable VpnService that deals with the details about how to use the service to
@@ -45,12 +42,7 @@ public class VpnManager {
   // The optimal Socket Buffer Size from GCS experimentation is 4MB.
   private static final int SOCKET_BUFFER_SIZE_BYTES = 4 * 1024 * 1024;
 
-  // TODO: Investigate how to instantiate ipSecHelper from a constructor.
-  // KrytonIpSecHelper for handling an IpSecManager instance.
-  @Nullable private KryptonIpSecHelper ipSecHelper = null;
-
   private final Context context;
-  private final PpnOptions options;
 
   // The underlying VpnService this manager is managing.
   // This may be null if the service is not running.
@@ -58,9 +50,10 @@ public class VpnManager {
 
   @Nullable private volatile PpnNetwork network;
 
-  public VpnManager(Context context, PpnOptions options) {
+  private volatile Set<String> disallowedApplications = Collections.emptySet();
+
+  public VpnManager(Context context) {
     this.context = context;
-    this.options = options;
   }
 
   /**
@@ -69,26 +62,6 @@ public class VpnManager {
    */
   public void setService(@Nullable VpnService service) {
     setServiceWrapper(service == null ? null : new VpnServiceWrapper(service));
-  }
-
-  public void setIpSecHelper(KryptonIpSecHelper ipSecHelper) {
-    this.ipSecHelper = ipSecHelper;
-  }
-
-  public void configureIpSec(IpSecTransformParams params) throws PpnException {
-    if (ipSecHelper == null) {
-      ipSecHelper = new KryptonIpSecHelperImpl(context);
-    }
-    if (ipSecHelper != null) {
-      try {
-        ipSecHelper.transformFd(params);
-      } catch (KryptonException e) {
-        throw new PpnException("Error encountered when configuring IpSec.", e);
-      }
-    } else {
-      throw new PpnException(
-          "Error encountered when configuring IpSec: No KryptonIpSecHelper set.");
-    }
   }
 
   @VisibleForTesting
@@ -114,10 +87,21 @@ public class VpnManager {
     network = ppnNetwork;
     VpnServiceWrapper service = vpnService;
     if (service != null) {
+      Log.w(TAG, "Setting underlying network to " + ppnNetwork);
       service.setUnderlyingNetworks(new Network[] {ppnNetwork.getNetwork()});
     } else {
       Log.w(TAG, "Failed to set underlying network because service is not running.");
     }
+  }
+
+  /** Changes the set of disallowed applications which will bypass the VPN. */
+  public void setDisallowedApplications(Set<String> disallowedApplications) {
+    this.disallowedApplications = disallowedApplications;
+  }
+
+  @VisibleForTesting
+  public Set<String> getDisallowApplications() {
+    return this.disallowedApplications;
   }
 
   /** Gets the underlying network for the service. */
@@ -144,8 +128,15 @@ public class VpnManager {
     }
 
     VpnService.Builder builder = service.newBuilder();
-    setVpnServiceParametersFromOptions(builder, options);
+    setVpnServiceParametersForDisallowedApplications(builder, disallowedApplications);
     setVpnServiceParametersFromTunFdData(builder, tunFdData);
+
+    // If the network was set before the tunnel was established, make sure to set it on the builder.
+    PpnNetwork network = getNetwork();
+    if (network != null) {
+      Log.w(TAG, "Setting initial underlying network to " + network);
+      builder.setUnderlyingNetworks(new Network[] {network.getNetwork()});
+    }
 
     ParcelFileDescriptor tunFds;
     try {
@@ -162,12 +153,22 @@ public class VpnManager {
     if (fd <= 0) {
       throw new PpnException("Invalid TUN fd: " + fd);
     }
+
+    // There could be a race condition where we set the network between when we set the Builder and
+    // when we call establish. Android doesn't track the underlying network until establish is
+    // called. So we double check the network here just in case it needs to be changed.
+    PpnNetwork currentNetwork = getNetwork();
+    if (currentNetwork != null && !currentNetwork.equals(network)) {
+      Log.w(TAG, "Updating underlying network to " + currentNetwork);
+      service.setUnderlyingNetworks(new Network[] {currentNetwork.getNetwork()});
+    }
+
     return fd;
   }
 
-  private static void setVpnServiceParametersFromOptions(
-      VpnService.Builder builder, PpnOptions options) {
-    for (String packageName : options.getDisallowedApplications()) {
+  private static void setVpnServiceParametersForDisallowedApplications(
+      VpnService.Builder builder, Set<String> disallowedApplications) {
+    for (String packageName : disallowedApplications) {
       try {
         builder.addDisallowedApplication(packageName);
       } catch (NameNotFoundException e) {

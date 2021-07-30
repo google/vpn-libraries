@@ -36,7 +36,7 @@ import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus.ConnectionQuality;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
-import com.google.android.libraries.privacy.ppn.krypton.HttpFetcher;
+import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkCallback;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener;
@@ -365,6 +365,7 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
         return false;
       }
 
+      Log.w(TAG, String.format("Deprioritizing Network %s", networkId));
       removeNetwork(ppnNetwork);
       pendingNetworks.add(ppnNetwork);
       return true;

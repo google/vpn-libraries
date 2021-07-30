@@ -44,7 +44,7 @@ import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus.ConnectionQuality;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
-import com.google.android.libraries.privacy.ppn.krypton.HttpFetcher;
+import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkCallback;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener;
@@ -841,6 +841,23 @@ public final class PpnNetworkManagerImplTest {
     // real Network test objects. But then if we use a mock network test object, we cannot set it up
     // to return the necessary NetworkInfo via ConnectivityManager. Let's address later when we
     // clean up Xenon so not every method triggers many state checks.
+  }
+
+  @Test
+  public void testGetAllNetworks() {
+    assertThat(ppnNetworkManager.getAllNetworks().size()).isEqualTo(0);
+
+    PpnNetwork cellularNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR);
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
+    await(
+        ppnNetworkManager.handleNetworkLinkPropertiesChanged(
+            cellularNetwork, new LinkProperties()));
+    assertThat(ppnNetworkManager.getAllNetworks().size()).isEqualTo(1);
+
+    PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
+    ppnNetworkManager.handleNetworkLost(cellularNetwork);
+    assertThat(ppnNetworkManager.getAllNetworks().size()).isEqualTo(1);
   }
 
   @Test

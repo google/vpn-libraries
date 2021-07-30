@@ -16,20 +16,25 @@
 
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include "base/logging.h"
 #include "privacy/net/krypton/datapath_interface.h"
+#include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/session.h"
 #include "privacy/net/krypton/session_manager_interface.h"
 #include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/tunnel_manager_interface.h"
 #include "privacy/net/krypton/utils/status.h"
+#include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/functional/bind_front.h"
+#include "third_party/absl/memory/memory.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
@@ -58,6 +63,8 @@ std::string StateString(Reconnector::State state) {
       return "Connected";
     case Reconnector::State::kPaused:
       return "Paused";
+    case Reconnector::State::kSnoozed:
+      return "Snoozed";
   }
 }
 }  // namespace
@@ -65,11 +72,15 @@ std::string StateString(Reconnector::State state) {
 Reconnector::Reconnector(TimerManager* timer_manager,
                          const KryptonConfig& config,
                          SessionManagerInterface* session_manager,
-                         utils::LooperThread* notification_thread)
+                         TunnelManagerInterface* tunnel_manager,
+                         utils::LooperThread* notification_thread,
+                         KryptonClock* clock)
     : timer_manager_(timer_manager),
       session_manager_(session_manager),
+      tunnel_manager_(tunnel_manager),
       config_(config),
       notification_thread_(notification_thread),
+      clock_(clock),
       state_(kInitial) {
   session_manager_->RegisterNotificationInterface(this);
 }
@@ -82,7 +93,7 @@ void Reconnector::Start() {
 
 void Reconnector::Stop() {
   absl::MutexLock l(&mutex_);
-  session_manager_->TerminateSession();
+  TerminateSession(absl::OkStatus(), /*forceFailOpen=*/false);
   CancelAllTimersIfRunning();
 }
 
@@ -90,6 +101,7 @@ void Reconnector::CancelAllTimersIfRunning() {
   CancelConnectionDeadlineTimerIfRunning();
   CancelReconnectorTimerIfRunning();
   CancelDatapathWatchdogTimerIfRunning();
+  CancelSnoozeTimer();
 }
 
 void Reconnector::RegisterNotificationInterface(
@@ -131,8 +143,7 @@ void Reconnector::ControlPlaneConnected() {
 }
 
 // Session is disconnected.
-void Reconnector::ControlPlaneDisconnected(
-    const absl::Status& disconnect_status) {
+void Reconnector::ControlPlaneDisconnected(const absl::Status& reason) {
   LOG(INFO) << "Session control plane disconnected.";
   absl::MutexLock l(&mutex_);
   // There is a race condition of deadline timer expired and disconnected
@@ -150,8 +161,9 @@ void Reconnector::ControlPlaneDisconnected(
 
   if (notification_ != nullptr) {
     auto notification = notification_;
-    notification_thread_->Post([notification, disconnect_status] {
-      notification->Disconnected(disconnect_status);
+    auto disconnection_status = GetDisconnectionStatus(reason);
+    notification_thread_->Post([notification, disconnection_status] {
+      notification->Disconnected(disconnection_status);
     });
   }
   successive_control_plane_failures_ += 1;
@@ -160,8 +172,9 @@ void Reconnector::ControlPlaneDisconnected(
 }
 
 void Reconnector::StartReconnection() {
+  TerminateSession(absl::DeadlineExceededError("Waiting to reconnect"),
+                   /*forceFailOpen=*/false);
   PPN_LOG_IF_ERROR(StartReconnectorTimer());
-  session_manager_->TerminateSession();
   SetState(kWaitingToReconnect);
 }
 
@@ -169,10 +182,9 @@ void Reconnector::StartReconnection() {
 void Reconnector::PermanentFailure(const absl::Status& disconnect_status) {
   LOG(INFO) << "Session has Permanent failure.";
   absl::MutexLock l(&mutex_);
-  CancelReconnectorTimerIfRunning();
-  CancelConnectionDeadlineTimerIfRunning();
+  CancelAllTimersIfRunning();
 
-  session_manager_->TerminateSession();
+  TerminateSession(disconnect_status, /*forceFailOpen=*/false);
   SetState(kPermanentFailure);
 
   auto notification = notification_;
@@ -182,9 +194,10 @@ void Reconnector::PermanentFailure(const absl::Status& disconnect_status) {
 }
 
 void Reconnector::EstablishSession() {
-  session_manager_->EstablishSession(
-      config_.zinc_url(), config_.brass_url(), config_.service_type(),
-      session_restart_counter_.fetch_add(1), active_network_info_);
+  session_manager_->EstablishSession(config_.zinc_url(), config_.brass_url(),
+                                     config_.service_type(),
+                                     session_restart_counter_.fetch_add(1),
+                                     tunnel_manager_, active_network_info_);
   ++telemetry_data_.session_restarts;
   // Start the Connection deadline timer to ensure the session moves to
   // connected within the time.
@@ -192,7 +205,21 @@ void Reconnector::EstablishSession() {
   SetState(kWaitingForSessionEstablishment);
   // Send a Connecting notification to the PPN library.
   auto notification = notification_;
-  notification_thread_->Post([notification] { notification->Connecting(); });
+  ConnectingStatus status;
+  status.set_is_blocking_traffic(tunnel_manager_->IsTunnelActive());
+  notification_thread_->Post(
+      [notification, status] { notification->Connecting(status); });
+}
+
+void Reconnector::TerminateSession(const absl::Status& reason,
+                                   bool forceFailOpen) {
+  session_manager_->TerminateSession(forceFailOpen);
+  // Send a Disconnected notification to the PPN library.
+  auto notification = notification_;
+  auto disconnection_status = GetDisconnectionStatus(reason);
+  notification_thread_->Post([notification, disconnection_status] {
+    notification->Disconnected(disconnection_status);
+  });
 }
 
 void Reconnector::ReconnectTimerExpired() {
@@ -230,6 +257,13 @@ void Reconnector::SessionConnectionTimerExpired() {
   StartReconnection();
 }
 
+void Reconnector::SnoozeTimerExpired() {
+  auto status = Resume();
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to resume PPN after snooze: " << status;
+  }
+}
+
 absl::Duration Reconnector::GetReconnectDuration() {
   auto max_reattempts_till_now = std::max(successive_control_plane_failures_,
                                           successive_datapath_failures_);
@@ -250,6 +284,12 @@ absl::Duration Reconnector::GetReconnectDuration() {
   return std::min(reconnector_duration, kMaxDuration);
 }
 
+void Reconnector::ResetFailureCounters() {
+  LOG(INFO) << "Resetting failure counters";
+  successive_control_plane_failures_ = 0;
+  successive_datapath_failures_ = 0;
+}
+
 absl::Status Reconnector::StartReconnectorTimer() {
   auto duration = GetReconnectDuration();
 
@@ -262,13 +302,35 @@ absl::Status Reconnector::StartReconnectorTimer() {
           absl::bind_front(&Reconnector::ReconnectTimerExpired, this)));
 
   // Create and put a Reconnecting notification on the Looper.
-  // We need to pass the timer duration out, so this has to be here.
-  int64 retry_millis = absl::ToInt64Milliseconds(duration);
+  ReconnectionStatus status;
+  status.set_has_available_networks(active_network_info_.has_value());
+  status.set_is_blocking_traffic(tunnel_manager_->IsTunnelActive());
+  PPN_RETURN_IF_ERROR(
+      utils::ToProtoDuration(duration, status.mutable_time_to_reconnect()));
 
   auto notification = notification_;
-  notification_thread_->Post([notification, retry_millis] {
-    notification->WaitingToReconnect(retry_millis);
-  });
+  notification_thread_->Post(
+      [notification, status] { notification->WaitingToReconnect(status); });
+
+  return absl::OkStatus();
+}
+
+absl::Status Reconnector::StartSnoozeTimer(absl::Duration duration) {
+  // We want to let the currently snoozed process run its course instead of
+  // restarting it.
+  if (snooze_timer_id_ != kInvalidTimerId) {
+    return absl::AlreadyExistsError(
+        "Snooze is already scheduled. Refusing to reschedule.");
+  }
+
+  if (state_ == kPermanentFailure) {
+    return absl::FailedPreconditionError(
+        "Krypton is in a " + StateString(state_) + ". Refusing to snooze.");
+  }
+  PPN_ASSIGN_OR_RETURN(
+      snooze_timer_id_,
+      timer_manager_->StartTimer(
+          duration, absl::bind_front(&Reconnector::SnoozeTimerExpired, this)));
 
   return absl::OkStatus();
 }
@@ -280,6 +342,15 @@ void Reconnector::CancelReconnectorTimerIfRunning() {
 
   timer_manager_->CancelTimer(reconnector_timer_id_);
   reconnector_timer_id_ = kInvalidTimerId;
+}
+
+void Reconnector::CancelSnoozeTimer() {
+  if (snooze_timer_id_ == kInvalidTimerId) {
+    return;
+  }
+
+  timer_manager_->CancelTimer(snooze_timer_id_);
+  snooze_timer_id_ = kInvalidTimerId;
 }
 
 absl::Status Reconnector::StartConnectionDeadlineTimer() {
@@ -355,7 +426,11 @@ void Reconnector::DatapathConnected() {
   // This has no impact on the reconnection logic and the status is propagated
   // to UX layer as Connected.
   auto notification = notification_;
-  notification_thread_->Post([notification] { notification->Connected(); });
+  // TODO: The status reported from here is currently ignored, and we
+  // don't have all the data to populate it. So leave it empty for now.
+  ConnectionStatus status;
+  notification_thread_->Post(
+      [notification, status] { notification->Connected(status); });
   // Cancel any datapath watchdog timer and reset the counts.
   absl::MutexLock l(&mutex_);
   successive_datapath_failures_ = 0;
@@ -363,27 +438,97 @@ void Reconnector::DatapathConnected() {
 }
 
 void Reconnector::DatapathDisconnected(const NetworkInfo& network,
-                                       const absl::Status& status) {
+                                       const absl::Status& reason) {
   LOG(INFO) << "Datapath disconnected.";
   auto notification = notification_;
 
-  // This has no impact on the reconnection logic and the status is propagated
+  // This has no impact on the reconnection logic and the reason is propagated
   // to UX layer as Disconnected;
-  notification_thread_->Post([notification, network, status] {
-    notification->NetworkDisconnected(network, status);
+  notification_thread_->Post([notification, network, reason] {
+    notification->NetworkDisconnected(network, reason);
   });
 
   // Also notify the user that the PPN is disconnected.
-  notification_thread_->Post(
-      [notification, status] { notification->Disconnected(status); });
   absl::MutexLock l(&mutex_);
+  auto disconnection_status = GetDisconnectionStatus(reason);
+  notification_thread_->Post([notification, disconnection_status] {
+    notification->Disconnected(disconnection_status);
+  });
   successive_datapath_failures_ += 1;
   ++telemetry_data_.data_plane_failures;
   PPN_LOG_IF_ERROR(StartDatapathWatchdogTimer());
 }
 
-absl::Status Reconnector::Pause(absl::Duration /*duration*/) {
-  return absl::UnimplementedError("Implement this");
+absl::Status Reconnector::Snooze(absl::Duration duration) {
+  absl::MutexLock l(&mutex_);
+  if (state_ == kPermanentFailure) {
+    return absl::FailedPreconditionError(
+        "Krypton is in state " + StateString(state_) + ". Refusing to snooze.");
+  }
+  // If no session is created, session_manager_->TerminateSession() does a
+  // LOG(ERROR) and returns (i.e. a no-op).
+  TerminateSession(absl::OkStatus(), /*forceFailOpen=*/true);
+  auto notification = notification_;
+  CancelAllTimersIfRunning();
+  SetState(kSnoozed);
+  SnoozeStatus status;
+  snooze_end_time_ = clock_->Now() + duration;
+  PPN_RETURN_IF_ERROR(
+      utils::ToProtoTime(snooze_end_time_, status.mutable_snooze_end_time()));
+  notification_thread_->Post(
+      [notification, status] { notification->Snoozed(status); });
+  return StartSnoozeTimer(duration);
+}
+
+absl::Status Reconnector::Resume() {
+  absl::MutexLock l(&mutex_);
+  // In a scenario where we did not have a network when, resuming (e.g. Airplane
+  // mode) and after resuming we do have a network, the device would be able to
+  // connect to the internet unprotected until a reconnection attempt (which
+  // could take a significant amount of time). Thus, here we create a temporary
+  // tunnel to block the traffic until EstablishSession() completes.
+  if (!tunnel_manager_->RecreateTunnelIfNeeded().ok()) {
+    LOG(ERROR)
+        << "Failed to recreate tunnel to block traffic for safe disconnect.";
+  }
+  auto notification = notification_;
+  CancelSnoozeTimer();
+  if (state_ != kSnoozed) {
+    return absl::FailedPreconditionError(
+        "Cannot resume PPN because it is not snoozed.");
+  }
+
+  ResumeStatus status;
+  status.set_has_available_networks(active_network_info_.has_value());
+  status.set_is_blocking_traffic(tunnel_manager_->IsTunnelActive());
+  notification_thread_->Post(
+      [notification, status] { notification->Resumed(status); });
+  EstablishSession();
+  return absl::OkStatus();
+}
+
+absl::Status Reconnector::ExtendSnooze(absl::Duration extend_duration) {
+  absl::MutexLock l(&mutex_);
+  if (state_ != kSnoozed) {
+    return absl::FailedPreconditionError(
+        "Unable to extend snooze duration since Krypton is not Snoozed.");
+  }
+  absl::Time proposed_snooze_end_time = snooze_end_time_ + extend_duration;
+  absl::Time time_now = clock_->Now();
+  if (proposed_snooze_end_time < time_now) {  // This should never happen.
+    return absl::FailedPreconditionError(
+        "New snooze duration would already be expired.");
+  }
+  absl::Duration new_snooze_duration = proposed_snooze_end_time - time_now;
+  snooze_end_time_ = proposed_snooze_end_time;
+  CancelSnoozeTimer();
+  auto notification = notification_;
+  SnoozeStatus status;
+  PPN_RETURN_IF_ERROR(
+      utils::ToProtoTime(snooze_end_time_, status.mutable_snooze_end_time()));
+  notification_thread_->Post(
+      [notification, status] { notification->Snoozed(status); });
+  return StartSnoozeTimer(new_snooze_duration);
 }
 
 absl::Status Reconnector::SetNetwork(absl::optional<NetworkInfo> network_info) {
@@ -392,6 +537,16 @@ absl::Status Reconnector::SetNetwork(absl::optional<NetworkInfo> network_info) {
   // Always Store the active network info. This could be used when
   // reconnection timer expires and we might need to restart a session.
   active_network_info_ = network_info;
+
+  // If we are setting a network, reset control plane/datapath failure counters.
+  ResetFailureCounters();
+
+  // If the user has snoozed PPN, do nothing and wait until PPN is resumed
+  // before trying to SetNetwork().
+  if (state_ == kSnoozed) {
+    LOG(INFO) << "PPN is snoozed. Will only set active_network_info.";
+    return absl::OkStatus();
+  }
 
   // Steps to do when we get Switch Network.
   // a. If going to Airplane mode |NetworkInfo| is nullopt, stop the session and
@@ -403,7 +558,8 @@ absl::Status Reconnector::SetNetwork(absl::optional<NetworkInfo> network_info) {
     LOG(INFO) << "Entering Airplane mode or no network is available";
 
     if (session_manager_ != nullptr) {
-      session_manager_->TerminateSession();
+      TerminateSession(absl::InternalError("No network"),
+                       /*forceFailOpen=*/false);
     }
     // Stop any running timers.
     CancelAllTimersIfRunning();
@@ -427,6 +583,33 @@ absl::Status Reconnector::SetNetwork(absl::optional<NetworkInfo> network_info) {
   return absl::OkStatus();
 }
 
+DisconnectionStatus Reconnector::GetDisconnectionStatus(
+    const absl::Status& reason) {
+  DisconnectionStatus status;
+  status.set_code(reason.raw_code());
+  status.set_message(reason.message());
+  status.set_has_available_networks(active_network_info_.has_value());
+  status.set_is_blocking_traffic(tunnel_manager_->IsTunnelActive());
+  return status;
+}
+
+void Reconnector::SetSimulatedNetworkFailure(bool simulated_network_failure) {
+  LOG(WARNING) << "Setting simulated network failure to "
+               << simulated_network_failure;
+  if (simulated_network_failure) {
+    // Basically, pretend to be snoozed, but without a timer to resume, and not
+    // forcing PPN to fail open.
+    absl::MutexLock l(&mutex_);
+    TerminateSession(absl::InternalError("Simulated network failure"),
+                     /*forceFailOpen=*/false);
+    CancelAllTimersIfRunning();
+    SetState(kSnoozed);
+  } else {
+    // Resume() will move us out of the snoozed state and start reconnecting.
+    PPN_LOG_IF_ERROR(Resume());
+  }
+}
+
 void Reconnector::GetDebugInfo(ReconnectorDebugInfo* debug_info) {
   absl::MutexLock l(&mutex_);
 
@@ -445,5 +628,6 @@ void Reconnector::CollectTelemetry(KryptonTelemetry* telemetry) {
   telemetry->set_session_restarts(telemetry_data_.session_restarts);
   telemetry_data_.Reset();
 }
+
 }  // namespace krypton
 }  // namespace privacy

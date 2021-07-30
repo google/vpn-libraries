@@ -14,7 +14,7 @@
 
 package com.google.android.libraries.privacy.ppn.internal.service;
 
-import com.google.android.libraries.privacy.ppn.krypton.BoundSocketFactoryFactory;
+import com.google.android.libraries.privacy.ppn.internal.http.BoundSocketFactoryFactory;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import javax.net.SocketFactory;
 

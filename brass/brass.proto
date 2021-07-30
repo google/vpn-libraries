@@ -1,0 +1,144 @@
+// Copyright 2021 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package privacy.ppn;
+
+import "google/protobuf/timestamp.proto";
+
+
+// Both V6 and V6 fields are ranges (e.g. ending in /<foo>.)
+message IpRange {
+  oneof ip {
+    string ipv4_range = 1;
+    string ipv6_range = 2;
+  }
+}
+
+// All parameters of type 'bytes' needs to be in base64 encoding when sending
+// over JSON otherwise raw bytes.
+message PpnDataplaneRequest {
+  enum DataplaneProtocol {
+    UNSPECIFIED_DATAPLANE_PROTOCOL = 0;
+    IPSEC = 1;
+    BRIDGE = 2;
+  }
+
+  enum CryptoSuite {
+    UNSPECIFIED_CRYPTO_SUITE = 0;
+    AES128_GCM = 1;
+    AES256_GCM = 2;
+  }
+  // The public key to be used by the server for encryption of
+  // client-bound packets.
+  bytes client_public_value = 1;
+
+  // 16 random bytes that are base64 encoded and used as half of HKDF salt.
+  // Server provides other half.
+  bytes client_nonce = 2;
+
+  // Ed25519 public key used to authenticate the client during rekey.
+  bytes rekey_verification_key = 3;
+
+  // Signature of latest `client_public_key` (above), using the signing pair of
+  // the last previously sent `rekey_verification_key`.
+  //
+  // This should only be set in rekey requests, and MUST be the default empty
+  // string in the initial request.
+  bytes rekey_signature = 4;
+
+  // The client-side [SPI](https://tools.ietf.org/html/rfc4303#page-10) used for
+  // downlink packets. Assigned by the client, and may change during rekey
+  // depending on the platform.
+  uint32 downlink_spi = 5;
+
+  // The previous server-side
+  // [SPI](https://tools.ietf.org/html/rfc4303#page-10). This is needed only in
+  // rekey requests.
+  uint32 previous_uplink_spi = 6;
+
+  // This comes from DNS resolution of the dataplane server DNS address.
+  // Used in initial and rekey requests.
+  string control_plane_sock_addr = 7;
+
+  // Dataplane protocol that should be used.
+  DataplaneProtocol dataplane_protocol = 8;
+
+  // Applicable only for BRIDGE dataplane_protocol in the previous field.
+  CryptoSuite suite = 9;
+
+  string region_code = 10;
+
+  // The APN type bridge-proxy use to deside which APN to use for connecting.
+  string apn_type = 11;
+}
+
+// All parameters of type 'bytes' needs to be in base64 encoding when sending
+// over JSON otherwise raw bytes.
+message PpnDataplaneResponse {
+  // The source ip address of the packets coming from the client.
+  // Repeated for v4/v6 versions, or non-contiguous ranges. This is empty in
+  // rekey responses.
+  repeated IpRange user_private_ip = 1;
+
+  // The dataplane address the client's encapsulated ipsec packets should be
+  // sent to. Repeated for v4/v6. This is empty for rekey responses.
+  repeated string egress_point_sock_addr = 2;
+
+  // Public value of the egress point.
+  bytes egress_point_public_value = 3;
+
+  // 16 random bytes used as half of HKDF salt. Client provides other half.
+  bytes server_nonce = 4;
+
+  // The [SPI](https://tools.ietf.org/html/rfc4303#page-10) to be used on uplink
+  // data packets.
+  uint32 uplink_spi = 5;
+
+  // Absolute UTC time this session and key expires. The client should reauth or
+  // rekey before this time. Any packets destined for this session after this
+  // time will be dropped.
+  google.protobuf.Timestamp expiry = 6;
+}
+
+message AddEgressRequest {
+  reserved 3, 4;
+
+  string unblinded_token = 1;
+
+  oneof dataplane {
+    PpnDataplaneRequest ppn = 2;
+  }
+
+  // b64 encoded
+  string unblinded_token_signature = 5;
+
+  // The base64 encoding of override_region token and signature:
+  // "${Region}.${timestamp}.${signature}" from Zinc. This is used to
+  // verify and override region for white listed users.
+  string region_token_and_signature = 6;
+}
+
+message AddEgressResponse {
+  reserved 2;
+
+  oneof dataplane {
+    PpnDataplaneResponse ppn_dataplane = 1;
+  }
+}
+
+// Implemented by brass as an HTTP server. Brass will attempt to parse
+// requests as `AddEgressRequest` and send responses as JSON marshalled
+// `AddEgressResponse`.

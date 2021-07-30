@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -50,7 +51,7 @@ namespace privacy {
 namespace krypton {
 namespace {
 
-const uint32 kLatencyCollectionLimit = 5;
+const uint32_t kLatencyCollectionLimit = 5;
 
 std::string StateString(EgressManager::State state) {
   switch (state) {
@@ -270,34 +271,6 @@ void EgressManager::GetDebugInfo(EgressDebugInfo* debug_info) {
   for (const auto& latency : latencies_) {
     *debug_info->add_latency() = latency;
   }
-}
-
-absl::optional<std::string> EgressManager::EgressNodeV4SocketAddress() const
-    ABSL_LOCKS_EXCLUDED(mutex_) {
-  absl::MutexLock l(&mutex_);
-  if (egress_node_sock_addresses_.empty()) {
-    return absl::nullopt;
-  }
-  for (const auto& ip : egress_node_sock_addresses_) {
-    if (utils::IsValidV4Address(ip)) {
-      return ip;
-    }
-  }
-  return absl::nullopt;
-}
-
-absl::optional<std::string> EgressManager::EgressNodeV6SocketAddress() const
-    ABSL_LOCKS_EXCLUDED(mutex_) {
-  absl::MutexLock l(&mutex_);
-  if (egress_node_sock_addresses_.empty()) {
-    return absl::nullopt;
-  }
-  for (const auto& ip : egress_node_sock_addresses_) {
-    if (utils::IsValidV6Address(ip)) {
-      return ip;
-    }
-  }
-  return absl::nullopt;
 }
 
 }  // namespace krypton

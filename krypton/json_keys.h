@@ -42,6 +42,7 @@ class JsonKeys {
   static const char kIpRanges[];
   static const char kDataplaneSockAddr[];
   static const char kError[];
+  static const char kApnType[];
 
   // Ppn
   static const char kPpn[];
@@ -64,6 +65,8 @@ class JsonKeys {
   static const char kPreviousUplinkSpi[];
   static const char kPem[];
   static const char kBlindedTokenSignature[];
+  static const char kCopperControllerHostname[];
+  static const char kRegionTokenAndSignature[];
   static const char kIsUnblindedToken[];
   static const char kUnblindedTokenSignature[];
   static const char kPublicKeyHash[];

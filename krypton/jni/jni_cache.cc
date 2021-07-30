@@ -23,6 +23,9 @@
 
 #include "privacy/net/krypton/jni/jni_utils.h"
 #include "privacy/net/krypton/utils/looper.h"
+#include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
 
 namespace privacy {
 namespace krypton {
@@ -42,12 +45,15 @@ constexpr char kKryptonExceptionClass[] =
 // LINT.ThenChange(
 // //depot/google3/java/com/google/android/libraries/privacy/ppn/krypton/KryptonException.java)
 
-// com.google.android.libraries.privacy.ppn.krypton.HttpFetcher
+// com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher
 // LINT.IfChange
 constexpr char kHttpFetcherPostJsonMethod[] = "postJson";
 constexpr char kHttpFetcherPostJsonMethodSignature[] = "([B)[B";
+constexpr char kHttpFetcherLookupDnsMethod[] = "lookupDns";
+constexpr char kHttpFetcherLookupDnsMethodSignature[] =
+    "(Ljava/lang/String;)Ljava/lang/String;";
 // LINT.ThenChange(
-// //depot/google3/java/com/google/android/libraries/privacy/ppn/krypton/HttpFetcher.java)
+// //depot/google3/java/com/google/android/libraries/privacy/ppn/internal/http/HttpFetcher.java)
 
 // com.google.android.libraries.privacy.ppn.krypton.TimerIdManager
 // LINT.IfChange
@@ -66,7 +72,7 @@ constexpr char kKryptonLogMethod[] = "log";
 constexpr char kKryptonLogMethodSignature[] = "(Ljava/lang/String;)V";
 constexpr char kKryptonGetHttpFetcherMethod[] = "getHttpFetcher";
 constexpr char kKryptonGetHttpFetcherMethodSignature[] =
-    "()Lcom/google/android/libraries/privacy/ppn/krypton/HttpFetcher;";
+    "()Lcom/google/android/libraries/privacy/ppn/internal/http/HttpFetcher;";
 constexpr char kKryptonGetTimerIdManagerMethod[] = "getTimerIdManager";
 constexpr char kKryptonGetTimerIdManagerMethodSignature[] =
     "()Lcom/google/android/libraries/privacy/ppn/krypton/TimerIdManager;";
@@ -75,24 +81,24 @@ constexpr char kKryptonGetTimerIdManagerMethodSignature[] =
 constexpr char kKryptonConnectedMethod[] = "onConnected";
 constexpr char kKryptonConnectedMethodSignature[] = "([B)V";
 constexpr char kKryptonConnectingMethod[] = "onConnecting";
-constexpr char kKryptonConnectingMethodSignature[] = "()V";
+constexpr char kKryptonConnectingMethodSignature[] = "([B)V";
 constexpr char kKryptonControlPlaneConnectedMethod[] =
     "onControlPlaneConnected";
 constexpr char kKryptonControlPlaneConnectedMethodSignature[] = "()V";
 constexpr char kKryptonStatusUpdatedMethod[] = "onStatusUpdated";
 constexpr char kKryptonStatusUpdatedMethodSignature[] = "([B)V";
 constexpr char kKryptonDisconnectedMethod[] = "onDisconnected";
-constexpr char kKryptonDisconnectedMethodSignature[] = "(ILjava/lang/String;)V";
+constexpr char kKryptonDisconnectedMethodSignature[] = "([B)V";
 constexpr char kKryptonPermanentFailureMethod[] = "onPermanentFailure";
 constexpr char kKryptonPermanentFailureMethodSignature[] =
-    "(ILjava/lang/String;)V";
+    "(ILjava/lang/String;[B)V";
 constexpr char kKryptonCrashedMethod[] = "onCrashed";
 constexpr char kKryptonCrashedMethodSignature[] = "()V";
 constexpr char kKryptonNetworkDisconnectedMethod[] = "onNetworkFailed";
 constexpr char kKryptonNetworkDisconnectedMethodSignature[] =
-    "([BILjava/lang/String;)V";
+    "([BILjava/lang/String;[B)V";
 constexpr char kKryptonWaitingToReconnectMethod[] = "onWaitingToReconnect";
-constexpr char kKryptonWaitingToReconnectMethodSignature[] = "(J)V";
+constexpr char kKryptonWaitingToReconnectMethodSignature[] = "([B)V";
 constexpr char kKryptonCreateTunFdMethod[] = "createTunFd";
 constexpr char kKryptonCreateTunFdMethodSignature[] = "([B)I";
 
@@ -102,7 +108,39 @@ constexpr char kKryptonGetOAuthTokenMethod[] = "getOAuthToken";
 constexpr char kKryptonGetOAuthTokenMethodSignature[] = "()Ljava/lang/String;";
 constexpr char kKryptonConfigureIpSecMethod[] = "configureIpSec";
 constexpr char kKryptonConfigureIpSecMethodSignature[] = "([B)Z";
+
+constexpr char kKryptonSnoozedMethod[] = "onKryptonSnoozed";
+constexpr char kKryptonSnoozedMethodSignature[] = "([B)V";
+constexpr char kKryptonResumedMethod[] = "onKryptonResumed";
+constexpr char kKryptonResumedMethodSignature[] = "([B)V";
 // LINT.ThenChange(//depot/google3/java/com/google/android/libraries/privacy/ppn/krypton/KryptonImpl.java)
+
+absl::StatusOr<jmethodID> GetMethod(JNIEnv* env, jclass klass,
+                                    const char* method, const char* signature) {
+  jmethodID m = env->GetMethodID(klass, method, signature);
+  if (m == nullptr) {
+    return absl::NotFoundError(
+        absl::StrCat("unable to find method: ", method, signature));
+  }
+  return m;
+}
+
+absl::StatusOr<jclass> GetObjectClass(JNIEnv* env, jobject obj) {
+  jclass c = env->GetObjectClass(obj);
+  if (c == nullptr) {
+    return absl::NotFoundError("unable to get object class");
+  }
+  return c;
+}
+
+absl::StatusOr<jclass> FindClass(JNIEnv* env, const char* path) {
+  jclass c = env->FindClass(path);
+  if (c == nullptr) {
+    return absl::NotFoundError(absl::StrCat("unable to find class: ", path));
+  }
+  return c;
+}
+
 }  // namespace
 
 absl::optional<JNIEnv*> JniCache::GetJavaEnv() {
@@ -145,279 +183,212 @@ void JniCache::Init(JNIEnv* env, jobject krypton_instance) {
     JniCache::ThrowKryptonException("Failed to find Java VM");
     return;
   }
-  // Java Krypton object and class that initiated the Init.
+
   krypton_object_ =
       std::make_unique<JavaObject<jobject>>(env, krypton_instance);
-  jclass krypton_class = env->GetObjectClass(GetKryptonObject());
-  krypton_class_ = std::make_unique<JavaObject<jclass>>(env, krypton_class);
 
-  InitializeLogMethod(env);
-  InitializeExceptions(env);
-  InitializeHttpFetcherMethod(env);
-  InitializeTimerIdManager(env);
-  InitializeNotifications(env);
-  InitializeCreateTunFdMethod(env);
-  InitializeCreateNetworkFdMethod(env);
-  InitializeGetOAuthTokenMethod(env);
-  InitializeConfigureIpSecMethod(env);
+  auto status = InitializeCachedMembers(env);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+    ThrowKryptonException(status.ToString());
+  }
 }
 
-void JniCache::InitializeHttpFetcherMethod(JNIEnv* env) {
+absl::Status JniCache::InitializeCachedMembers(JNIEnv* env) {
+  PPN_ASSIGN_OR_RETURN(jclass krypton_class,
+                       GetObjectClass(env, GetKryptonObject()));
+  krypton_class_ = std::make_unique<JavaObject<jclass>>(env, krypton_class);
+
+  PPN_RETURN_IF_ERROR(InitializeLogMethod(env));
+  PPN_RETURN_IF_ERROR(InitializeExceptions(env));
+  PPN_RETURN_IF_ERROR(InitializeHttpFetcherMethod(env));
+  PPN_RETURN_IF_ERROR(InitializeTimerIdManager(env));
+  PPN_RETURN_IF_ERROR(InitializeNotifications(env));
+  PPN_RETURN_IF_ERROR(InitializeVpnServiceMethods(env));
+
+  return absl::OkStatus();
+}
+
+absl::Status JniCache::InitializeHttpFetcherMethod(JNIEnv* env) {
   LOG(INFO) << "Initializing the HttpFetcher method";
 
   // Step 1: Get HttpFetcher object in Krypton object.
-  jmethodID get_http_fetcher_method =
-      env->GetMethodID(GetKryptonClass(), kKryptonGetHttpFetcherMethod,
-                       kKryptonGetHttpFetcherMethodSignature);
+  PPN_ASSIGN_OR_RETURN(
+      jmethodID get_http_fetcher_method,
+      GetMethod(env, GetKryptonClass(), kKryptonGetHttpFetcherMethod,
+                kKryptonGetHttpFetcherMethodSignature));
 
-  if (get_http_fetcher_method == nullptr) {
-    LOG(ERROR) << "Cannot retrieve the getHttpFetcher method";
-    ThrowKryptonException("Cannot retrieve getHttpFetcher in Krypton.java");
-    return;
-  }
   jobject http_fetcher_object = static_cast<jobject>(
       env->CallObjectMethod(GetKryptonObject(), get_http_fetcher_method));
   if (http_fetcher_object == nullptr) {
-    LOG(ERROR) << "Failed to retrieve HttpFetcher Object";
-    ThrowKryptonException("Failed to retrieve HttpFetcher object");
-    return;
+    return absl::InternalError("failed to retrieve HttpFetcher");
   }
   http_fetcher_object_ =
       std::make_unique<JavaObject<jobject>>(env, http_fetcher_object);
 
-  jclass http_fetcher_class = env->GetObjectClass(http_fetcher_object);
-  if (http_fetcher_class == nullptr) {
-    LOG(ERROR) << "Failed to find HttpFetcher class";
-    ThrowKryptonException("Failed to find HttpFetcher class");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(jclass http_fetcher_class,
+                       GetObjectClass(env, http_fetcher_object));
   http_fetcher_class_ =
       std::make_unique<JavaObject<jclass>>(env, http_fetcher_class);
 
-  // Step 2: Save the Method Id.
-  http_fetcher_post_json_method_ =
-      env->GetMethodID(http_fetcher_class, kHttpFetcherPostJsonMethod,
-                       kHttpFetcherPostJsonMethodSignature);
+  // Step 2: Save the Method Ids.
+  PPN_ASSIGN_OR_RETURN(
+      http_fetcher_post_json_method_,
+      GetMethod(env, http_fetcher_class, kHttpFetcherPostJsonMethod,
+                kHttpFetcherPostJsonMethodSignature));
 
-  if (http_fetcher_post_json_method_ == nullptr) {
-    LOG(ERROR) << "Failed to find postJson method";
-    ThrowKryptonException("Failed to find postJson method");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(
+      http_fetcher_lookup_dns_method_,
+      GetMethod(env, http_fetcher_class, kHttpFetcherLookupDnsMethod,
+                kHttpFetcherLookupDnsMethodSignature));
+
+  return absl::OkStatus();
 }
 
-void JniCache::InitializeTimerIdManager(JNIEnv* env) {
+absl::Status JniCache::InitializeTimerIdManager(JNIEnv* env) {
   LOG(INFO) << "Initializing the TimerIdManager method";
 
   // Step 1: Get TimerIdManager object in Krypton object.
-  jmethodID get_timer_id_manager_method =
-      env->GetMethodID(GetKryptonClass(), kKryptonGetTimerIdManagerMethod,
-                       kKryptonGetTimerIdManagerMethodSignature);
+  PPN_ASSIGN_OR_RETURN(
+      jmethodID get_timer_id_manager_method,
+      GetMethod(env, GetKryptonClass(), kKryptonGetTimerIdManagerMethod,
+                kKryptonGetTimerIdManagerMethodSignature));
 
-  if (get_timer_id_manager_method == nullptr) {
-    LOG(ERROR) << "Cannot retrieve the getTimerIdManager method";
-    ThrowKryptonException("Cannot retrieve getTimerIdManager in Krypton.java");
-    return;
-  }
   jobject timer_id_manager_object = static_cast<jobject>(
       env->CallObjectMethod(GetKryptonObject(), get_timer_id_manager_method));
   if (timer_id_manager_object == nullptr) {
-    LOG(ERROR) << "Failed to retrieve TimerIdManager Object";
-    ThrowKryptonException("Failed to retrieve TimerIdManager object");
-    return;
+    return absl::InternalError("failed to retrieve TimerIdManager");
   }
   timer_id_manager_object_ =
       std::make_unique<JavaObject<jobject>>(env, timer_id_manager_object);
 
-  jclass timer_id_manager_class = env->GetObjectClass(timer_id_manager_object);
-  if (timer_id_manager_class == nullptr) {
-    LOG(ERROR) << "Failed to find TimerIdManager class";
-    ThrowKryptonException("Failed to find TimerIdManager class");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(jclass timer_id_manager_class,
+                       GetObjectClass(env, timer_id_manager_object));
   timer_id_manager_class_ =
       std::make_unique<JavaObject<jclass>>(env, timer_id_manager_class);
 
   // Step 2: Save the Method Ids.
-  // StartTimer
-  timer_id_manager_start_timer_method_ =
-      env->GetMethodID(timer_id_manager_class, kTimerIdManagerStartTimerMethod,
-                       kTimerIdManagerStartTimerMethodSignature);
+  PPN_ASSIGN_OR_RETURN(
+      timer_id_manager_start_timer_method_,
+      GetMethod(env, timer_id_manager_class, kTimerIdManagerStartTimerMethod,
+                kTimerIdManagerStartTimerMethodSignature));
 
-  if (timer_id_manager_start_timer_method_ == nullptr) {
-    LOG(ERROR) << "Failed to find startTimer method";
-    ThrowKryptonException("Failed to find startTimer method");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(
+      timer_id_manager_cancel_timer_method_,
+      GetMethod(env, timer_id_manager_class, kTimerIdManagerCancelTimerMethod,
+                kTimerIdManagerCancelTimerMethodSignature));
 
-  // CancelTimer
-  timer_id_manager_cancel_timer_method_ =
-      env->GetMethodID(timer_id_manager_class, kTimerIdManagerCancelTimerMethod,
-                       kTimerIdManagerCancelTimerMethodSignature);
+  PPN_ASSIGN_OR_RETURN(
+      timer_id_manager_cancel_all_timers_method_,
+      GetMethod(env, timer_id_manager_class,
+                kTimerIdManagerCancelAllTimersMethod,
+                kTimerIdManagerCancelAllTimersMethodSignature));
 
-  if (timer_id_manager_cancel_timer_method_ == nullptr) {
-    LOG(ERROR) << "Failed to find cancelTimer method";
-    ThrowKryptonException("Failed to find cancelTimer method");
-    return;
-  }
-
-  // CancelAllTimers
-  timer_id_manager_cancel_all_timers_method_ = env->GetMethodID(
-      timer_id_manager_class, kTimerIdManagerCancelAllTimersMethod,
-      kTimerIdManagerCancelAllTimersMethodSignature);
-
-  if (timer_id_manager_cancel_all_timers_method_ == nullptr) {
-    LOG(ERROR) << "Failed to find cancelAllTimers method";
-    ThrowKryptonException("Failed to find cancelAllTimers method");
-    return;
-  }
+  return absl::OkStatus();
 }
 
-void JniCache::InitializeExceptions(JNIEnv* env) {
+absl::Status JniCache::InitializeExceptions(JNIEnv* env) {
   LOG(INFO) << "Initializing Exceptions";
-  auto exception_class = env->FindClass(kKryptonExceptionClass);
-  if (exception_class == nullptr) {
-    LOG(ERROR) << "Failed to find KryptonException class";
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(auto exception_class,
+                       FindClass(env, kKryptonExceptionClass));
   krypton_exception_class_ =
       std::make_unique<JavaObject<jclass>>(env, exception_class);
+  return absl::OkStatus();
 }
 
-void JniCache::InitializeNotifications(JNIEnv* env) {
+absl::Status JniCache::InitializeNotifications(JNIEnv* env) {
   LOG(INFO) << "Initializing Notifications";
 
-  krypton_connected_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonConnectedMethod,
-                       kKryptonConnectedMethodSignature);
-  if (krypton_connected_method_ == nullptr) {
-    ThrowKryptonException("Cannot find onConnected method in Krypton.java");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(
+      krypton_connected_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonConnectedMethod,
+                kKryptonConnectedMethodSignature));
 
-  krypton_connecting_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonConnectingMethod,
-                       kKryptonConnectingMethodSignature);
-  if (krypton_connecting_method_ == nullptr) {
-    ThrowKryptonException("Cannot find onConnecting method in Krypton.java");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(
+      krypton_connecting_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonConnectingMethod,
+                kKryptonConnectingMethodSignature));
 
-  krypton_control_plane_connected_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonControlPlaneConnectedMethod,
-                       kKryptonControlPlaneConnectedMethodSignature);
-  if (krypton_control_plane_connected_method_ == nullptr) {
-    ThrowKryptonException(
-        "Cannot find onControlPlaneConnected method in Krypton.java");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(
+      krypton_control_plane_connected_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonControlPlaneConnectedMethod,
+                kKryptonControlPlaneConnectedMethodSignature));
 
-  krypton_status_updated_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonStatusUpdatedMethod,
-                       kKryptonStatusUpdatedMethodSignature);
-  if (krypton_status_updated_method_ == nullptr) {
-    ThrowKryptonException("Cannot find onStatusUpdated method in Krypton.java");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(
+      krypton_status_updated_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonStatusUpdatedMethod,
+                kKryptonStatusUpdatedMethodSignature));
 
-  krypton_disconnected_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonDisconnectedMethod,
-                       kKryptonDisconnectedMethodSignature);
-  if (krypton_disconnected_method_ == nullptr) {
-    ThrowKryptonException("Cannot find onDisconnected method in Krypton.java");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(
+      krypton_disconnected_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonDisconnectedMethod,
+                kKryptonDisconnectedMethodSignature));
 
-  krypton_network_disconnected_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonNetworkDisconnectedMethod,
-                       kKryptonNetworkDisconnectedMethodSignature);
-  if (krypton_network_disconnected_method_ == nullptr) {
-    ThrowKryptonException(
-        "Cannot find onNetworkDisconnected method in Krypton.java");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(
+      krypton_network_disconnected_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonNetworkDisconnectedMethod,
+                kKryptonNetworkDisconnectedMethodSignature));
 
-  krypton_permanent_failure_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonPermanentFailureMethod,
-                       kKryptonPermanentFailureMethodSignature);
-  if (krypton_permanent_failure_method_ == nullptr) {
-    ThrowKryptonException(
-        "Cannot find onPermanentFailure method in Krypton.java");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(
+      krypton_permanent_failure_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonPermanentFailureMethod,
+                kKryptonPermanentFailureMethodSignature));
 
-  krypton_crashed_method_ = env->GetMethodID(
-      GetKryptonClass(), kKryptonCrashedMethod, kKryptonCrashedMethodSignature);
-  if (krypton_crashed_method_ == nullptr) {
-    ThrowKryptonException("Cannot find onCrashed method in Krypton.java");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(krypton_crashed_method_,
+                       GetMethod(env, GetKryptonClass(), kKryptonCrashedMethod,
+                                 kKryptonCrashedMethodSignature));
 
-  krypton_waiting_to_reconnect_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonWaitingToReconnectMethod,
-                       kKryptonWaitingToReconnectMethodSignature);
-  if (krypton_waiting_to_reconnect_method_ == nullptr) {
-    ThrowKryptonException(
-        "Cannot find onWaitingToReconnect method in Krypton.java");
-    return;
-  }
+  PPN_ASSIGN_OR_RETURN(
+      krypton_waiting_to_reconnect_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonWaitingToReconnectMethod,
+                kKryptonWaitingToReconnectMethodSignature));
+
+  PPN_ASSIGN_OR_RETURN(krypton_snoozed_method_,
+                       GetMethod(env, GetKryptonClass(), kKryptonSnoozedMethod,
+                                 kKryptonSnoozedMethodSignature));
+
+  PPN_ASSIGN_OR_RETURN(krypton_resumed_method_,
+                       GetMethod(env, GetKryptonClass(), kKryptonResumedMethod,
+                                 kKryptonResumedMethodSignature));
+
+  return absl::OkStatus();
 }
 
-void JniCache::InitializeLogMethod(JNIEnv* env) {
+absl::Status JniCache::InitializeLogMethod(JNIEnv* env) {
   LOG(INFO) << "Initializing Log method";
-
   krypton_log_method_ = env->GetStaticMethodID(
       GetKryptonClass(), kKryptonLogMethod, kKryptonLogMethodSignature);
   if (krypton_log_method_ == nullptr) {
-    LOG(ERROR) << "Cannot find the log method";
+    return absl::NotFoundError("unable to find log method");
   }
+  return absl::OkStatus();
 }
 
-void JniCache::InitializeCreateTunFdMethod(JNIEnv* env) {
-  LOG(INFO) << "Initializing CreateTunFd method";
+absl::Status JniCache::InitializeVpnServiceMethods(JNIEnv* env) {
+  LOG(INFO) << "Initializing VpnService methods";
 
-  krypton_create_tun_fd_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonCreateTunFdMethod,
-                       kKryptonCreateTunFdMethodSignature);
-  if (krypton_create_tun_fd_method_ == nullptr) {
-    LOG(ERROR) << "Cannot find the createTunFd method";
-  }
+  PPN_ASSIGN_OR_RETURN(
+      krypton_create_tun_fd_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonCreateTunFdMethod,
+                kKryptonCreateTunFdMethodSignature));
+
+  PPN_ASSIGN_OR_RETURN(
+      krypton_create_network_fd_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonCreateNetworkFdMethod,
+                kKryptonCreateNetworkFdMethodSignature));
+
+  PPN_ASSIGN_OR_RETURN(
+      krypton_get_oauth_token_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonGetOAuthTokenMethod,
+                kKryptonGetOAuthTokenMethodSignature));
+
+  PPN_ASSIGN_OR_RETURN(
+      krypton_configure_ipsec_method_,
+      GetMethod(env, GetKryptonClass(), kKryptonConfigureIpSecMethod,
+                kKryptonConfigureIpSecMethodSignature));
+
+  return absl::OkStatus();
 }
-
-void JniCache::InitializeCreateNetworkFdMethod(JNIEnv* env) {
-  LOG(INFO) << "Initializing CreateNetworkFd method";
-
-  krypton_create_network_fd_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonCreateNetworkFdMethod,
-                       kKryptonCreateNetworkFdMethodSignature);
-  if (krypton_create_network_fd_method_ == nullptr) {
-    LOG(ERROR) << "Cannot find the createNetworkFd method";
-  }
-}
-
-void JniCache::InitializeGetOAuthTokenMethod(JNIEnv* env) {
-  LOG(INFO) << "Initializing GetOAuthToken method";
-
-  krypton_get_oauth_token_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonGetOAuthTokenMethod,
-                       kKryptonGetOAuthTokenMethodSignature);
-  if (krypton_get_oauth_token_method_ == nullptr) {
-    LOG(ERROR) << "Cannot find the getOAuthToken method";
-  }
-}
-
-void JniCache::InitializeConfigureIpSecMethod(JNIEnv* env) {
-  LOG(INFO) << "Initializing configureIpSec method";
-
-  krypton_configure_ipsec_method_ =
-      env->GetMethodID(GetKryptonClass(), kKryptonConfigureIpSecMethod,
-                       kKryptonConfigureIpSecMethodSignature);
-  if (krypton_configure_ipsec_method_ == nullptr) {
-    LOG(ERROR) << "Cannot find configureIpSec method";
-  }
-}
-
-JniCache::JniCache() {}
 
 jclass JniCache::GetKryptonExceptionClass() const {
   return krypton_exception_class_->get();

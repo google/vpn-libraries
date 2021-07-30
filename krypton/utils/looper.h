@@ -60,10 +60,10 @@ class LooperThread {
 
   // Returns the next closure on the queue. Will block until one is available.
   // Returns nullopt if the queue is empty and lame_duck_ is true.
-  std::optional<std::function<void()>> Dequeue();
+  absl::optional<std::function<void()>> Dequeue();
 
   // Returns the next cleanup handler on the queue. Returns nullopt if none.
-  std::optional<std::function<void()>> DequeueCleanupHandler();
+  absl::optional<std::function<void()>> DequeueCleanupHandler();
 
   // Runs all of the cleanup handler closures that have been added.
   void RunAllCleanupHandlers();

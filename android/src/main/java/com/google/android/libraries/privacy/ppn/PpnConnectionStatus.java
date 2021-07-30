@@ -122,27 +122,15 @@ public final class PpnConnectionStatus {
     }
   }
 
-  // Network Name of the PpnConnection. If on Cellular, NetworkName will be the cellular network
-  // name (i.e. AT&T, Verizon, etc).
-  private final String networkName;
   private final PpnNetworkType networkType;
   private final Security security;
   private final ConnectionQuality connectionQuality;
 
-  private PpnConnectionStatus(
-      String networkName,
-      PpnNetworkType networkType,
-      Security security,
-      ConnectionQuality connectionQuality) {
-    this.networkName = networkName;
+  public PpnConnectionStatus(
+      PpnNetworkType networkType, Security security, ConnectionQuality connectionQuality) {
     this.networkType = networkType;
     this.security = security;
     this.connectionQuality = connectionQuality;
-  }
-
-  /** Returns the name of the WiFi network or cellular provider. */
-  public String getNetworkName() {
-    return networkName;
   }
 
   /** Returns the type of the network, such as WiFi or Cellular. */
@@ -162,9 +150,8 @@ public final class PpnConnectionStatus {
 
   @Override
   public String toString() {
-    return "{ Network: "
-        + networkName
-        + ", Type: "
+    return "ConnectionStatus{ "
+        + "Type: "
         + networkType
         + ", Security: "
         + security
@@ -181,7 +168,6 @@ public final class PpnConnectionStatus {
    */
   public ConnectionStatus toProto() {
     return ConnectionStatus.newBuilder()
-        .setNetworkName(networkName)
         .setNetworkType(networkType.protoValue())
         .setSecurity(security.protoValue())
         .setQuality(connectionQuality.protoValue())
@@ -196,7 +182,6 @@ public final class PpnConnectionStatus {
    */
   public static PpnConnectionStatus fromProto(ConnectionStatus status) throws PpnException {
     return new PpnConnectionStatus(
-        status.getNetworkName(),
         PpnNetworkType.fromProtoValue(status.getNetworkType()),
         Security.fromProtoValue(status.getSecurity()),
         ConnectionQuality.fromProtoValue(status.getQuality()));

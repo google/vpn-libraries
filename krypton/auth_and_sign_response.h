@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
@@ -53,18 +54,31 @@ class AuthAndSignResponse {
   ~AuthAndSignResponse() = default;
 
   // Decodes the proto to AuthAndSignResponse.
-  absl::Status DecodeFromProto(const HttpResponse& response);
+  absl::Status DecodeFromProto(const HttpResponse& response,
+                               const KryptonConfig& config);
 
   absl::Status parsing_status() const { return parsing_status_; }
   const std::string& jwt_token() const { return jwt_token_; }
   const std::vector<std::string>& blinded_token_signatures() const {
     return blinded_token_signatures_;
   }
+  const std::string& copper_controller_hostname() const {
+    return copper_controller_hostname_;
+  }
+  const std::string& region_token_and_signatures() const {
+    return region_token_and_signatures_;
+  }
+  const std::string& apn_type() const {
+    return apn_type_;
+  }
 
  private:
   // Decode Auth specific parameters
-  absl::Status DecodeJsonBody(Json::Value value);
+  absl::Status DecodeJsonBody(Json::Value value, const KryptonConfig& config);
   std::string jwt_token_;
+  std::string copper_controller_hostname_;
+  std::string region_token_and_signatures_;
+  std::string apn_type_;
   std::vector<std::string> blinded_token_signatures_;
   std::vector<std::string> session_manager_ips_;
   absl::Status parsing_status_ = absl::InternalError("Not initialized");

@@ -109,12 +109,11 @@ class Auth {
   void SetState(State) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void HandleAuthAndSignResponse(bool is_rekey, const HttpResponse& response)
       ABSL_LOCKS_EXCLUDED(mutex_);
-  void HandlePublicKeyResponse(bool is_rekey,
-                               const HttpResponse& string_response)
+  void HandlePublicKeyResponse(bool is_rekey, const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
   static void RecordLatency(absl::Time start,
-                     std::vector<google::protobuf::Duration>* latencies,
-                     const std::string& latency_type);
+                            std::vector<google::protobuf::Duration>* latencies,
+                            const std::string& latency_type);
 
   State state_ ABSL_GUARDED_BY(mutex_);
   mutable absl::Mutex mutex_;

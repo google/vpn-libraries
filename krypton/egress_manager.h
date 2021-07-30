@@ -16,6 +16,7 @@
 #define PRIVACY_NET_KRYPTON_EGRESS_MANAGER_H_
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -99,7 +100,7 @@ class EgressManager {
 
   void GetDebugInfo(EgressDebugInfo* debug_info) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  uint32 uplink_spi() const {
+  uint32_t uplink_spi() const {
     absl::MutexLock l(&mutex_);
     return uplink_spi_;
   }
@@ -109,11 +110,6 @@ class EgressManager {
     absl::MutexLock l(&mutex_);
     return egress_node_sock_addresses_;
   }
-
-  absl::optional<std::string> EgressNodeV4SocketAddress() const
-      ABSL_LOCKS_EXCLUDED(mutex_);
-  absl::optional<std::string> EgressNodeV6SocketAddress() const
-      ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::Status SaveEgressDetailsTestOnly(
       std::shared_ptr<AddEgressResponse> egress_response) {
@@ -139,7 +135,7 @@ class EgressManager {
   const std::string brass_url_ ABSL_GUARDED_BY(mutex_);
   State state_ ABSL_GUARDED_BY(mutex_);
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
-  uint32 uplink_spi_ ABSL_GUARDED_BY(mutex_) = -1;
+  uint32_t uplink_spi_ ABSL_GUARDED_BY(mutex_) = -1;
   std::vector<std::string> egress_node_sock_addresses_ ABSL_GUARDED_BY(mutex_);
   std::vector<google::protobuf::Duration> latencies_ ABSL_GUARDED_BY(mutex_);
   absl::Time request_time_ ABSL_GUARDED_BY(mutex_) = absl::InfinitePast();

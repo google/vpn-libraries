@@ -18,11 +18,12 @@ import android.content.Context;
 import androidx.annotation.Nullable;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo;
-import com.google.android.libraries.privacy.ppn.krypton.HttpFetcher;
+import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkManager;
 import com.google.android.libraries.privacy.ppn.xenon.Xenon;
+import java.util.List;
 import org.json.JSONObject;
 
 /** Basic Xenon Implementation that will be used by PpnImpl. */
@@ -61,6 +62,11 @@ public final class XenonImpl implements Xenon {
   @Override
   public void reevaluateNetworks() {
     this.ppnNetworkManager.reevaluateNetworks();
+  }
+
+  @Override
+  public List<PpnNetwork> getAvailableNetworks() {
+    return this.ppnNetworkManager.getAllNetworks();
   }
 
   @Override

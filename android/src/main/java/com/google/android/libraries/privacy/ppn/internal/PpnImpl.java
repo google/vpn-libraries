@@ -14,10 +14,14 @@
 
 package com.google.android.libraries.privacy.ppn.internal;
 
+import static com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher.DNS_CACHE_TIMEOUT;
+import static com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher.DNS_LOOKUP_TIMEOUT;
+
 import android.accounts.Account;
 import android.app.Notification;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Network;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.Handler;
@@ -25,36 +29,52 @@ import android.os.Looper;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
+import androidx.work.WorkManager;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.gms.tasks.TaskExecutors;
 import com.google.android.gms.tasks.Tasks;
 import com.google.android.libraries.privacy.ppn.Ppn;
 import com.google.android.libraries.privacy.ppn.PpnAccountManager;
+import com.google.android.libraries.privacy.ppn.PpnAccountRefresher;
+import com.google.android.libraries.privacy.ppn.PpnConnectingStatus;
 import com.google.android.libraries.privacy.ppn.PpnConnectionStatus;
+import com.google.android.libraries.privacy.ppn.PpnDisconnectionStatus;
 import com.google.android.libraries.privacy.ppn.PpnException;
 import com.google.android.libraries.privacy.ppn.PpnListener;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
-import com.google.android.libraries.privacy.ppn.PpnReconnectStatus;
+import com.google.android.libraries.privacy.ppn.PpnReconnectionStatus;
+import com.google.android.libraries.privacy.ppn.PpnResumeStatus;
+import com.google.android.libraries.privacy.ppn.PpnSnoozeStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
 import com.google.android.libraries.privacy.ppn.PpnTelemetry;
+import com.google.android.libraries.privacy.ppn.internal.http.CachedDns;
+import com.google.android.libraries.privacy.ppn.internal.http.Dns;
+import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.android.libraries.privacy.ppn.internal.service.PpnServiceDebugJson;
 import com.google.android.libraries.privacy.ppn.internal.service.ProtectedSocketFactoryFactory;
+import com.google.android.libraries.privacy.ppn.internal.service.VpnBypassDns;
 import com.google.android.libraries.privacy.ppn.internal.service.VpnManager;
-import com.google.android.libraries.privacy.ppn.krypton.HttpFetcher;
 import com.google.android.libraries.privacy.ppn.krypton.Krypton;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonException;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonFactory;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonImpl;
+import com.google.android.libraries.privacy.ppn.krypton.KryptonIpSecHelper;
+import com.google.android.libraries.privacy.ppn.krypton.KryptonIpSecHelperImpl;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonListener;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener;
 import com.google.android.libraries.privacy.ppn.xenon.Xenon;
 import com.google.android.libraries.privacy.ppn.xenon.impl.XenonImpl;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Optional;
-import java.util.concurrent.Executor;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.json.JSONObject;
@@ -72,7 +92,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   private final Context context;
 
   /* Executor for any work that PPN needs to do off the UI thread. */
-  private final Executor backgroundExecutor;
+  private final ExecutorService backgroundExecutor;
 
   private final VpnManager vpnManager;
   private final HttpFetcher httpFetcher;
@@ -95,7 +115,15 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
   private Xenon xenon;
 
+  // This is lazy-initialized, because it is only created if we are actually using IpSec.
+  @Nullable private KryptonIpSecHelper ipSecHelper;
+
+  // These settings can be changed while PPN is running.
   private boolean safeDisconnectEnabled;
+  private Set<String> disallowedApplications = Collections.emptySet();
+
+  // Tracks whether PPN is fully connected, for managing notification state.
+  private AtomicBoolean connected = new AtomicBoolean();
 
   /*
    * Cached account that was used to enable PPN.
@@ -103,12 +131,19 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
    */
   private volatile Account cachedAccount = null;
 
+  /*
+   * Class that refreshes a user account in the background periodically to keep it cached.
+   * This is nullable because it's constructed when PPN gets a user account.
+   */
+  @Nullable private PpnAccountRefresher accountRefresher;
+
   // TODO: Re-organize these methods so this class is more readable.
 
   @Override
   public void onKryptonPermanentFailure(PpnStatus status) {
     Log.w(TAG, "Krypton stopped with status: " + status);
-    stop(status);
+    connected.set(false);
+    stopKryptonAndService(status);
   }
 
   @Override
@@ -132,11 +167,20 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     } catch (PpnException e) {
       Log.e(TAG, "Invalid status proto.", e);
     }
+    connected.set(true);
   }
 
   @Override
-  public void onKryptonConnecting() {
-    Log.w(TAG, "Krypton connecting: trying to start a new session.");
+  public void onKryptonConnecting(ConnectingStatus status) {
+    Log.w(TAG, "Krypton connecting...");
+    PpnConnectingStatus connectingStatus = PpnConnectingStatus.fromProto(status);
+    Log.w(TAG, "Krypton connecting status: " + connectingStatus);
+    if (listener == null) {
+      return;
+    }
+
+    // The Krypton listener doesn't guarantee calls are on the main thread, so enforce it for PPN.
+    mainHandler.post(() -> listener.onPpnConnecting(connectingStatus));
   }
 
   @Override
@@ -150,6 +194,10 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     if (listener == null) {
       return;
     }
+    if (!connected.get()) {
+      Log.w(TAG, "Ignoring connection status update, because Krypton is disconnected.");
+      return;
+    }
     try {
       PpnConnectionStatus ppnStatus = PpnConnectionStatus.fromProto(status);
       Log.w(TAG, "Krypton status: " + ppnStatus);
@@ -161,15 +209,19 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   }
 
   @Override
-  public void onKryptonDisconnected(PpnStatus status) {
-    Log.w(TAG, "Krypton disconnected: " + status);
+  public void onKryptonDisconnected(DisconnectionStatus status) {
+    Log.w(TAG, "Krypton disconnected: " + status.getCode() + ": " + status.getMessage());
     telemetry.notifyDisconnected();
+    connected.set(false);
 
+    PpnDisconnectionStatus ppnStatus = PpnDisconnectionStatus.fromProto(status);
+    Log.w(TAG, "Krypton disconnection status: " + ppnStatus);
     if (listener == null) {
       return;
     }
+
     // The Krypton listener doesn't guarantee calls are on the main thread, so enforce it for PPN.
-    mainHandler.post(() -> listener.onPpnDisconnected(status));
+    mainHandler.post(() -> listener.onPpnDisconnected(ppnStatus));
   }
 
   @Override
@@ -179,8 +231,57 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   }
 
   @Override
-  public void onKryptonWaitingToReconnect(PpnReconnectStatus status) {
-    Log.w(TAG, "Krypton waiting to reconnect: " + status);
+  public void onKryptonWaitingToReconnect(ReconnectionStatus status) {
+    Log.w(TAG, "Krypton waiting to reconnect...");
+    PpnReconnectionStatus reconnectionStatus = PpnReconnectionStatus.fromProto(status);
+    Log.w(TAG, "Krypton reconnection status: " + reconnectionStatus);
+    if (listener == null) {
+      return;
+    }
+
+    // The Krypton listener doesn't guarantee calls are on the main thread, so enforce it for PPN.
+    mainHandler.post(() -> listener.onPpnWaitingToReconnect(reconnectionStatus));
+  }
+
+  @Override
+  public void onKryptonSnoozed(SnoozeStatus status) {
+    Log.w(TAG, "Krypton is snoozed.");
+    Log.w(TAG, "Stopping Xenon for snooze.");
+    try {
+      xenon.stop();
+      Log.w(TAG, "Stopped Xenon for snooze.");
+    } catch (PpnException e) {
+      Log.e(TAG, "Unable to stop Krypton after PPN is snoozed.", e);
+    }
+    // TODO: pause AccountRefresher while Krypton is snoozed.
+    PpnSnoozeStatus snoozeStatus = PpnSnoozeStatus.fromProto(status);
+    Log.w(TAG, "Krypton snooze status: " + snoozeStatus);
+    if (listener == null) {
+      return;
+    }
+
+    // The Krypton listener doesn't guarantee calls are on the main thread, so enforce it for PPN.
+    mainHandler.post(() -> listener.onPpnSnoozed(snoozeStatus));
+  }
+
+  @Override
+  public void onKryptonResumed(ResumeStatus status) {
+    Log.w(TAG, "Krypton is resumed.");
+    PpnResumeStatus resumeStatus = PpnResumeStatus.fromProto(status);
+    Log.w(TAG, "Krypton resume status: " + resumeStatus);
+    if (listener == null) {
+      return;
+    }
+    Log.w(TAG, "Starting Xenon after resuming from snooze.");
+    try {
+      xenon.start();
+      Log.w(TAG, "Started Xenon after resuming from snooze.");
+    } catch (PpnException e) {
+      Log.e(TAG, "Unable to start Krypton after Ppn has resumed.", e);
+    }
+
+    // The Krypton listener doesn't guarantee calls are on the main thread, so enforce it for PPN.
+    mainHandler.post(() -> listener.onPpnResumed(resumeStatus));
   }
 
   @Override
@@ -202,7 +303,16 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
   @Override
   public void onKryptonNeedsIpSecConfiguration(IpSecTransformParams params) throws PpnException {
-    vpnManager.configureIpSec(params);
+    synchronized (kryptonLock) {
+      if (ipSecHelper == null) {
+        ipSecHelper = new KryptonIpSecHelperImpl(context, xenon);
+      }
+    }
+    try {
+      ipSecHelper.transformFd(params);
+    } catch (KryptonException e) {
+      throw new PpnException("Unable to configure IpSec.", e);
+    }
   }
 
   @Override
@@ -217,12 +327,17 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     this.backgroundExecutor = options.getBackgroundExecutor();
     this.notificationManager = new PpnNotificationManager();
     this.telemetry = new PpnTelemetryManager();
-    this.vpnManager = new VpnManager(context, options);
-    this.httpFetcher = new HttpFetcher(new ProtectedSocketFactoryFactory(vpnManager));
+    this.vpnManager = new VpnManager(context);
+
+    Dns dns = new VpnBypassDns(vpnManager);
+    if (options.isDnsCacheEnabled()) {
+      dns = new CachedDns(dns, DNS_CACHE_TIMEOUT, DNS_LOOKUP_TIMEOUT, backgroundExecutor);
+    }
+    this.httpFetcher = new HttpFetcher(new ProtectedSocketFactoryFactory(vpnManager), dns);
+
     this.kryptonFactory =
-        (KryptonListener kryptonListener, Executor bgExecutor) -> {
-          return new KryptonImpl(httpFetcher, kryptonListener, bgExecutor);
-        };
+        (KryptonListener kryptonListener, ExecutorService bgExecutor) ->
+            new KryptonImpl(context, httpFetcher, kryptonListener, bgExecutor);
 
     Optional<PpnAccountManager> accountManager = options.getAccountManager();
     this.accountManager =
@@ -231,6 +346,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     this.xenon = new XenonImpl(context, this, httpFetcher, options);
 
     this.safeDisconnectEnabled = options.isSafeDisconnectEnabled();
+    this.disallowedApplications = options.getDisallowedApplications();
 
     PpnLibrary.init(this);
   }
@@ -238,25 +354,128 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   /** Nullifies the cached account used for enabling PPN. */
   @VisibleForTesting
   void clearCachedAccount() {
+    Log.i(TAG, "Clearing cached account.");
     cachedAccount = null;
   }
-  
+
   @Override
   public void start(Account account) throws PpnException {
     Log.w(TAG, "PPN status: " + getDebugJson());
     getSettings().setAccountName(account.name);
     cachedAccount = account;
+    // Snapshot the disallowed applications, so that it only changes when PPN is restarted.
+    vpnManager.setDisallowedApplications(disallowedApplications);
     startVpn();
   }
 
   @Override
   public void stop() {
-    stop(PpnStatus.STATUS_OK);
+    // Stopping Krypton requires getting the Krypton lock and waiting for Krypton's threads to be
+    // joined, so we kick it off to the background Executor.
+    backgroundExecutor.execute(() -> stopKryptonAndService(PpnStatus.STATUS_OK));
   }
 
-  private void stop(PpnStatus status) {
+  @Override
+  public ListenableFuture<Void> restart() {
+    Log.w(TAG, "Restarting Ppn.");
+    return Futures.submit(
+        () -> {
+          try {
+            synchronized (kryptonLock) {
+              if (krypton != null) {
+                stopKrypton();
+                vpnManager.setDisallowedApplications(disallowedApplications);
+                startKrypton();
+              }
+            }
+          } catch (PpnException e) {
+            Log.e(TAG, "Failed to restart Ppn.", e);
+            throw e;
+          }
+          return null;
+        },
+        backgroundExecutor);
+  }
+
+  @Override
+  public ListenableFuture<Void> snooze(Duration snoozeDuration) {
+    return Futures.submit(
+        () -> {
+          try {
+            synchronized (kryptonLock) {
+              if (krypton != null) {
+                Log.i(TAG, "Snoozing krypton connection for " + snoozeDuration.toMillis() + " ms.");
+                krypton.snooze(snoozeDuration.toMillis());
+              }
+            }
+          } catch (KryptonException e) {
+            Log.e(TAG, "Failed to snooze Ppn for specified duration.", e);
+            throw e;
+          }
+          return null;
+        },
+        backgroundExecutor);
+  }
+
+  @Override
+  public ListenableFuture<Void> resume() {
+    return Futures.submit(
+        () -> {
+          try {
+            synchronized (kryptonLock) {
+              if (krypton != null) {
+                Log.i(TAG, "Resuming krypton connection.");
+                krypton.resume();
+              }
+            }
+          } catch (KryptonException e) {
+            Log.e(TAG, "Failed to resume Ppn after snooze.", e);
+            throw e;
+          }
+          return null;
+        },
+        backgroundExecutor);
+  }
+
+  @Override
+  public ListenableFuture<Void> extendSnooze(Duration extendDuration) {
+    return Futures.submit(
+        () -> {
+          try {
+            synchronized (kryptonLock) {
+              if (krypton != null) {
+                Log.i(TAG, "Extending krypton snooze for " + extendDuration.toMillis() + " ms.");
+                krypton.extendSnooze(extendDuration.toMillis());
+              }
+            }
+          } catch (KryptonException e) {
+            Log.e(
+                TAG,
+                "Failed to extend snooze duration for " + extendDuration.toMillis() + " ms",
+                e);
+            throw e;
+          }
+          return null;
+        },
+        backgroundExecutor);
+  }
+
+  /**
+   * Stops Krypton and tells the VpnService to stop.
+   *
+   * @param status The status that PPN should report to the listener when it is finished stopping.
+   */
+  @VisibleForTesting
+  void stopKryptonAndService(PpnStatus status) {
     Log.w(TAG, "Stopping PPN: " + status);
     try {
+      // We have to stop Krypton before trying to stop the Service, because as long as the VPN is
+      // established, the Service will be bound by Android as a foreground Service, and stopSelf
+      // will be ignored.
+      //
+      // However, anything other than Krypton that needs to be stopped can be handled by the
+      // Service's onDestroy method calling onStopService().
+      //
       Log.w(TAG, "Ready to stop Krypton.");
       stopKrypton();
     } catch (PpnException e) {
@@ -269,19 +488,36 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   }
 
   @Override
-  public void setSafeDisconnectEnabled(boolean enable) {
+  public ListenableFuture<Void> setSafeDisconnectEnabled(boolean enable) {
+    // Store the value for the next time PPN is started.
     this.safeDisconnectEnabled = enable;
-    try {
-      synchronized (kryptonLock) {
-        if (krypton != null) {
-          // Call a setter that injects feature state into Krypton.
-          krypton.setSafeDisconnectEnabled(enable);
-        }
-        // If Krypton isn't running, feature state will be passed on Krypton startup through config.
-      }
-    } catch (KryptonException e) {
-      Log.e(TAG, "Unable to set Safe Disconnect in Krypton.", e);
+
+    // If PPN is already running, tell Krypton to update the value.
+    return Futures.submit(
+        () -> {
+          try {
+            synchronized (kryptonLock) {
+              if (krypton != null) {
+                // Call a setter that injects feature state into Krypton.
+                krypton.setSafeDisconnectEnabled(enable);
+              }
+              // If Krypton isn't running, feature state will be passed on Krypton startup through
+              // config.
+            }
+          } catch (KryptonException e) {
+            Log.e(TAG, "Unable to set Safe Disconnect in Krypton.", e);
+          }
+        },
+        backgroundExecutor);
+  }
+
+  @Override
+  public void setDisallowedApplications(Iterable<String> disallowedApplications) {
+    HashSet<String> copy = new HashSet<>();
+    for (String packageName : disallowedApplications) {
+      copy.add(packageName);
     }
+    this.disallowedApplications = Collections.unmodifiableSet(copy);
   }
 
   /** Returns the current Safe Disconnect state. */
@@ -295,14 +531,38 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     return vpnManager.isRunning();
   }
 
+  /** Puts Krypton in a horrible wedged state, for testing app bypass, etc. */
+  @Override
+  public ListenableFuture<Void> setSimulatedNetworkFailure(boolean simulatedNetworkFailure) {
+    return Futures.submit(
+        () -> {
+          try {
+            synchronized (kryptonLock) {
+              if (krypton != null) {
+                Log.i(TAG, "Setting simulated network failure to " + simulatedNetworkFailure);
+                krypton.setSimulatedNetworkFailure(simulatedNetworkFailure);
+              } else {
+                Log.i(
+                    TAG,
+                    "Not setting simulated network failure to "
+                        + simulatedNetworkFailure
+                        + ", because Krypton isn't running.");
+              }
+            }
+          } catch (KryptonException e) {
+            Log.e(TAG, "Failed to set simulated network failure.", e);
+            throw new PpnException("Failed to set simulated network failure", e);
+          }
+          return null;
+        },
+        backgroundExecutor);
+  }
+
   @Override
   public JSONObject getDebugJson() {
     PpnDebugJson.Builder builder = new PpnDebugJson.Builder();
 
-    builder.setServiceDebugJson(
-        new PpnServiceDebugJson.Builder()
-            .setRunning(isRunning())
-            .build());
+    builder.setServiceDebugJson(new PpnServiceDebugJson.Builder().setRunning(isRunning()).build());
 
     synchronized (kryptonLock) {
       if (krypton != null) {
@@ -381,6 +641,15 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
         .continueWithTask(
             backgroundExecutor,
             accountTask -> {
+              Log.w(TAG, "Starting PpnAccountRefresher.");
+              accountRefresher =
+                  accountManager.createAccountRefresher(
+                      WorkManager.getInstance(context.getApplicationContext()),
+                      backgroundExecutor,
+                      accountTask.getResult().name,
+                      options.getZincOAuthScopes());
+              accountRefresher.start();
+
               Log.w(TAG, "PPN ready to start Krypton.");
               startKrypton();
               return accountTask;
@@ -463,8 +732,15 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
    */
   public String getZincOAuthToken() throws PpnException {
     ensureBackgroundThread();
-    Account account = getPpnAccount();
-    return accountManager.getOAuthToken(context, account, options.getZincOAuthScopes());
+    Network network = null;
+    PpnNetwork ppnNetwork = vpnManager.getNetwork();
+    if (ppnNetwork != null) {
+      network = ppnNetwork.getNetwork();
+    }
+    if (accountRefresher == null) {
+      throw new PpnException("Tried to getZincOAuthToken with null accountRefresher.");
+    }
+    return accountRefresher.getToken(context, network);
   }
 
   /**
@@ -480,7 +756,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     this.kryptonFactory = factory;
   }
 
-  /** Returns VpnManager so a KryptonIpSecHelper instance can be set. For testing only. */
+  /** Returns VpnManager for testing only. */
   @VisibleForTesting
   VpnManager getVpnManager() {
     return vpnManager;
@@ -517,6 +793,9 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     if (options.getCopperControllerAddress().isPresent()) {
       builder.setCopperControllerAddress(options.getCopperControllerAddress().get());
     }
+
+    builder.addAllCopperHostnameSuffix(options.getCopperHostnameSuffix());
+
     if (options.isIpSecEnabled().isPresent()) {
       builder.setIpsecDatapath(options.isIpSecEnabled().get());
     }
@@ -661,6 +940,12 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
       Log.e(TAG, "Unable to stop Krypton.", e);
     }
 
+    // Stop the AccountRefresher if it hasn't been stopped.
+    if (accountRefresher != null) {
+      accountRefresher.stop();
+      accountRefresher = null;
+    }
+
     // Report to the listener why PPN was stopped.
     telemetry.notifyStopped();
     if (listener != null) {
@@ -714,12 +999,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
   @Override
   public void onNetworkStatusChanged(PpnNetwork ppnNetwork, ConnectionStatus connectionStatus) {
-    Log.w(TAG, "Setting received network status changed.");
-    try {
-      listener.onPpnStatusUpdated(PpnConnectionStatus.fromProto(connectionStatus));
-    } catch (PpnException e) {
-      Log.e(TAG, "Failure in propagating ConnectionStatus change in network.", e);
-    }
+    Log.w(TAG, "Received network status changed - this is a no-op.");
   }
 
   private static void ensureBackgroundThread() {

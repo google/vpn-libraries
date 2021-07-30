@@ -14,22 +14,29 @@
 
 package com.google.android.libraries.privacy.ppn.krypton;
 
-import android.support.annotation.VisibleForTesting;
+import android.content.Context;
+import androidx.annotation.VisibleForTesting;
 import android.util.Log;
+import androidx.work.WorkManager;
 import com.google.android.libraries.privacy.ppn.PpnException;
-import com.google.android.libraries.privacy.ppn.PpnReconnectStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
+import com.google.android.libraries.privacy.ppn.internal.ConnectingStatus;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
+import com.google.android.libraries.privacy.ppn.internal.DisconnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.IpSecTransformParams;
 import com.google.android.libraries.privacy.ppn.internal.KryptonConfig;
 import com.google.android.libraries.privacy.ppn.internal.KryptonDebugInfo;
 import com.google.android.libraries.privacy.ppn.internal.KryptonTelemetry;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo;
+import com.google.android.libraries.privacy.ppn.internal.PpnStatusDetails;
+import com.google.android.libraries.privacy.ppn.internal.ReconnectionStatus;
+import com.google.android.libraries.privacy.ppn.internal.ResumeStatus;
+import com.google.android.libraries.privacy.ppn.internal.SnoozeStatus;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
+import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.time.Duration;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import org.json.JSONObject;
 
 /**
@@ -49,7 +56,7 @@ public class KryptonImpl implements Krypton, TimerListener {
 
   private final KryptonListener listener;
   private final HttpFetcher httpFetcher;
-  private final Executor backgroundExecutor;
+  private final ExecutorService backgroundExecutor;
   private final TimerIdManager timerIdManager;
 
   /**
@@ -59,11 +66,15 @@ public class KryptonImpl implements Krypton, TimerListener {
    * @param backgroundExecutor An executor to use for any background work Krypton needs to do.
    */
   public KryptonImpl(
-      HttpFetcher httpFetcher, KryptonListener kryptonListener, Executor backgroundExecutor) {
+      Context context,
+      HttpFetcher httpFetcher,
+      KryptonListener kryptonListener,
+      ExecutorService backgroundExecutor) {
     this.httpFetcher = httpFetcher;
     this.listener = kryptonListener;
     this.backgroundExecutor = backgroundExecutor;
-    this.timerIdManager = new TimerIdManager(this);
+    this.timerIdManager =
+        new TimerIdManager(this, WorkManager.getInstance(context.getApplicationContext()));
   }
 
   // Native methods, implemented in krypton_jni.cc
@@ -83,12 +94,35 @@ public class KryptonImpl implements Krypton, TimerListener {
   private native void startNative(byte[] configBytes) throws KryptonException;
 
   /**
+   * Snoozes Krypton.
+   *
+   * <p>Implemented in the native library |Krypton::Snooze|
+   */
+  @Override
+  public native void snooze(long snoozeDurationMs) throws KryptonException;
+
+  /**
+   * Extends Krypton snooze duration.
+   *
+   * <p>Implemented in native library |Krypton::ExtendSnooze|
+   */
+  @Override
+  public native void extendSnooze(long extendSnoozeDurationMs) throws KryptonException;
+
+  /**
+   * Resumes Krypton.
+   *
+   * <p>Implemented in the native library |Krypton::Resume|
+   */
+  @Override
+  public native void resume() throws KryptonException;
+
+  /**
    * Stops the Krypton service, closing any open connections.
    *
    * <p>Implemented in the native library |Krypton::Stop|
    */
-  @Override
-  public native void stop() throws KryptonException;
+  private native void stopNative() throws KryptonException;
 
   /**
    * Switches the outgoing network for PPN.
@@ -111,10 +145,6 @@ public class KryptonImpl implements Krypton, TimerListener {
   // Native method for timer expiry.
   private native void timerExpired(int timerId);
 
-  // Native method for Pause
-  @Override
-  public native void pause(int durationMilliseconds) throws KryptonException;
-
   /**
    * Sets the state of the Safe Disconnect feature in Krypton.
    *
@@ -130,6 +160,11 @@ public class KryptonImpl implements Krypton, TimerListener {
    */
   @Override
   public native boolean isSafeDisconnectEnabled() throws KryptonException;
+
+  /** Native method for putting Krypton into a horrible wedged state. */
+  @Override
+  public native void setSimulatedNetworkFailure(boolean simulatedNetworkFailure)
+      throws KryptonException;
 
   /**
    * Native method for collecting telemetry.
@@ -175,8 +210,14 @@ public class KryptonImpl implements Krypton, TimerListener {
     }
   }
 
-  private void onConnecting() {
-    listener.onKryptonConnecting();
+  private void onConnecting(byte[] statusBytes) {
+    try {
+      ConnectingStatus status =
+          ConnectingStatus.parseFrom(statusBytes, ExtensionRegistryLite.getEmptyRegistry());
+      listener.onKryptonConnecting(status);
+    } catch (InvalidProtocolBufferException e) {
+      Log.e(TAG, "Invalid status proto.", e);
+    }
   }
 
   private void onControlPlaneConnected() {
@@ -193,36 +234,85 @@ public class KryptonImpl implements Krypton, TimerListener {
     }
   }
 
-  private void onDisconnected(int code, String reason) {
-    PpnStatus status = new PpnStatus(code, reason);
-    listener.onKryptonDisconnected(status);
+  private void onDisconnected(byte[] statusBytes) {
+    try {
+      DisconnectionStatus disconnectionStatus =
+          DisconnectionStatus.parseFrom(statusBytes, ExtensionRegistryLite.getEmptyRegistry());
+      listener.onKryptonDisconnected(disconnectionStatus);
+    } catch (InvalidProtocolBufferException e) {
+      Log.e(TAG, "Invalid status proto.", e);
+    }
   }
 
   /** Used for notifying the network that is being used has disconnected. */
-  private void onNetworkFailed(byte[] networkInfoBytes, int code, String reason) {
-    PpnStatus status = new PpnStatus(code, reason);
+  private void onNetworkFailed(
+      byte[] networkInfoBytes, int code, String reason, byte[] detailsBytes) {
     try {
       NetworkInfo networkInfo =
           NetworkInfo.parseFrom(networkInfoBytes, ExtensionRegistryLite.getEmptyRegistry());
+      PpnStatusDetails details =
+          PpnStatusDetails.parseFrom(detailsBytes, ExtensionRegistryLite.getEmptyRegistry());
+      PpnStatus status =
+          new PpnStatus.Builder(code, reason)
+              .setDetailedErrorCode(
+                  PpnStatus.DetailedErrorCode.fromCode(details.getDetailedErrorCode().getNumber()))
+              .build();
+
       listener.onKryptonNetworkFailed(status, networkInfo);
     } catch (InvalidProtocolBufferException e) {
       Log.e(TAG, "Unable to create network info.", e);
     }
   }
 
-  private void onPermanentFailure(int code, String reason) {
-    PpnStatus status = new PpnStatus(code, reason);
-    // Make sure to run this asynchronously, so that stopping Krypton won't cause deadlocks.
-    backgroundExecutor.execute(() -> listener.onKryptonPermanentFailure(status));
+  private void onPermanentFailure(int code, String reason, byte[] detailsBytes) {
+    try {
+      PpnStatusDetails details =
+          PpnStatusDetails.parseFrom(detailsBytes, ExtensionRegistryLite.getEmptyRegistry());
+      PpnStatus status =
+          new PpnStatus.Builder(code, reason)
+              .setDetailedErrorCode(
+                  PpnStatus.DetailedErrorCode.fromCode(details.getDetailedErrorCode().getNumber()))
+              .build();
+
+      // Make sure to run this asynchronously, so that stopping Krypton won't cause deadlocks.
+      backgroundExecutor.execute(() -> listener.onKryptonPermanentFailure(status));
+    } catch (InvalidProtocolBufferException e) {
+      Log.e(TAG, "Unable to parse status details.", e);
+    }
   }
 
   private void onCrashed() {
     listener.onKryptonCrashed();
   }
 
-  private void onWaitingToReconnect(long retryMillis) {
-    PpnReconnectStatus status = new PpnReconnectStatus(Duration.ofMillis(retryMillis));
-    listener.onKryptonWaitingToReconnect(status);
+  private void onWaitingToReconnect(byte[] statusBytes) {
+    try {
+      ReconnectionStatus status =
+          ReconnectionStatus.parseFrom(statusBytes, ExtensionRegistryLite.getEmptyRegistry());
+      listener.onKryptonWaitingToReconnect(status);
+    } catch (InvalidProtocolBufferException e) {
+      Log.e(TAG, "Invalid status proto.", e);
+    }
+  }
+
+  private void onKryptonSnoozed(byte[] statusBytes) {
+    try {
+      SnoozeStatus status =
+          SnoozeStatus.parseFrom(statusBytes, ExtensionRegistryLite.getEmptyRegistry());
+      listener.onKryptonSnoozed(status);
+    } catch (InvalidProtocolBufferException e) {
+      Log.e(TAG, "Invalid status proto.", e);
+    }
+  }
+
+  private void onKryptonResumed(byte[] statusBytes) {
+    try {
+      ResumeStatus status =
+          ResumeStatus.parseFrom(statusBytes, ExtensionRegistryLite.getEmptyRegistry());
+      listener.onKryptonResumed(status);
+    } catch (InvalidProtocolBufferException e) {
+      Log.e(TAG, "Invalid status proto.", e);
+    }
   }
 
   /**
@@ -270,11 +360,12 @@ public class KryptonImpl implements Krypton, TimerListener {
           IpSecTransformParams.parseFrom(
               ipSecTransformParamsBytes, ExtensionRegistryLite.getEmptyRegistry());
       listener.onKryptonNeedsIpSecConfiguration(ipSecParams);
+      Log.e(TAG, "Configuring IpSec was successful.");
       return true;
-    } catch (PpnException | InvalidProtocolBufferException e) {
-      Log.e(TAG, "Unable to configure IPSec.", e);
+    } catch (Exception e) {
+      Log.e(TAG, "Unable to configure IpSec.", e);
+      return false;
     }
-    return false;
   }
 
   /**
@@ -309,6 +400,17 @@ public class KryptonImpl implements Krypton, TimerListener {
   public void start(KryptonConfig config) throws KryptonException {
     init();
     startNative(config.toByteArray());
+  }
+
+  /**
+   * Stops the Krypton service, closing any open connections.
+   *
+   * <p>Implemented in the native library |Krypton::Stop|
+   */
+  @Override
+  public void stop() throws KryptonException {
+    stopNative();
+    timerIdManager.stop();
   }
 
   /**

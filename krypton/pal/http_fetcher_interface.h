@@ -22,6 +22,7 @@
 #include <thread>  //NOLINT
 
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
+#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/jsoncpp/value.h"
 
@@ -44,6 +45,10 @@ class HttpFetcherInterface {
   // This is a synchronous call that fetches from a remote server.
   // headers: Http headers
   virtual HttpResponse PostJson(const HttpRequest& request) = 0;
+
+  // A synchronous cached DNS lookup.
+  virtual absl::StatusOr<std::string> LookupDns(
+      const std::string& hostname) = 0;
 };
 
 }  // namespace krypton

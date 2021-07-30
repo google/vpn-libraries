@@ -14,10 +14,10 @@
 
 package com.google.android.libraries.privacy.ppn.krypton;
 
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 
 /** Provides concrete instances of the Krypton interface. */
 public interface KryptonFactory {
   /** Returns a new Krypton instance with the given params. */
-  Krypton createKrypton(KryptonListener listener, Executor backgroundExecutor);
+  Krypton createKrypton(KryptonListener listener, ExecutorService backgroundExecutor);
 }

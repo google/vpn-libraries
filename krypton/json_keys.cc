@@ -39,6 +39,8 @@ const char JsonKeys::kServerCryptoKey[] = "server_crypto_key";
 const char JsonKeys::kIpRanges[] = "ip_ranges";
 const char JsonKeys::kDataplaneSockAddr[] = "data_plane_sock_addrs";
 const char JsonKeys::kError[] = "error";
+const char JsonKeys::kApnType[] = "apn_type";
+
 
 // PPN
 const char JsonKeys::kPpn[] = "ppn";
@@ -61,6 +63,8 @@ const char JsonKeys::kRekeyVerificationKey[] = "rekey_verification_key";
 const char JsonKeys::kPreviousUplinkSpi[] = "previous_uplink_spi";
 const char JsonKeys::kPem[] = "pem";
 const char JsonKeys::kBlindedTokenSignature[] = "blinded_token_signature";
+const char JsonKeys::kCopperControllerHostname[] = "copper_controller_hostname";
+const char JsonKeys::kRegionTokenAndSignature[] = "region_token_and_signature";
 const char JsonKeys::kIsUnblindedToken[] = "is_unblinded_token";
 const char JsonKeys::kUnblindedTokenSignature[] = "unblinded_token_signature";
 const char JsonKeys::kPublicKeyHash[] = "public_key_hash";

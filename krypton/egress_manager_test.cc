@@ -14,6 +14,7 @@
 
 #include "privacy/net/krypton/egress_manager.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -22,8 +23,9 @@
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/json_keys.h"
-#include "privacy/net/krypton/pal/http_fetcher_interface.h"
+#include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
@@ -50,15 +52,11 @@ class MockEgressManagerNotification
   MOCK_METHOD(void, EgressUnavailable, (const absl::Status&), (override));
 };
 
-class HttpFetcherImplForAddEgress : public HttpFetcherInterface {
- public:
-  MOCK_METHOD(HttpResponse, PostJson, (const HttpRequest&), (override));
-};
-
 class EgressManagerTest : public ::testing::Test {
  public:
   MockEgressManagerNotification mock_notification_;
-  crypto::SessionCrypto crypto_;
+  KryptonConfig config_;
+  crypto::SessionCrypto crypto_{&config_};
 
   std::shared_ptr<AuthAndSignResponse> BuildFakeAuthResponse() {
     auto fake_auth_response = std::make_shared<AuthAndSignResponse>();
@@ -69,11 +67,14 @@ class EgressManagerTest : public ::testing::Test {
     response.mutable_status()->set_message("OK");
     response.set_json_body(R"json({"jwt": "some_jwt_token"})json");
 
-    EXPECT_OK(fake_auth_response->DecodeFromProto(response));
+    KryptonConfig config;
+    config.add_copper_hostname_suffix("g-tun.com");
+    EXPECT_OK(fake_auth_response->DecodeFromProto(response, config));
     return fake_auth_response;
   }
 
-  HttpRequest buildAddEgressRequestPpnIpSec(absl::string_view url, uint32 spi) {
+  HttpRequest buildAddEgressRequestPpnIpSec(absl::string_view url,
+                                            uint32_t spi) {
     Json::FastWriter writer;
     HttpRequest request;
     request.set_url(url);
@@ -83,13 +84,14 @@ class EgressManagerTest : public ::testing::Test {
   }
 
   // Request from AddEgress.
-  Json::Value buildJsonBodyForAddEgressRequestPpnIpSec(uint32 spi) {
+  Json::Value buildJsonBodyForAddEgressRequestPpnIpSec(uint32_t spi) {
     Json::Value expected;
     Json::Reader reader;
     reader.parse(R"string({
       "ppn" : {
       },
-      "unblinded_token" : "some_jwt_token"
+      "unblinded_token" : "some_jwt_token",
+      "region_token_and_signature" : "",
    })string",
                  expected);
     auto keys = crypto_.GetMyKeyMaterial();
@@ -97,6 +99,7 @@ class EgressManagerTest : public ::testing::Test {
     expected[JsonKeys::kPpn][JsonKeys::kClientPublicValue] = keys.public_value;
     expected[JsonKeys::kPpn][JsonKeys::kControlPlaneSockAddr] =
         "192.168.0.10:1849";
+    expected[JsonKeys::kPpn][JsonKeys::kApnType] = "ppn";
 
     expected[JsonKeys::kPpn][JsonKeys::kDownlinkSpi] = spi;
     expected[JsonKeys::kPpn][JsonKeys::kSuite] = "AES128_GCM";
@@ -115,7 +118,7 @@ class EgressManagerTest : public ::testing::Test {
   }
 
   HttpResponse buildAddEgressResponseForPpnIpSec() {
-    crypto::SessionCrypto server_crypto;
+    crypto::SessionCrypto server_crypto(&config_);
     auto keys = crypto_.GetMyKeyMaterial();
     Json::Reader reader;
     Json::Value json_body;
@@ -150,7 +153,7 @@ class EgressManagerTest : public ::testing::Test {
 };
 
 TEST_F(EgressManagerTest, SuccessfulEgress) {
-  HttpFetcherImplForAddEgress http_fetcher;
+  MockHttpFetcher http_fetcher;
 
   EgressManager egress_manager("http://www.example.com/addegress",
                                &http_fetcher, &looper_thread_);
@@ -184,7 +187,7 @@ TEST_F(EgressManagerTest, SuccessfulEgress) {
 }
 
 TEST_F(EgressManagerTest, TestNoDataPath) {
-  HttpFetcherImplForAddEgress http_fetcher;
+  MockHttpFetcher http_fetcher;
   EgressManager egress_manager("http://www.example.com/addegress",
                                &http_fetcher, &looper_thread_);
   egress_manager.RegisterNotificationHandler(&mock_notification_);
@@ -212,7 +215,7 @@ TEST_F(EgressManagerTest, TestNoDataPath) {
 }
 
 TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
-  HttpFetcherImplForAddEgress http_fetcher;
+  MockHttpFetcher http_fetcher;
 
   EgressManager egress_manager("http://www.example.com/addegress",
                                &http_fetcher, &looper_thread_);
@@ -234,9 +237,11 @@ TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
   params.auth_response = fake_auth_response;
   params.crypto = &crypto_;
   params.copper_control_plane_address = "192.168.0.10";
-  params.dataplane_protocol = DataplaneProtocol::IPSEC;
-  params.suite = CryptoSuite::AES128_GCM;
+  params.dataplane_protocol = KryptonConfig::IPSEC;
+  params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;
+  params.blind_token_enabled = false;
+  params.apn_type = "ppn";
 
   EXPECT_OK(egress_manager.GetEgressNodeForPpnIpSec(params));
 
@@ -247,5 +252,6 @@ TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
 
   egress_manager.Stop();
 }
+
 }  // namespace krypton
 }  // namespace privacy

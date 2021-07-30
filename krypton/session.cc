@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -30,6 +31,8 @@
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
+#include "privacy/net/krypton/pal/http_fetcher_interface.h"
+#include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
@@ -38,6 +41,7 @@
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/ip_range.h"
+#include "privacy/net/krypton/utils/network_info.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/functional/bind_front.h"
 #include "third_party/absl/status/status.h"
@@ -60,8 +64,6 @@ constexpr absl::Duration kDatapathReattemptDuration = absl::Milliseconds(500);
 constexpr absl::Duration kDefaultRekeyDuration = absl::Hours(24);
 
 // Reattempts excludes the first attempt.
-constexpr int MAX_DATAPATH_REATTEMPTS = 3;
-constexpr int MAX_ATTEMPTS_PER_ADDRESS_FAMILY = 2;
 constexpr char kDefaultCopperAddress[] = "na.b.g-tun.com";
 
 std::string StateString(Session::State state) {
@@ -79,15 +81,6 @@ std::string StateString(Session::State state) {
     case Session::State::kPermanentError:
       return "kPermanentError";
   }
-}
-
-bool IsReattemptable(const absl::Status& status) {
-  // If the status code is deadline exceeded. Do not reattempt as the datapath
-  // already retried.
-  if (status.code() == absl::StatusCode::kDeadlineExceeded) {
-    return false;
-  }
-  return true;
 }
 
 absl::StatusOr<TunFdData::IpRange> ProtoIpRange(absl::string_view ip_address) {
@@ -119,7 +112,7 @@ absl::StatusOr<TunFdData::IpRange> ToTunFdIpRange(
 }
 
 void AddDns(absl::string_view dns_ip, TunFdData::IpRange::IpFamily family,
-            uint32 prefix, TunFdData::IpRange* ip_range) {
+            uint32_t prefix, TunFdData::IpRange* ip_range) {
   ip_range->set_ip_family(family);
   ip_range->set_ip_range(dns_ip);
   ip_range->set_prefix(prefix);
@@ -130,6 +123,8 @@ void AddDns(absl::string_view dns_ip, TunFdData::IpRange::IpFamily family,
 Session::Session(Auth* auth, EgressManager* egress_manager,
                  DatapathInterface* datapath, VpnServiceInterface* vpn_service,
                  TimerManager* timer_manager,
+                 HttpFetcherInterface* http_fetcher,
+                 TunnelManagerInterface* tunnel_manager,
                  absl::optional<NetworkInfo> network_info,
                  KryptonConfig* config,
                  utils::LooperThread* notification_thread)
@@ -138,6 +133,8 @@ Session::Session(Auth* auth, EgressManager* egress_manager,
       datapath_(ABSL_DIE_IF_NULL(datapath)),
       vpn_service_(ABSL_DIE_IF_NULL(vpn_service)),
       timer_manager_(ABSL_DIE_IF_NULL(timer_manager)),
+      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
+                    ABSL_DIE_IF_NULL(notification_thread)),
       config_(ABSL_DIE_IF_NULL(config)),
       notification_thread_(ABSL_DIE_IF_NULL(notification_thread)) {
   // Register all state machine events to be sent to Session.
@@ -145,8 +142,9 @@ Session::Session(Auth* auth, EgressManager* egress_manager,
   egress_manager->RegisterNotificationHandler(this);
   datapath->RegisterNotificationHandler(this);
   active_network_info_ = network_info;
-  key_material_ = absl::make_unique<crypto::SessionCrypto>();
+  key_material_ = absl::make_unique<crypto::SessionCrypto>(config);
   auth_->SetCrypto(key_material_.get());
+  tunnel_manager_ = tunnel_manager;
 }
 
 Session::~Session() {
@@ -154,8 +152,8 @@ Session::~Session() {
     absl::MutexLock l(&mutex_);
     CancelDatapathReattemptTimerIfRunning();
     CancelFetcherTimerIfRunning();
+    CancelDatapathReattemptTimerIfRunning();
   }
-  ResetAllDatapathReattempts();
 }
 
 void Session::CancelFetcherTimerIfRunning() {
@@ -204,69 +202,80 @@ void Session::SetState(State state) {
   }
 }
 
-void Session::UpdateLatestStatus(const absl::Status& status) {
-  latest_status_ = status;
-  LOG(ERROR) << "Session error with Status:" << status;
-}
-
-void Session::UpdateLatestDatapathStatus(const absl::Status& status) {
-  latest_datapath_status_ = status;
-}
-
 void Session::Start() {
   absl::MutexLock l(&mutex_);
   DCHECK(notification_);
   LOG(INFO) << "Starting session";
+  tunnel_manager_->StartSession();
   auth_->Start(/*is_rekey=*/false);
 }
 
-void Session::Stop() {
+void Session::Stop(bool forceFailOpen) {
   absl::MutexLock l(&mutex_);
   CancelFetcherTimerIfRunning();
   CancelDatapathReattemptTimerIfRunning();
+  tunnel_manager_->TerminateSession(forceFailOpen);
 }
 
 void Session::PpnDataplaneRequest(bool is_rekey) {
   LOG(INFO) << "Doing PPN dataplane request. Rekey:"
             << ((is_rekey == true) ? "True" : "False");
-  // If there is config option for copper control plane address, use it.
-  auto status_or_resolved_address =
-      utils::ResolveIPV4Address(config_->has_copper_controller_address()
-                                    ? config_->copper_controller_address()
-                                    : kDefaultCopperAddress);
-  if (!status_or_resolved_address.ok()) {
-    UpdateLatestStatus(status_or_resolved_address.status());
+  std::shared_ptr<AuthAndSignResponse> auth_response = auth_->auth_response();
+  // If auth_response specifies a copper control plane address, use it;
+  // otherwise if there is config option for the address, use it.
+  std::string copper_hostname;
+  if (config_->has_copper_hostname_override()) {
+    copper_hostname = config_->copper_hostname_override();
+  } else if (!auth_response->copper_controller_hostname().empty()) {
+    copper_hostname = auth_response->copper_controller_hostname();
+  } else if (config_->has_copper_controller_address()) {
+    copper_hostname = config_->copper_controller_address();
+  } else {
+    copper_hostname = kDefaultCopperAddress;
+  }
+  LOG(INFO) << "Copper hostname for DNS lookup: " << copper_hostname;
+  auto resolved_address = http_fetcher_.LookupDns(copper_hostname);
+  if (!resolved_address.ok()) {
+    latest_status_ = resolved_address.status();
     SetState(State::kSessionError);
     return;
   }
 
-  auto copper_address_ = status_or_resolved_address.value();
+  auto copper_address_ = *resolved_address;
   LOG(INFO) << "Copper server address:" << copper_address_;
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.auth_response = auth_->auth_response();
+  params.auth_response = auth_response;
   params.copper_control_plane_address = copper_address_;
   params.is_rekey = is_rekey;
   params.suite = config_->cipher_suite_key_length() == 256
-                     ? CryptoSuite::AES256_GCM
-                     : CryptoSuite::AES128_GCM;
-  params.dataplane_protocol = config_->bridge_over_ppn()
-                                  ? DataplaneProtocol::BRIDGE
-                                  : DataplaneProtocol::IPSEC;
+                     ? ppn::PpnDataplaneRequest::AES256_GCM
+                     : ppn::PpnDataplaneRequest::AES128_GCM;
+  params.dataplane_protocol = config_->datapath_protocol();
+  // Always send the region token and sig even if it's empty.
+  params.region_token_and_signature =
+      auth_response->region_token_and_signatures();
+  params.apn_type = auth_response->apn_type();
   if (config_->enable_blind_signing()) {
     params.blind_token_enabled = true;
     params.blind_message = key_material_->original_message();
     std::string blinded_signature;
     if (auth_->auth_response()->blinded_token_signatures().empty()) {
-      UpdateLatestStatus(
-          absl::FailedPreconditionError("No blind token signatures found"));
+      latest_status_ =
+          (absl::FailedPreconditionError("No blind token signatures found"));
       SetState(State::kSessionError);
       return;
     }
     if (absl::Base64Unescape(
             auth_->auth_response()->blinded_token_signatures().at(0),
             &blinded_signature)) {
-      params.unblinded_token_signature =
-          key_material_->GetBrassUnblindedToken(blinded_signature).value();
+      auto token = key_material_->GetBrassUnblindedToken(blinded_signature);
+      if (!token.has_value()) {
+        latest_status_ = (absl::FailedPreconditionError(
+            "No unblinded token signatures found"));
+        SetState(State::kSessionError);
+        return;
+      }
+      params.unblinded_token_signature = token.value();
     }
   }
 
@@ -278,7 +287,7 @@ void Session::PpnDataplaneRequest(bool is_rekey) {
 
   auto status = egress_manager_->GetEgressNodeForPpnIpSec(params);
   if (!status.ok()) {
-    UpdateLatestStatus(status);
+    latest_status_ = status;
     SetState(State::kSessionError);
   }
 }
@@ -289,27 +298,18 @@ void Session::AuthSuccessful(bool is_rekey) {
 
   absl::MutexLock l(&mutex_);
   if (is_rekey) {
-    if (config_->ipsec_datapath() || config_->bridge_over_ppn()) {
+    if (config_->datapath_protocol() == KryptonConfig::BRIDGE ||
+        config_->datapath_protocol() == KryptonConfig::IPSEC) {
       PpnDataplaneRequest(/*rekey=*/true);
       return;
     }
   }
-  // If we are running IPSec or Bridge using PPN protocol, send PpnDataplane
-  // request.
-  if (config_->ipsec_datapath() || config_->bridge_over_ppn()) {
-    PpnDataplaneRequest();
-    return;
-  }
-  auto status = egress_manager_->GetEgressNodeForBridge(auth_->auth_response());
-  if (!status.ok()) {
-    UpdateLatestStatus(status);
-    SetState(State::kSessionError);
-  }
+  PpnDataplaneRequest();
 }
 
 void Session::AuthFailure(const absl::Status& status) {
   absl::MutexLock l(&mutex_);
-  UpdateLatestStatus(status);
+  latest_status_ = status;
   if (utils::IsPermanentError(status.code())) {
     SetState(State::kPermanentError);
   } else {
@@ -360,12 +360,11 @@ absl::Status Session::CreateTunnelIfNeeded() {
   tun_fd_data.set_is_metered(false);
   auto build_tun_status = BuildTunFdData(&tun_fd_data);
   if (!build_tun_status.ok()) {
-    UpdateLatestStatus(build_tun_status);
+    latest_status_ = build_tun_status;
     SetState(State::kSessionError);
-    return build_tun_status;
+    return latest_status_;
   }
-  PPN_ASSIGN_OR_RETURN(auto tunnel, vpn_service_->CreateTunnel(tun_fd_data));
-  active_tunnel_ = std::move(tunnel);
+  PPN_ASSIGN_OR_RETURN(active_tunnel_, tunnel_manager_->GetTunnel(tun_fd_data));
   return absl::OkStatus();
 }
 
@@ -393,20 +392,15 @@ absl::Status Session::SetRemoteKeyMaterial() {
 void Session::RekeyDatapath() {
   // Do the rekey procedures.
   LOG(INFO) << "Successful response from egress for rekey";
-  auto status_or_bridge_transform_params =
-      key_material_->GetBridgeTransformParams(
-          config_->cipher_suite_key_length() == 128 ? CryptoSuite::AES128_GCM
-                                                    : CryptoSuite::AES256_GCM);
-  if (!status_or_bridge_transform_params.ok()) {
-    UpdateLatestStatus(status_or_bridge_transform_params.status());
+  auto transform_params = key_material_->GetTransformParams();
+  if (!transform_params.ok()) {
+    latest_status_ = transform_params.status();
     SetState(State::kSessionError);
     return;
   }
-  auto rekey_status =
-      datapath_->Rekey(status_or_bridge_transform_params->uplink_key(),
-                       status_or_bridge_transform_params->downlink_key());
+  auto rekey_status = datapath_->SetKeyMaterials(*transform_params);
   if (!rekey_status.ok()) {
-    UpdateLatestStatus(rekey_status);
+    latest_status_ = rekey_status;
     SetState(State::kSessionError);
     return;
   }
@@ -439,6 +433,7 @@ void Session::EgressAvailable(bool is_rekey) {
   // Session start handling.
   if (!is_rekey) {
     SetState(State::kEgressSessionCreated);
+    ResetAllDatapathReattempts();
     StartDatapath();
     return;
   }
@@ -453,13 +448,10 @@ absl::Status Session::Rekey() {
   }
   // Generate the rekey parameters that are needed and generate a signature from
   // the old crypto keys.
-  auto new_key_material = absl::make_unique<crypto::SessionCrypto>();
-  auto status_or_signature =
-      key_material_->GenerateSignature(new_key_material->public_value());
-  if (!status_or_signature.ok()) {
-    return status_or_signature.status();
-  }
-  new_key_material->SetSignature(status_or_signature.value());
+  auto new_key_material = absl::make_unique<crypto::SessionCrypto>(config_);
+  PPN_ASSIGN_OR_RETURN(auto signature, key_material_->GenerateSignature(
+                                           new_key_material->public_value()));
+  new_key_material->SetSignature(signature);
   key_material_.reset();
   key_material_ = std::move(new_key_material);
   auth_->SetCrypto(key_material_.get());
@@ -472,11 +464,11 @@ absl::optional<int> Session::active_tun_fd_test_only() const {
   if (active_tunnel_ == nullptr) {
     return absl::nullopt;
   }
-  auto status_or_fd = active_tunnel_->GetFd();
-  if (!status_or_fd.ok()) {
+  auto fd = active_tunnel_->GetFd();
+  if (!fd.ok()) {
     return absl::nullopt;
   }
-  return status_or_fd.value();
+  return *fd;
 }
 
 void Session::StartDatapath() {
@@ -486,38 +478,27 @@ void Session::StartDatapath() {
               << StateString(state_);
     return;
   }
-  auto status_or_egress_response = egress_manager_->GetEgressSessionDetails();
-  if (!status_or_egress_response.ok()) {
+  auto egress_response = egress_manager_->GetEgressSessionDetails();
+  if (!egress_response.ok()) {
     LOG(ERROR) << "AddEgress was successful, but could not fetch details";
-    UpdateLatestStatus(status_or_egress_response.status());
+    latest_status_ = egress_response.status();
     SetState(State::kSessionError);
     return;
   }
 
-  BridgeTransformParams bridge_transform_params;
-  if (config_->bridge_over_ppn()) {
-    // Check if the key material is set.
-    auto status_or_bridge_transform_params =
-        key_material_->GetBridgeTransformParams(
-            config_->cipher_suite_key_length() == 128
-                ? CryptoSuite::AES128_GCM
-                : CryptoSuite::AES256_GCM);
-    if (!status_or_bridge_transform_params.ok()) {
-      UpdateLatestStatus(status_or_bridge_transform_params.status());
-      SetState(State::kSessionError);
-      return;
-    }
-    bridge_transform_params = status_or_bridge_transform_params.value();
+  // Check if the key material is set.
+  auto transform_params = key_material_->GetTransformParams();
+  if (!transform_params.ok()) {
+    latest_status_ = transform_params.status();
+    SetState(State::kSessionError);
+    return;
   }
 
-  auto datapath_status = datapath_->Start(
-      status_or_egress_response.value(), bridge_transform_params,
-      config_->cipher_suite_key_length() == 128 ? CryptoSuite::AES128_GCM
-                                                : CryptoSuite::AES256_GCM);
+  auto datapath_status = datapath_->Start(*egress_response, *transform_params);
   if (!datapath_status.ok()) {
     LOG(ERROR) << "Datapath initialization failed with status:"
                << datapath_status;
-    UpdateLatestStatus(datapath_status);
+    latest_status_ = datapath_status;
     SetState(State::kSessionError);
     return;
   }
@@ -532,7 +513,7 @@ void Session::StartDatapath() {
   LOG(INFO) << "Active network is available, switching the network";
   auto status = SwitchDatapath();
   if (!status.ok()) {
-    LOG(ERROR) << "Switching datapath failed with status" << status;
+    LOG(ERROR) << "Switching datapath failed with status: " << status;
   }
 }
 
@@ -540,27 +521,27 @@ void Session::StartFetchCountersTimer() {
   // Start fetching the counters every 5 mins.
   CancelFetcherTimerIfRunning();
   LOG(INFO) << "Starting FetchCounters timer.";
-  auto status_or_timer_id = timer_manager_->StartTimer(
+  auto timer_id = timer_manager_->StartTimer(
       kFetchTimerDuration, absl::bind_front(&Session::FetchCounters, this));
-  if (!status_or_timer_id.ok()) {
+  if (!timer_id.ok()) {
     LOG(ERROR) << "Cannot StartTimer for fetch counters";
     return;
   }
-  fetch_timer_id_ = status_or_timer_id.value();
+  fetch_timer_id_ = *timer_id;
 }
 
 void Session::StartDatapathReattemptTimer() {
   CancelDatapathReattemptTimerIfRunning();
   LOG(INFO) << "Starting Datapath reattempt timer.";
-  auto status_or_timer_id = timer_manager_->StartTimer(
+  auto timer_id = timer_manager_->StartTimer(
       kDatapathReattemptDuration,
       absl::bind_front(&Session::AttemptDatapathReconnect, this));
-  if (!status_or_timer_id.ok()) {
+  if (!timer_id.ok()) {
     LOG(ERROR) << "Cannot StartTimer for DatapathReattempt";
     return;
   }
 
-  datapath_reattempt_timer_id_ = status_or_timer_id.value();
+  datapath_reattempt_timer_id_ = *timer_id;
 }
 
 void Session::FetchCounters() {
@@ -582,7 +563,7 @@ void Session::FetchCounters() {
     if (!status.ok()) {
       LOG(INFO) << "Rekey status " << status;
       SetState(State::kSessionError);
-      UpdateLatestStatus(status);
+      latest_status_ = status;
       return;
     }
   }
@@ -596,8 +577,8 @@ absl::optional<NetworkInfo> Session::active_network_info() const {
 
 void Session::EgressUnavailable(const absl::Status& status) {
   absl::MutexLock l(&mutex_);
-  UpdateLatestStatus(status);
-  LOG(ERROR) << "Egress unavailable with status:" << status;
+  latest_status_ = status;
+  LOG(ERROR) << "Egress unavailable with status: " << status;
   SetState(State::kSessionError);
 }
 
@@ -616,8 +597,8 @@ void Session::ResetAllDatapathReattempts() {
   CancelDatapathReattemptTimerIfRunning();
   datapath_reattempt_timer_id_ = kInvalidTimerId;
   datapath_reattempt_count_ = 0;
-  datapath_ipv4_attempts_ = 0;
-  datapath_ipv6_attempts_ = 0;
+  datapath_address_selector_.Reset(
+      egress_manager_->egress_node_sock_addresses(), active_network_info_);
 }
 
 void Session::AttemptDatapathReconnect() {
@@ -625,74 +606,61 @@ void Session::AttemptDatapathReconnect() {
   NetworkInfo new_network_info;
   LOG(INFO) << "Datapath reconnect timer expiry";
 
-    if (datapath_reattempt_timer_id_ == kInvalidTimerId) {
-      LOG(INFO) << "Datapath attempt timer is already cancelled, not doing any "
-                   "datapath reconnect.";
-      return;
-    }
-    datapath_reattempt_timer_id_ = kInvalidTimerId;
+  if (datapath_reattempt_timer_id_ == kInvalidTimerId) {
+    LOG(INFO) << "Datapath attempt timer is already cancelled, not doing any "
+                 "datapath reconnect.";
+    return;
+  }
+  datapath_reattempt_timer_id_ = kInvalidTimerId;
 
-    // While waiting to reconnect timer, datapath could be established as the
-    // network fd is not withdrawn from the datapath.
-    if (datapath_connected_) {
-      LOG(INFO) << "Datapath is already connected, not reattempting";
-      // Do nothing and return as datapath came up.
-      return;
-    }
+  // While waiting to reconnect timer, datapath could be established as the
+  // network fd is not withdrawn from the datapath.
+  if (datapath_connected_) {
+    LOG(INFO) << "Datapath is already connected, not reattempting";
+    // Do nothing and return as datapath came up.
+    return;
+  }
 
-    // Check if there is active network.
-    if (!active_network_info_) {
-      auto status = latest_datapath_status_;
-      auto* notification = notification_;
-      notification_thread_->Post([notification, status] {
-        notification->DatapathDisconnected(NetworkInfo(), status);
-      });
-      return;
-    }
-
-    // Everything looks good as we got a new network fd, switch datapath.
-    // UpdateActiveNetworkInfo(new_network_info);
-    auto status = SwitchDatapath();
-    if (!status.ok()) {
-      LOG(ERROR) << "Switch datapath failed with status:" << status;
-    }
-}
-
-bool Session::IsFdCurrentActiveFd(int failed_fd) {
+  // Check if there is active network.
   if (!active_network_info_) {
-    return false;
+    auto status = latest_datapath_status_;
+    auto* notification = notification_;
+    notification_thread_->Post([notification, status] {
+      notification->DatapathDisconnected(NetworkInfo(), status);
+    });
+    return;
   }
-  if (!active_network_socket_) {
-    return false;
+
+  // Everything looks good as we got a new network fd, switch datapath.
+  auto status = SwitchDatapath();
+  if (!status.ok()) {
+    LOG(ERROR) << "Switch datapath failed with status:" << status;
   }
-  auto current_fd = active_network_socket_->GetFd();
-  if (!current_fd.ok()) {
-    return false;
-  }
-  return current_fd.value() == failed_fd;
 }
 
-void Session::DatapathFailed(const absl::Status& status, int failed_fd) {
+void Session::DatapathFailed(const absl::Status& status) {
   absl::MutexLock l(&mutex_);
-  if (!IsFdCurrentActiveFd(failed_fd)) {
-    LOG(INFO) << "Received event for old FD " << failed_fd;
+  if (!active_network_info_) {
+    LOG(INFO) << "Received event after network info was reset.";
     return;
   }
 
   LOG(ERROR) << "Datapath Failed with status:" << status;
   datapath_connected_ = false;
-  UpdateLatestDatapathStatus(status);
+  latest_datapath_status_ = status;
   // For failures on datapath, see if we can reattempt.
-  if ((datapath_reattempt_count_.load() < MAX_DATAPATH_REATTEMPTS) &&
-      IsReattemptable(status)) {
-    LOG(INFO) << "Datapath failed, waiting to see if it can get reconnected";
-    datapath_reattempt_count_.fetch_add(1);
+  // Check if there are more datapaths.
+  if (datapath_address_selector_.HasMoreAddresses()) {
+    LOG(INFO) << "Datapath attempt " << datapath_reattempt_count_
+              << " failed, waiting to see if it can get reconnected.";
+    datapath_reattempt_count_++;
     StartDatapathReattemptTimer();
     return;
   }
 
-  LOG(INFO)
-      << "Max reattempts reached on datapath failure, sending notification";
+  LOG(ERROR)
+      << "Not reattempting datapath connection. Exhausted all addresses.";
+
   // Datapath failure is not treated as session failure. These are
   // notifications to the upper layers to fix the network.
   auto active_network_info_opt = active_network_info_;
@@ -725,10 +693,14 @@ void Session::UpdateActiveNetworkInfo(
 
 absl::Status Session::SetNetwork(absl::optional<NetworkInfo> network_info) {
   absl::MutexLock l(&mutex_);
-  LOG(INFO) << "Switching network";
-  ResetAllDatapathReattempts();
-
+  if (network_info) {
+    LOG(INFO) << "Switching network to "
+              << utils::NetworkInfoDebugString(*network_info);
+  } else {
+    LOG(INFO) << "Switching network to null network.";
+  }
   UpdateActiveNetworkInfo(network_info);
+  ResetAllDatapathReattempts();
 
   if (state_ != State::kConnected) {
     LOG(INFO) << "Session is not in connected state, caching active network fd";
@@ -736,37 +708,6 @@ absl::Status Session::SetNetwork(absl::optional<NetworkInfo> network_info) {
   }
 
   return SwitchDatapath();
-}
-
-absl::StatusOr<std::string> Session::SelectDatapathAddress() {
-  auto egress_node_sock_addresses =
-      egress_manager_->egress_node_sock_addresses();
-  if (egress_node_sock_addresses.empty()) {
-    return absl::FailedPreconditionError("No Egress node socket address found");
-  }
-
-  if (datapath_ipv6_attempts_ < MAX_ATTEMPTS_PER_ADDRESS_FAMILY) {
-    auto ip = egress_manager_->EgressNodeV6SocketAddress();
-    if (ip) {
-      ++datapath_ipv6_attempts_;
-      LOG(INFO) << "Attemping datapath on IPv6 " << ip.value()
-                << " attempt: " << datapath_ipv6_attempts_.load()
-                << " IPv4 attempts:" << datapath_ipv4_attempts_;
-      return ip.value();
-    }
-  }
-  if (datapath_ipv4_attempts_ < MAX_ATTEMPTS_PER_ADDRESS_FAMILY) {
-    auto ip = egress_manager_->EgressNodeV4SocketAddress();
-    if (ip) {
-      ++datapath_ipv4_attempts_;
-      LOG(INFO) << "Attemping datapath on IPv4 " << ip.value()
-                << " attempt: " << datapath_ipv4_attempts_.load()
-                << " IPv6 attempts:" << datapath_ipv6_attempts_;
-      return ip.value();
-    }
-  }
-  return absl::ResourceExhaustedError(
-      "Max reattempts have been reached on both IPv4 and IPv6");
 }
 
 absl::Status Session::SwitchDatapath() {
@@ -778,51 +719,28 @@ absl::Status Session::SwitchDatapath() {
   }
 
   if (datapath_ == nullptr) {
-    UpdateLatestStatus(
-        absl::FailedPreconditionError("Datapath is not initialized"));
-    return latest_status_;
+    return latest_status_ =
+               absl::FailedPreconditionError("Datapath is not initialized");
   }
 
-  auto status_or_egress_response = egress_manager_->GetEgressSessionDetails();
-  if (!status_or_egress_response.ok()) {
+  // This value is not used here, but will be fetched again by
+  // CreateTunnelIfNeeded. This check may or may not be helpful.
+  auto egress_response = egress_manager_->GetEgressSessionDetails();
+  if (!egress_response.ok()) {
     LOG(ERROR) << "AddEgress was successful, but could not fetch details";
-    UpdateLatestStatus(status_or_egress_response.status());
+    latest_status_ = egress_response.status();
     SetState(State::kSessionError);
     return latest_status_;
   }
 
   auto tunnel_status = CreateTunnelIfNeeded();
   if (!tunnel_status.ok()) {
-    UpdateLatestStatus(tunnel_status);
+    latest_status_ = tunnel_status;
     LOG(ERROR) << "Tunnel creation failed with status " << tunnel_status;
     SetState(State::kSessionError);
     return tunnel_status;
   }
   LOG(INFO) << "Got tunnel " << active_tunnel_->DebugString();
-
-  // We are creating the network socket after tunnel to see the reduction in
-  // PERMISSION_DENIED errors on the socket. This call won't eliminate all the
-  // PERMISSION_DENIED errors.
-  if (active_network_info_) {
-    auto status_or_socket =
-        vpn_service_->CreateProtectedNetworkSocket(*active_network_info_);
-    if (!status_or_socket.ok()) {
-      auto active_network_info_opt = active_network_info_;
-      auto* notification = notification_;
-      auto status = status_or_socket.status();
-      auto network_info = active_network_info_opt
-                              ? active_network_info_opt.value()
-                              : NetworkInfo();
-      notification_thread_->Post([notification, status, network_info] {
-        notification->DatapathDisconnected(network_info, status);
-      });
-      return status_or_socket.status();
-    }
-    active_network_socket_ = std::move(status_or_socket).value();
-
-    LOG(INFO) << "Network tunnel returned "
-              << active_network_socket_->DebugString();
-  }
 
   auto current_restart_counter = network_switches_count_.fetch_add(1);
   if (active_network_info_) {
@@ -832,44 +750,27 @@ absl::Status Session::SwitchDatapath() {
     LOG(INFO) << "SwitchDatapath removing all networks";
   }
 
-  std::vector<std::string> egress_node_ips;
-  PPN_ASSIGN_OR_RETURN(const auto& ip, SelectDatapathAddress());
-  egress_node_ips.push_back(ip);
+  PPN_ASSIGN_OR_RETURN(const auto& ip,
+                       datapath_address_selector_.SelectDatapathAddress());
 
   auto switch_data_status = datapath_->SwitchNetwork(
-      egress_manager_->uplink_spi(), egress_node_ips, active_network_info_,
-      active_network_socket_.get(), active_tunnel_.get(),
+      egress_manager_->uplink_spi(), ip, active_network_info_, active_tunnel_,
       current_restart_counter);
 
+  if (!switch_data_status.ok()) {
+    LOG(ERROR) << "Switching networks failed: " << switch_data_status;
+    auto active_network_info_opt = active_network_info_;
+    auto* notification = notification_;
+    auto status = switch_data_status;
+    auto network_info = active_network_info_opt
+                            ? active_network_info_opt.value()
+                            : NetworkInfo();
+    notification_thread_->Post([notification, status, network_info] {
+      notification->DatapathDisconnected(network_info, status);
+    });
+  }
+
   return switch_data_status;
-}
-
-absl::Status Session::ClearDatapath() {
-  LOG(INFO) << "Removing all networks in SwitchDatapath";
-
-  if (datapath_ == nullptr) {
-    UpdateLatestStatus(
-        absl::FailedPreconditionError("Datapath is not initialized"));
-    return latest_status_;
-  }
-
-  auto status_or_egress_response = egress_manager_->GetEgressSessionDetails();
-  if (!status_or_egress_response.ok()) {
-    LOG(ERROR) << "AddEgress was successful, but could not fetch details";
-    UpdateLatestStatus(status_or_egress_response.status());
-    SetState(State::kSessionError);
-    return latest_status_;
-  }
-
-  auto current_restart_counter = network_switches_count_.fetch_add(1);
-  if (!active_tunnel_) {
-    return absl::NotFoundError("Tunnel is not set");
-  }
-
-  std::vector<std::string> egress_node_ips;
-  return datapath_->SwitchNetwork(
-      egress_manager_->uplink_spi(), egress_node_ips, absl::nullopt, nullptr,
-      active_tunnel_.get(), current_restart_counter);
 }
 
 void Session::CollectTelemetry(KryptonTelemetry* telemetry) {
@@ -889,9 +790,9 @@ void Session::GetDebugInfo(SessionDebugInfo* debug_info) {
   debug_info->set_state(StateString(state_));
   debug_info->set_status(latest_status_.ToString());
   if (active_tunnel_ != nullptr) {
-    auto status_or_fd = active_tunnel_->GetFd();
-    if (status_or_fd.ok()) {
-      debug_info->set_active_tun_fd(status_or_fd.value());
+    auto fd = active_tunnel_->GetFd();
+    if (fd.ok()) {
+      debug_info->set_active_tun_fd(*fd);
     }
   }
   if (active_network_info_) {
@@ -909,7 +810,7 @@ void Session::DoRekey() {
   auto status = Rekey();
   if (!status.ok()) {
     LOG(ERROR) << "Rekey procedure failed";
-    UpdateLatestStatus(status);
+    latest_status_ = status;
     SetState(State::kSessionError);
   }
 }

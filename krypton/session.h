@@ -21,8 +21,11 @@
 
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
+#include "privacy/net/krypton/datapath_address_selector.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
+#include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
@@ -30,6 +33,8 @@
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/tunnel_manager.h"
+#include "privacy/net/krypton/tunnel_manager_interface.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/call_once.h"
 #include "third_party/absl/base/thread_annotations.h"
@@ -80,8 +85,10 @@ class Session : public Auth::NotificationInterface,
 
   Session(Auth* auth, EgressManager* egress_manager,
           DatapathInterface* datapath, VpnServiceInterface* vpn_service,
-          TimerManager* timer_manager, absl::optional<NetworkInfo> network_info,
-          KryptonConfig* config, utils::LooperThread* notification_thread);
+          TimerManager* timer_manager, HttpFetcherInterface* http_fetcher,
+          TunnelManagerInterface* tunnel_manager,
+          absl::optional<NetworkInfo> network_info, KryptonConfig* config,
+          utils::LooperThread* notification_thread);
 
   ~Session() override;
 
@@ -103,7 +110,7 @@ class Session : public Auth::NotificationInterface,
   void Start() ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Stops a session.
-  void Stop() ABSL_LOCKS_EXCLUDED(mutex_);
+  void Stop(bool forceFailOpen) ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Override methods from the interface.
   void AuthSuccessful(bool is_rekey) override ABSL_LOCKS_EXCLUDED(mutex_);
@@ -114,7 +121,7 @@ class Session : public Auth::NotificationInterface,
   void EgressUnavailable(const absl::Status& status) override
       ABSL_LOCKS_EXCLUDED(mutex_);
   void DatapathEstablished() override ABSL_LOCKS_EXCLUDED(mutex_);
-  void DatapathFailed(const absl::Status& status, int failed_fd) override
+  void DatapathFailed(const absl::Status& status) override
       ABSL_LOCKS_EXCLUDED(mutex_);
   void DatapathPermanentFailure(const absl::Status& status) override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -123,16 +130,6 @@ class Session : public Auth::NotificationInterface,
   State state() const ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return state_;
-  }
-
-  absl::Status latest_status() const ABSL_LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock l(&mutex_);
-    return latest_status_;
-  }
-
-  absl::Status latest_datapath_status() const ABSL_LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock l(&mutex_);
-    return latest_datapath_status_;
   }
 
   // Switch network.
@@ -150,10 +147,16 @@ class Session : public Auth::NotificationInterface,
   void AttemptDatapathReconnect() ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Test only methods
+  absl::Status LatestStatusTestOnly() const ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
+    return latest_status_;
+  }
+
   int DatapathReattemptCountTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return datapath_reattempt_count_.load();
   }
+
   int DatapathReattemptTimerIdTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return datapath_reattempt_timer_id_;
@@ -177,10 +180,6 @@ class Session : public Auth::NotificationInterface,
   void FetchCounters() ABSL_LOCKS_EXCLUDED(mutex_);
 
   void SetState(State state) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  void UpdateLatestStatus(const absl::Status& status)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  void UpdateLatestDatapathStatus(const absl::Status& status)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void StartDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -194,7 +193,6 @@ class Session : public Auth::NotificationInterface,
   void StartDatapathReattemptTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   absl::Status CreateTunnelIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  absl::Status ClearDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void ResetAllDatapathReattempts() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   bool IsFdCurrentActiveFd(int failed_fd) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   absl::Status SetRemoteKeyMaterial() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -206,7 +204,7 @@ class Session : public Auth::NotificationInterface,
   void CancelFetcherTimerIfRunning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelDatapathReattemptTimerIfRunning()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  absl::StatusOr<std::string> SelectDatapathAddress();
+  absl::StatusOr<Endpoint> SelectDatapathAddress();
 
   mutable absl::Mutex mutex_;
   Auth* auth_;                                // Not owned.
@@ -215,8 +213,12 @@ class Session : public Auth::NotificationInterface,
   DatapathInterface* datapath_;               // Not owned.
   VpnServiceInterface* vpn_service_;          // Not owned.
   TimerManager* timer_manager_;               // Not owned.
+  HttpFetcher http_fetcher_;
   KryptonConfig* config_;                     // Not owned.
   utils::LooperThread* notification_thread_;  // Not owned.
+  TunnelManagerInterface* tunnel_manager_;    // Not owned.
+
+  DatapathAddressSelector datapath_address_selector_;
 
   State state_ ABSL_GUARDED_BY(mutex_) = State::kInitialized;
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
@@ -224,14 +226,13 @@ class Session : public Auth::NotificationInterface,
       absl::OkStatus();
 
   // Currently active tunnel.
-  std::unique_ptr<PacketPipe> active_tunnel_ ABSL_GUARDED_BY(mutex_);
+  PacketPipe* active_tunnel_ ABSL_GUARDED_BY(mutex_) = nullptr;
   // Previously active tunnel.
-  std::unique_ptr<PacketPipe> previous_tunnel_ ABSL_GUARDED_BY(mutex_);
+  PacketPipe* previous_tunnel_ ABSL_GUARDED_BY(mutex_) = nullptr;
   std::unique_ptr<PacketPipe> active_network_socket_ ABSL_GUARDED_BY(mutex_);
   absl::optional<NetworkInfo> active_network_info_ ABSL_GUARDED_BY(mutex_);
 
   // Counts the number of times the endpoint switched till now.
-  // TODO: Should this be plumbed from Xenon.
   std::atomic_int network_switches_count_ ABSL_GUARDED_BY(mutex_) = 1;
   int fetch_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int datapath_reattempt_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
@@ -245,8 +246,6 @@ class Session : public Auth::NotificationInterface,
   // Keep track of the last reported network switches.
   std::atomic_int last_repoted_network_switches_ = 0;
   std::atomic_int number_of_rekeys_ = 0;
-  std::atomic_int datapath_ipv4_attempts_ = 0;
-  std::atomic_int datapath_ipv6_attempts_ = 0;
 };
 
 }  // namespace krypton

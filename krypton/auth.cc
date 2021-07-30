@@ -15,6 +15,7 @@
 #include "privacy/net/krypton/auth.h"
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -46,7 +47,7 @@ namespace privacy {
 namespace krypton {
 namespace {
 
-const uint32 kLatencyCollectionLimit = 5;
+const uint32_t kLatencyCollectionLimit = 5;
 
 std::string StateString(Auth::State state) {
   switch (state) {
@@ -82,11 +83,12 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
 
   request_time_ = ::absl::InfinitePast();
 
-  LOG(INFO) << "Got Authentication Response. Rekey:"
-            << (is_rekey ? "True" : "False");
+  LOG(INFO) << "Got Authentication Response. Rekey: "
+            << (is_rekey ? "True" : "False")
+            << ". Status: " << http_response.status().code();
 
   if (stopped_) {
-    LOG(ERROR) << "Auth is already cancelled, don't update";
+    LOG(ERROR) << "Auth is already cancelled. Ignoring response.";
     return;
   }
 
@@ -100,7 +102,8 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
 
   auto auth_and_sign_response = std::make_shared<AuthAndSignResponse>();
 
-  auto decode_status = auth_and_sign_response->DecodeFromProto(http_response);
+  auto decode_status =
+      auth_and_sign_response->DecodeFromProto(http_response, *config_);
   auth_and_sign_response_ = std::move(auth_and_sign_response);
 
   if (!decode_status.ok()) {
@@ -151,7 +154,8 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
       RaiseAuthFailureNotification(absl::Status(
           utils::GetStatusCodeForHttpStatus(http_response.status().code()),
           http_response.status().message()));
-      LOG(ERROR) << "PublicKeyResponse failed";
+      LOG(ERROR) << "PublicKeyResponse failed: "
+                 << http_response.status().code();
       return;
     }
 
@@ -218,8 +222,8 @@ void Auth::RequestKeyForBlindSigning(bool is_rekey) {
 void Auth::Authenticate(bool is_rekey) {
   absl::MutexLock l(&mutex_);
   request_time_ = absl::Now();
-  auto status_or_auth_token = oauth_->GetOAuthToken();
-  if (!status_or_auth_token.ok()) {
+  auto auth_token = oauth_->GetOAuthToken();
+  if (!auth_token.ok()) {
     LOG(ERROR) << "Error fetching oauth token";
     SetState(State::kUnauthenticated);
     RaiseAuthFailureNotification(
@@ -227,9 +231,8 @@ void Auth::Authenticate(bool is_rekey) {
     return;
   }
   RecordLatency(request_time_, &oauth_latencies_, "oauth");
-  auto auth_token = status_or_auth_token.value();
   AuthAndSignRequest sign_request(
-      auth_token, config_->service_type(), std::string(),
+      *auth_token, config_->service_type(), std::string(),
       config_->enable_blind_signing() ? key_material_->GetZincBlindToken()
                                       : absl::nullopt,
       config_->enable_blind_signing()

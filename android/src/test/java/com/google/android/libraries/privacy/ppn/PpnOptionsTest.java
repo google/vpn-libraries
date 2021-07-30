@@ -429,4 +429,16 @@ public class PpnOptionsTest {
             .build();
     assertThat(options.getDisallowedApplications()).containsExactly("foo", "bar", "baz");
   }
+
+  @Test
+  public void setDnsCacheEnabled_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.isDnsCacheEnabled()).isTrue();
+  }
+
+  @Test
+  public void setDnsCacheEnabled_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setDnsCacheEnabled(false).build();
+    assertThat(options.isDnsCacheEnabled()).isFalse();
+  }
 }

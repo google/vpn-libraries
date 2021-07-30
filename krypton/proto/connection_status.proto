@@ -16,6 +16,8 @@ syntax = "proto2";
 
 package privacy.krypton;
 
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
 import "privacy/net/krypton/proto/network_type.proto";
 
 option cc_api_version = 2;
@@ -26,8 +28,6 @@ option java_multiple_files = true;
 
 /** The status of the network connection, as reported by Krypton. */
 message ConnectionStatus {
-  optional string network_name = 1;
-
   optional NetworkType network_type = 2;
 
   /** All possible Security types supported by a PpnConnection. */
@@ -52,4 +52,38 @@ message ConnectionStatus {
     NO_SIGNAL = 5;
   }
   optional ConnectionQuality quality = 4;
+
+  reserved 1;
+}
+
+/** The status of Krypton, while disconnected. */
+message DisconnectionStatus {
+  // The standard error code for why we disconnected.
+  optional int32 code = 1;
+  optional string message = 2;
+  optional bool is_blocking_traffic = 3;
+  optional bool has_available_networks = 4;
+}
+
+/** The status of Krypton, while waiting to reconnect. */
+message ReconnectionStatus {
+  optional bool is_blocking_traffic = 1;
+  optional bool has_available_networks = 2;
+  optional google.protobuf.Duration time_to_reconnect = 3;
+}
+
+/** The status of Krypton, while connecting. */
+message ConnectingStatus {
+  optional bool is_blocking_traffic = 1;
+}
+
+/** The status of Krypton, while snoozing. */
+message SnoozeStatus {
+  optional google.protobuf.Timestamp snooze_end_time = 1;
+}
+
+/** The status of Krypton, while resuming from Snooze. */
+message ResumeStatus {
+  optional bool is_blocking_traffic = 1;
+  optional bool has_available_networks = 2;
 }

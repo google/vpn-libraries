@@ -15,7 +15,10 @@
 #ifndef PRIVACY_NET_KRYPTON_JNI_KRYPTON_NOTIFICATION_H_
 #define PRIVACY_NET_KRYPTON_JNI_KRYPTON_NOTIFICATION_H_
 
+#include <cstdint>
+
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
+#include "privacy/net/krypton/proto/connection_status.proto.h"
 #include "third_party/absl/status/status.h"
 
 namespace privacy {
@@ -28,16 +31,18 @@ class KryptonNotification : public KryptonNotificationInterface {
   KryptonNotification() = default;
   ~KryptonNotification() override = default;
 
-  void Connected() override;
-  void Connecting() override;
+  void Connected(const ConnectionStatus& status) override;
+  void Connecting(const ConnectingStatus& status) override;
   void ControlPlaneConnected() override;
-  void StatusUpdated() override;
-  void Disconnected(const absl::Status& status) override;
+  void StatusUpdated(const ConnectionStatus& status) override;
+  void Disconnected(const DisconnectionStatus& status) override;
   void PermanentFailure(const absl::Status& status) override;
   void NetworkDisconnected(const NetworkInfo& network_info,
                            const absl::Status& status) override;
   void Crashed() override;
-  void WaitingToReconnect(const int64 retry_millis) override;
+  void WaitingToReconnect(const ReconnectionStatus& status) override;
+  void Snoozed(const SnoozeStatus& status) override;
+  void Resumed(const ResumeStatus& status) override;
 };
 
 }  // namespace jni

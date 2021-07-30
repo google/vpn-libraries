@@ -60,9 +60,12 @@ message IpSecTransformParams {
   optional uint32 uplink_spi = 5;
   optional uint32 downlink_spi = 6;
 
-  optional int32 network_id = 7;
+  optional int64 network_id = 7;
   optional int32 network_fd = 8;
+
   optional string destination_address = 9;
+  optional NetworkInfo.AddressFamily destination_address_family = 10;
+  optional int32 destination_port = 11;
 }
 
 // Encryption key for uplink and downlink.
@@ -70,4 +73,22 @@ message BridgeTransformParams {
   optional bytes uplink_key = 1;
   optional bytes downlink_key = 2;
   optional uint32 session_id = 3;
+  // Crypto suite length, should be either 128 or 256 bits.
+  optional uint32 cipher_suite_key_length = 8 [default = 256];
+}
+
+// Transforms Params that could be either Bridge, IPSec or WG
+message TransformParams {
+  oneof params {
+    BridgeTransformParams bridge = 1;
+    IpSecTransformParams ipsec = 2;
+    VpnSecureParams secure = 3;
+  }
+}
+
+// Parameters needed for packet Transform.
+message VpnSecureParams {
+  optional bytes uplink_key = 1;
+  optional bytes downlink_key = 2;
+  optional uint32 receiver_index = 3;
 }

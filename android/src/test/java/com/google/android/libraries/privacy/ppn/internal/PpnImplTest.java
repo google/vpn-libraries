@@ -14,10 +14,11 @@
 
 package com.google.android.libraries.privacy.ppn.internal;
 
+import static android.os.Looper.getMainLooper;
 import static com.google.common.truth.Truth.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -31,17 +32,21 @@ import android.net.Network;
 import android.net.VpnService;
 import android.os.Looper;
 import androidx.test.core.app.ApplicationProvider;
+import androidx.work.testing.WorkManagerTestInitHelper;
 import com.google.android.flib.robolectric.shadows.ShadowGoogleAuthUtil;
 import com.google.android.gms.auth.GoogleAuthUtil;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.libraries.privacy.ppn.PpnAccountManager;
+import com.google.android.libraries.privacy.ppn.PpnAccountRefresher;
 import com.google.android.libraries.privacy.ppn.PpnConnectionStatus;
+import com.google.android.libraries.privacy.ppn.PpnDisconnectionStatus;
 import com.google.android.libraries.privacy.ppn.PpnListener;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
 import com.google.android.libraries.privacy.ppn.internal.service.PpnServiceDebugJson;
+import com.google.android.libraries.privacy.ppn.internal.service.VpnManager;
 import com.google.android.libraries.privacy.ppn.krypton.Krypton;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonException;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
@@ -49,7 +54,10 @@ import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener.Network
 import com.google.android.libraries.privacy.ppn.xenon.Xenon;
 import com.google.testing.mockito.Mocks;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 import org.junit.Before;
@@ -62,9 +70,8 @@ import org.mockito.Mockito;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
-import org.robolectric.shadows.ShadowVpnService;
 
-@Config(shadows = {ShadowGoogleAuthUtil.class, ShadowVpnService.class})
+@Config(shadows = {ShadowGoogleAuthUtil.class})
 @RunWith(RobolectricTestRunner.class)
 public class PpnImplTest {
   private static final String TEST_ACCOUNT_NAME = "test@example.com";
@@ -72,6 +79,7 @@ public class PpnImplTest {
   @Rule public Mocks mocks = new Mocks(this);
 
   @Mock private PpnAccountManager mockAccountManager;
+  @Mock private PpnAccountRefresher mockAccountRefresher;
   @Mock private Krypton mockKrypton;
   @Mock private Xenon mockXenon;
   @Mock private PpnListener mockPpnListener;
@@ -87,6 +95,12 @@ public class PpnImplTest {
     service = Robolectric.setupService(VpnService.class);
     ShadowGoogleAuthUtil.setAvailableGoogleAccounts(TEST_ACCOUNT_NAME);
     PpnLibrary.clear();
+
+    when(mockAccountManager.createAccountRefresher(any(), any(), anyString(), anyString()))
+        .thenReturn(mockAccountRefresher);
+
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext());
   }
 
   private PpnImpl createPpn() {
@@ -99,6 +113,44 @@ public class PpnImplTest {
     ppn.setKryptonFactory((ignored1, ignored2) -> mockKrypton);
     ppn.setXenon(mockXenon);
     return ppn;
+  }
+
+  @Test
+  public void start_snapshotsDisallowedApplications() throws Exception {
+    List<String> initialApps = Arrays.asList("foo", "bar");
+    List<String> changedApps = Arrays.asList("baz", "quz");
+
+    PpnOptions options = new PpnOptions.Builder().setDisallowedApplications(initialApps).build();
+    PpnImpl ppn = createPpn(options);
+    VpnManager vpnManager = ppn.getVpnManager();
+
+    // Check that PPN gets the initial set of elements from the options and passes it on.
+    ppn.start(account);
+    assertThat(vpnManager.getDisallowApplications()).containsExactlyElementsIn(initialApps);
+
+    // Set up krypton
+    TaskCompletionSource<Void> ppnStarted = new TaskCompletionSource<>();
+    doAnswer(
+        invocation -> {
+          ppnStarted.trySetResult(null);
+          return null;
+        })
+        .when(mockKrypton)
+        .start(any());
+    // Start the service, then wait for Krypton to get called.
+    await(ppn.onStartService(service));
+    await(ppnStarted.getTask());
+
+    // Check that changing the set while PPN is running does not take effect immediately.
+    ppn.setDisallowedApplications(changedApps);
+    assertThat(vpnManager.getDisallowApplications()).containsExactlyElementsIn(initialApps);
+
+    // Check that it does take effect when restarting PPN.
+    ppn.restart().get();
+    assertThat(vpnManager.getDisallowApplications()).containsExactlyElementsIn(changedApps);
+
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+    ppn.onStopService();
   }
 
   @Test
@@ -188,14 +240,10 @@ public class PpnImplTest {
     String expectedZincUrl = "ZINC_URL";
     String expectedZincPublicSigningUrl = "ZINC_PSK_URL";
     String expectedBrassUrl = "BRASS_URL";
-    String expectedToken = "TOKEN";
     String expectedServiceType = "g1";
     boolean expectedIpsecDatapath = true;
     boolean expectedBridgeOverPpn = true;
     int expectedCipherSuiteKeyLength = 256;
-
-    when(mockAccountManager.getOAuthToken(any(), eq(account), anyString()))
-        .thenReturn(expectedToken);
 
     PpnOptions options =
         new PpnOptions.Builder()
@@ -248,20 +296,37 @@ public class PpnImplTest {
   }
 
   @Test
+  public void onStartService_startsAccountRefresher() throws Exception {
+    PpnOptions options = new PpnOptions.Builder().setAccountManager(mockAccountManager).build();
+    PpnImpl ppn = createPpn(options);
+
+    // Call start to set the account.
+    ppn.start(account);
+
+    // Start the service.
+    await(ppn.onStartService(service));
+    verify(mockAccountRefresher).start();
+
+    // Stop PPN.
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+    ppn.onStopService();
+    shadowOf(getMainLooper()).idle();
+
+    // Verify that AccountRefresher is stopped when PPN is stopped.
+    verify(mockAccountRefresher).stop();
+    shadowOf(getMainLooper()).idle();
+  }
+
+  @Test
   public void stop_stopsKrypton() throws Exception {
     String expectedZincUrl = "ZINC_URL";
     String expectedBrassUrl = "BRASS_URL";
-    String expectedToken = "TOKEN";
     String expectedServiceType = "g1";
-
-    when(mockAccountManager.getOAuthToken(any(), eq(account), anyString()))
-        .thenReturn(expectedToken);
 
     PpnOptions options =
         new PpnOptions.Builder()
             .setZincUrl(expectedZincUrl)
             .setBrassUrl(expectedBrassUrl)
-            .setAccountManager(mockAccountManager)
             .build();
     PpnImpl ppn = createPpn(options);
 
@@ -291,31 +356,186 @@ public class PpnImplTest {
     assertThat(config.getServiceType()).isEqualTo(expectedServiceType);
 
     // Stop PPN.
-    ppn.stop();
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+    ppn.onStopService();
 
     // Verify that Krypton.stop() was called correctly.
     verify(mockKrypton).stop();
     verify(mockKrypton, Mockito.atLeast(0)).getDebugJson();
     verifyNoMoreInteractions(mockKrypton);
     assertThat(shadowOf(service).isStoppedBySelf()).isTrue();
+  }
+
+  @Test
+  public void snooze_snoozesKrypton() throws Exception {
+    int snoozeDurationMs = 1000 * 60 * 5; // 5 minutes.
+    PpnImpl ppn = createPpn();
+
+    // Call start to set the account.
+    ppn.start(account);
+
+    // Set up a listener for when the service starts.
+    TaskCompletionSource<Void> ppnStarted = new TaskCompletionSource<>();
+    doAnswer(
+            invocation -> {
+              ppnStarted.trySetResult(null);
+              return null;
+            })
+        .when(mockKrypton)
+        .start(any());
+
+    // Set up a listener for when the service is snoozed.
+    TaskCompletionSource<Void> ppnSnoozed = new TaskCompletionSource<>();
+    doAnswer(
+            invocation -> {
+              ppnSnoozed.trySetResult(null);
+              return null;
+            })
+        .when(mockKrypton)
+        .snooze(anyLong());
+
+    // Start the service, then wait for Krypton to get called.
+    await(ppn.onStartService(service));
+    await(ppnStarted.getTask());
+    verify(mockXenon).start();
+    verify(mockXenon).getDebugJson();
+
+    // Snoozes Krypton.
+    ppn.snooze(Duration.ofMillis(snoozeDurationMs)).get();
+    await(ppnSnoozed.getTask());
+
+    // Verify Krypton.snooze(snoozeDurationMs) was called correctly.
+    verify(mockKrypton).snooze(snoozeDurationMs);
+    // Called after Krypton is successfully snoozed.
+    ppn.onKryptonSnoozed(SnoozeStatus.getDefaultInstance());
+    verify(mockXenon).stop();
+    verifyNoMoreInteractions(mockXenon);
+
+    // The service should still be running.
+    assertThat(shadowOf(service).isStoppedBySelf()).isFalse();
+
+    ppn.onStopService();
+  }
+
+  @Test
+  public void resume_resumesKrypton() throws Exception {
+    int snoozeDurationMs = 1000 * 60 * 5; // 5 minutes.
+    PpnImpl ppn = createPpn();
+
+    // Call start to set the account.
+    ppn.start(account);
+
+    // Set up a listener for when the service starts.
+    TaskCompletionSource<Void> ppnStarted = new TaskCompletionSource<>();
+    doAnswer(
+            invocation -> {
+              ppnStarted.trySetResult(null);
+              return null;
+            })
+        .when(mockKrypton)
+        .start(any());
+
+    // Set up a listener for when the service is snoozed.
+    TaskCompletionSource<Void> ppnSnoozed = new TaskCompletionSource<>();
+    doAnswer(
+            invocation -> {
+              ppnSnoozed.trySetResult(null);
+              return null;
+            })
+        .when(mockKrypton)
+        .snooze(anyLong());
+
+    // Set up a listener for when the service is resumed.
+    TaskCompletionSource<Void> ppnResumed = new TaskCompletionSource<>();
+    doAnswer(
+            invocation -> {
+              ppnResumed.trySetResult(null);
+              return null;
+            })
+        .when(mockKrypton)
+        .resume();
+
+    // Start the service, then wait for Krypton to get called.
+    await(ppn.onStartService(service));
+    await(ppnStarted.getTask());
+    verify(mockXenon).start();
+    verify(mockXenon).getDebugJson();
+
+    // Snoozes Krypton.
+    ppn.snooze(Duration.ofMillis(snoozeDurationMs)).get();
+    await(ppnSnoozed.getTask());
+
+    // Verify Krypton.snooze(snoozeDurationMs) was called correctly.
+    verify(mockKrypton).snooze(snoozeDurationMs);
+    // The service should still be running.
+    assertThat(shadowOf(service).isStoppedBySelf()).isFalse();
+
+    ppn.resume().get();
+
+    await(ppnResumed.getTask());
+    // Called when Krypton has successfully resumed.
+    ppn.onKryptonResumed(ResumeStatus.getDefaultInstance());
+    verify(mockXenon).start();
+    verifyNoMoreInteractions(mockXenon);
+
+    verify(mockKrypton).resume();
+
+    ppn.onStopService();
+  }
+
+  @Test
+  public void extendSnooze() throws Exception {
+    int snoozeDurationMs = 1000 * 60 * 5; // 5 minutes.
+    int extendSnoozeDurationMs = 1000 * 60 * 12; // 12 minutes.
+    PpnImpl ppn = createPpn();
+
+    // Call start to set the account.
+    ppn.start(account);
+
+    // Set up a listener for when the service starts.
+    TaskCompletionSource<Void> ppnStarted = new TaskCompletionSource<>();
+    doAnswer(
+            invocation -> {
+              ppnStarted.trySetResult(null);
+              return null;
+            })
+        .when(mockKrypton)
+        .start(any());
+
+    // Set up a listener for when the service is snoozed.
+    TaskCompletionSource<Void> ppnSnoozed = new TaskCompletionSource<>();
+    doAnswer(
+            invocation -> {
+              ppnSnoozed.trySetResult(null);
+              return null;
+            })
+        .when(mockKrypton)
+        .snooze(anyLong());
+
+    await(ppn.onStartService(service));
+    await(ppnStarted.getTask());
+
+    ppn.snooze(Duration.ofMillis(snoozeDurationMs)).get();
+    await(ppnSnoozed.getTask());
+
+    ppn.extendSnooze(Duration.ofMillis(extendSnoozeDurationMs)).get();
+    verify(mockKrypton).extendSnooze(extendSnoozeDurationMs);
+
+    ppn.onStopService();
   }
 
   @Test
   public void stop_stopsServiceIfKryptonStopThrows() throws Exception {
     String expectedZincUrl = "ZINC_URL";
     String expectedBrassUrl = "BRASS_URL";
-    String expectedToken = "TOKEN";
     String expectedServiceType = "g1";
 
-    when(mockAccountManager.getOAuthToken(any(), eq(account), anyString()))
-        .thenReturn(expectedToken);
     doThrow(new KryptonException("Test")).when(mockKrypton).stop();
 
     PpnOptions options =
         new PpnOptions.Builder()
             .setZincUrl(expectedZincUrl)
             .setBrassUrl(expectedBrassUrl)
-            .setAccountManager(mockAccountManager)
             .build();
     PpnImpl ppn = createPpn(options);
 
@@ -345,21 +565,27 @@ public class PpnImplTest {
     assertThat(config.getServiceType()).isEqualTo(expectedServiceType);
 
     // Stop PPN.
-    ppn.stop();
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+
+    // Assert that the Service was stopped.
+    assertThat(shadowOf(service).isStoppedBySelf()).isTrue();
+
+    // Simulate Android telling the Service it's stopped.
+    ppn.onStopService();
 
     // Verify that Krypton.stop() was called correctly.
     verify(mockKrypton).stop();
     verify(mockKrypton, Mockito.atLeast(0)).getDebugJson();
     verifyNoMoreInteractions(mockKrypton);
-    assertThat(shadowOf(service).isStoppedBySelf()).isTrue();
   }
 
   @Test
-  public void setSafeDisconnectEnabled_updatesBoolean() {
+  public void setSafeDisconnectEnabled_updatesBoolean() throws Exception {
     boolean expectedSafeDisconnectState = true;
 
     PpnImpl ppn = createPpn();
-    ppn.setSafeDisconnectEnabled(expectedSafeDisconnectState);
+    ppn.setSafeDisconnectEnabled(expectedSafeDisconnectState).get();
+    ;
 
     assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(expectedSafeDisconnectState);
   }
@@ -370,14 +596,18 @@ public class PpnImplTest {
 
     PpnImpl ppn = createPpn();
     ppn.start(account);
-    ppn.setSafeDisconnectEnabled(expectedSafeDisconnectState);
+    ppn.setSafeDisconnectEnabled(expectedSafeDisconnectState).get();
 
     assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(expectedSafeDisconnectState);
 
-    ppn.stop();
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+    ppn.onStopService();
     ppn.start(account);
 
     assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(expectedSafeDisconnectState);
+
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+    ppn.onStopService();
   }
 
   @Test
@@ -387,11 +617,12 @@ public class PpnImplTest {
 
     PpnImpl ppn = createPpn();
     ppn.start(account);
-    ppn.setSafeDisconnectEnabled(originalSafeDisconnectState);
+    ppn.setSafeDisconnectEnabled(originalSafeDisconnectState).get();
     assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(originalSafeDisconnectState);
 
-    ppn.stop();
-    ppn.setSafeDisconnectEnabled(expectedSafeDisconnectState);
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+    ppn.onStopService();
+    ppn.setSafeDisconnectEnabled(expectedSafeDisconnectState).get();
     assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(expectedSafeDisconnectState);
   }
 
@@ -409,6 +640,7 @@ public class PpnImplTest {
             .setBlindSigningEnabled(true)
             .setShouldInstallKryptonCrashSignalHandler(true)
             .setCopperControllerAddress("e")
+            .setCopperHostnameSuffix(Arrays.asList("f"))
             .setIpSecEnabled(true)
             .setRekeyDuration(Duration.ofMillis(1005))
             .setReconnectorInitialTimeToReconnect(Duration.ofMillis(2))
@@ -427,6 +659,8 @@ public class PpnImplTest {
     assertThat(config.getEnableBlindSigning()).isTrue();
     assertThat(config.getInstallCrashSignalHandler()).isTrue();
     assertThat(config.getCopperControllerAddress()).isEqualTo("e");
+    assertThat(config.getCopperHostnameSuffixCount()).isEqualTo(1);
+    assertThat(config.getCopperHostnameSuffix(0)).isEqualTo("f");
     assertThat(config.getIpsecDatapath()).isTrue();
     assertThat(config.getRekeyDuration().getSeconds()).isEqualTo(1);
     assertThat(config.getRekeyDuration().getNanos()).isEqualTo(5000000);
@@ -450,6 +684,8 @@ public class PpnImplTest {
     assertThat(config.hasEnableBlindSigning()).isFalse();
     assertThat(config.hasInstallCrashSignalHandler()).isFalse();
     assertThat(config.hasCopperControllerAddress()).isFalse();
+    assertThat(config.getCopperHostnameSuffixCount()).isEqualTo(1);
+    assertThat(config.getCopperHostnameSuffix(0)).isNotEmpty();
     assertThat(config.hasIpsecDatapath()).isFalse();
     assertThat(config.hasRekeyDuration()).isFalse();
     assertThat(config.hasReconnectorConfig()).isTrue();
@@ -476,8 +712,7 @@ public class PpnImplTest {
     PpnImpl ppn = createPpn();
     ppn.setTelemetryManager(mockTelemetry);
 
-    PpnStatus status = new PpnStatus(Code.OK, "OK");
-    ppn.onKryptonDisconnected(status);
+    ppn.onKryptonDisconnected(DisconnectionStatus.getDefaultInstance());
     shadowOf(Looper.getMainLooper()).idle();
 
     verify(mockTelemetry).notifyDisconnected();
@@ -501,11 +736,10 @@ public class PpnImplTest {
     PpnImpl ppn = createPpn();
     ppn.setPpnListener(mockPpnListener);
 
-    PpnStatus status = new PpnStatus(Code.OK, "OK");
-    ppn.onKryptonDisconnected(status);
+    ppn.onKryptonDisconnected(DisconnectionStatus.getDefaultInstance());
     shadowOf(Looper.getMainLooper()).idle();
 
-    verify(mockPpnListener).onPpnDisconnected(status);
+    verify(mockPpnListener).onPpnDisconnected(any(PpnDisconnectionStatus.class));
   }
 
   @Test
@@ -514,9 +748,12 @@ public class PpnImplTest {
     ppn.setPpnListener(mockPpnListener);
 
     ConnectionStatus status = ConnectionStatus.getDefaultInstance();
+    // We have to connect first, or the status update will be ignored.
+    ppn.onKryptonConnected(status);
     ppn.onKryptonStatusUpdated(status);
     shadowOf(Looper.getMainLooper()).idle();
 
+    verify(mockPpnListener).onPpnConnected(any(PpnConnectionStatus.class));
     verify(mockPpnListener).onPpnStatusUpdated(any(PpnConnectionStatus.class));
   }
 
@@ -531,6 +768,8 @@ public class PpnImplTest {
     shadowOf(Looper.getMainLooper()).idle();
 
     assertThat(shadowOf(service).isStoppedBySelf()).isTrue();
+
+    ppn.onStopService();
   }
 
   @Test
@@ -591,7 +830,7 @@ public class PpnImplTest {
     assertThat(shadowOf(service).isStoppedBySelf()).isFalse();
     doThrow(new KryptonException("Test")).when(mockKrypton).stop();
 
-    ppn.stop();
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
     assertThat(shadowOf(service).isStoppedBySelf()).isTrue();
 
     // Outside of tests, PpnVpnService would call this in Service.onDestroy().
@@ -646,6 +885,38 @@ public class PpnImplTest {
   }
 
   @Test
+  public void statusUpdated_suppressedWhileDisconnected() {
+    PpnImpl ppn = createPpn();
+    AtomicBoolean statusUpdatedCalled = new AtomicBoolean();
+    ppn.setPpnListener(
+        new PpnListener() {
+          @Override
+          public void onPpnStarted(Account account, boolean needsNotification) {}
+
+          @Override
+          public void onPpnStatusUpdated(PpnConnectionStatus status) {
+            statusUpdatedCalled.set(true);
+          }
+        });
+
+    // Test the normal case.
+    ppn.onKryptonConnected(ConnectionStatus.getDefaultInstance());
+    shadowOf(Looper.getMainLooper()).idle();
+    statusUpdatedCalled.set(false);
+    ppn.onKryptonStatusUpdated(ConnectionStatus.getDefaultInstance());
+    shadowOf(Looper.getMainLooper()).idle();
+    assertThat(statusUpdatedCalled.get()).isTrue();
+
+    // Test that it gets suppressed after disconnecting.
+    ppn.onKryptonDisconnected(DisconnectionStatus.getDefaultInstance());
+    shadowOf(Looper.getMainLooper()).idle();
+    statusUpdatedCalled.set(false);
+    ppn.onKryptonStatusUpdated(ConnectionStatus.getDefaultInstance());
+    shadowOf(Looper.getMainLooper()).idle();
+    assertThat(statusUpdatedCalled.get()).isFalse();
+  }
+
+  @Test
   public void getDebugInfo_isPopulated() throws Exception {
     PpnImpl ppn = createPpn();
     ppn.setKryptonFactory((ignored1, ignored2) -> mockKrypton);
@@ -664,6 +935,7 @@ public class PpnImplTest {
     assertThat(debugInfo.opt(PpnDebugJson.KRYPTON)).isNull();
 
     try {
+      ppn.start(account);
       await(ppn.onStartService(service));
       debugInfo = ppn.getDebugJson();
 
@@ -698,6 +970,7 @@ public class PpnImplTest {
     assertThat(debugInfo.opt(PpnDebugJson.KRYPTON)).isNull();
 
     try {
+      ppn.start(account);
       await(ppn.onStartService(service));
       logged = ppn.logDebugInfoAsync(Duration.ofSeconds(30));
       debugInfo = await(logged);

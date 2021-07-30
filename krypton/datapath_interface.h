@@ -15,11 +15,13 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_INTERFACE_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_INTERFACE_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 
+#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
-#include "privacy/net/krypton/crypto/suite.h"
+#include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/network_type.proto.h"
@@ -45,22 +47,17 @@ class DatapathInterface {
     // Datapath is established.
     virtual void DatapathEstablished() = 0;
     // Datapath failed with status.
-    // TODO: We need to figure out what to do with this when we move to
-    // datapaths that don't have an fd. We can either hardcode handling in the
-    // datapath itself to do the filtering, or we can have new datapaths always
-    // use 0 for the failed_fd, and ignore those.
-    virtual void DatapathFailed(const absl::Status&, int failed_fd) = 0;
+    virtual void DatapathFailed(const absl::Status&) = 0;
     // Permanent Datapath failure
     virtual void DatapathPermanentFailure(const absl::Status&) = 0;
     // Datapath needs rekey
     virtual void DoRekey() = 0;
   };
 
-  // Initialize the data path.  Start takes two parameters, the tunnel fd and
-  // the egress response.
+  // Initialize the data path.  Start takes two parameters, the transform params
+  // and the egress response.
   virtual absl::Status Start(std::shared_ptr<AddEgressResponse> egress_response,
-                             const BridgeTransformParams& crypto,
-                             CryptoSuite suite) = 0;
+                             const TransformParams& params) = 0;
 
   // Stop the datapath.  Callers need to clear the object and recreate after
   // |stop|.
@@ -73,23 +70,17 @@ class DatapathInterface {
   }
 
   // nullopt for NetworkInfo indicates there are no active networks.
-  // TunFd and NetworkFd ownership are borrowed from the caller, who retains
+  // Tunnel ownership is borrowed from the caller, who retains
   // ownership, but guarantees them to stay alive for the life of the datapath.
-  virtual absl::Status SwitchNetwork(
-      uint32 session_id,
-      const std::vector<std::string>& egress_point_sock_addresses,
-      absl::optional<NetworkInfo> network_info,
-      const PacketPipe* network_socket, const PacketPipe* tunnel,
-      int counter) = 0;
+  virtual absl::Status SwitchNetwork(uint32_t session_id,
+                                     const Endpoint& endpoint,
+                                     absl::optional<NetworkInfo> network_info,
+                                     PacketPipe* tunnel, int counter) = 0;
 
-  // Is datapath running or started.
-  virtual bool is_running() const = 0;
-
-  virtual absl::Status Rekey(const std::string& uplink_key,
-                             const std::string& downlink_key) = 0;
+  virtual absl::Status SetKeyMaterials(const TransformParams& params) = 0;
 
  protected:
-  NotificationInterface* notification_;  // Not Owned
+  NotificationInterface* notification_ = nullptr;  // Not Owned
 };
 
 }  // namespace krypton

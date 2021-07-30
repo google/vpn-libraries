@@ -60,16 +60,12 @@ class RsaFdhBlinderTest : public ::testing::Test {
                              BoringSslRsaFromRsaPrivateKey(private_key_));
   }
 
-  RSA* public_key() { return rsa_public_key_.get(); }
-
   bssl::UniquePtr<RSA> public_key_copy() const {
     bssl::UniquePtr<RSA> public_key_copy(
         RSAPublicKey_dup(rsa_public_key_.get()));
     EXPECT_THAT(public_key_copy.get(), testing::NotNull());
     return public_key_copy;
   }
-
-  RSA* private_key() { return rsa_private_key_.get(); }
 
   bssl::UniquePtr<BN_CTX> bn_ctx_;
   BIGNUM* rsa_f4_;

@@ -61,4 +61,12 @@ public interface PpnTelemetry {
 
   /** Returns the number of network switches since the last time telemetry was collected. */
   int networkSwitches();
+
+  /**
+   * Returns the List of all disconnection durations since the last time telemetry was collected.
+   */
+  List<Duration> disconnectionDurations();
+
+  /** Returns the number of disconnections since the last time telemetry was collected */
+  int disconnectionCount();
 }

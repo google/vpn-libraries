@@ -62,8 +62,8 @@ absl::StatusOr<std::unique_ptr<PacketPipe>> VpnService::CreateTunnel(
   return std::make_unique<FdPacketPipe>(fd);
 }
 
-absl::StatusOr<std::unique_ptr<PacketPipe>>
-VpnService::CreateProtectedNetworkSocket(const NetworkInfo& network_info) {
+absl::StatusOr<int> VpnService::CreateProtectedNetworkSocket(
+    const NetworkInfo& network_info) {
   LOG(INFO) << "Requesting network fd from Java with network info "
             << network_info.DebugString();
 
@@ -87,6 +87,12 @@ VpnService::CreateProtectedNetworkSocket(const NetworkInfo& network_info) {
                         absl::StrCat("Unable to create network fd: ", fd));
   }
 
+  return fd;
+}
+
+absl::StatusOr<std::unique_ptr<PacketPipe>> VpnService::CreateNetworkPipe(
+    const NetworkInfo& network_info, const Endpoint&) {
+  PPN_ASSIGN_OR_RETURN(int fd, CreateProtectedNetworkSocket(network_info));
   return std::make_unique<FdPacketPipe>(fd);
 }
 
@@ -97,7 +103,7 @@ absl::Status VpnService::ConfigureIpSec(const IpSecTransformParams& params) {
   auto env = jni_cache->GetJavaEnv();
   if (!env) {
     LOG(ERROR) << "Cannot find JavaEnv to configure IPSec.";
-    absl::Status(absl::StatusCode::kInternal, "Unable to get Java Env");
+    return absl::Status(absl::StatusCode::kInternal, "Unable to get Java Env");
   }
 
   std::string transform_params_bytes;

@@ -15,7 +15,6 @@
 #include "privacy/net/krypton/utils/ip_range.h"
 
 #include <arpa/inet.h>
-#include <linux/in6.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -26,6 +25,7 @@
 
 #include "base/logging.h"
 #include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/cleanup/cleanup.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/match.h"
@@ -38,9 +38,8 @@ namespace privacy {
 namespace krypton {
 namespace utils {
 
-absl::StatusOr<std::string> GetHostFromHostPort(absl::string_view host_port) {
-  // This functions does not verify that the port is valid, but just strips it.
-
+absl::Status ParseHostPort(absl::string_view host_port, std::string* host,
+                           std::string* port) {
   if (!host_port.empty() && host_port[0] == '[') {
     // Parse a bracketed host, typically an IPv6 literal.
     auto rbracket = host_port.rfind(']');
@@ -54,17 +53,35 @@ absl::StatusOr<std::string> GetHostFromHostPort(absl::string_view host_port) {
             absl::StrCat("Missing : after ] in host-post: ", host_port));
       }
     }
-    return std::string(absl::ClippedSubstr(host_port, 1, rbracket - 1));
+    if (host != nullptr) {
+      *host = std::string(absl::ClippedSubstr(host_port, 1, rbracket - 1));
+    }
+    if (port != nullptr) {
+      *port = std::string(absl::ClippedSubstr(host_port, rbracket + 2));
+    }
+    return absl::OkStatus();
   }
 
   const auto colon = host_port.find(':');
   if (colon != absl::string_view::npos &&
       host_port.find(':', colon + 1) == absl::string_view::npos) {
     // Exactly 1 colon.  Split into host:port.
-    return std::string(host_port.substr(0, colon));
+    if (host != nullptr) {
+      *host = std::string(absl::ClippedSubstr(host_port, 0, colon));
+    }
+    if (port != nullptr) {
+      *port = std::string(absl::ClippedSubstr(host_port, colon + 1));
+    }
+    return absl::OkStatus();
   }
   // 0 or 2+ colons.  Bare hostname or IPv6 literal.
-  return std::string(host_port);
+  if (host != nullptr) {
+    *host = std::string(host_port);
+  }
+  if (port != nullptr) {
+    *port = "";
+  }
+  return absl::OkStatus();
 }
 
 bool IsValidV4Address(absl::string_view ip) {
@@ -75,13 +92,14 @@ bool IsValidV4Address(absl::string_view ip) {
   }
 
   unsigned char buf[sizeof(struct in6_addr)];
-  auto host = GetHostFromHostPort(ip);
-  if (!host.ok()) {
+  std::string host;
+  auto status = ParseHostPort(ip, &host, nullptr);
+  if (!status.ok()) {
     return false;
   }
 
   // inet_pton checks if the string is valid ip.
-  if (inet_pton(AF_INET, host.value().c_str(), buf) != 0) {
+  if (inet_pton(AF_INET, host.c_str(), buf) != 0) {
     return true;
   }
   return false;
@@ -94,13 +112,14 @@ bool IsValidV6Address(absl::string_view ip) {
   }
 
   unsigned char buf[sizeof(struct in6_addr)];
-  auto host = GetHostFromHostPort(ip);
-  if (!host.ok()) {
+  std::string host;
+  auto status = ParseHostPort(ip, &host, nullptr);
+  if (!status.ok()) {
     return false;
   }
 
   // inet_pton checks if the string is valid ip.
-  if (inet_pton(AF_INET6, host.value().c_str(), buf) != 0) {
+  if (inet_pton(AF_INET6, host.c_str(), buf) != 0) {
     return true;
   }
   return false;
@@ -200,27 +219,33 @@ absl::Status IPRange::GenericAddress(int port, sockaddr_storage* addr_out,
   return absl::InvalidArgumentError(("Address is neither v4 or v6"));
 }
 
-absl::StatusOr<std::string> ResolveIPV4Address(const std::string& hostname) {
-  // Temporary memory allocation that is needed for gethostbyname_r to work on.
-  // There is no particular reason this has to be 8192.
-  static const int kTmpLen = 8192;
-  struct hostent hbuf, *output;
-  char tmp[kTmpLen];
-  int error_number;
+absl::StatusOr<std::string> ResolveIPAddress(const std::string& hostname) {
+  struct addrinfo hints = {};
 
-  auto get_host_status = gethostbyname_r(hostname.c_str(), &hbuf, tmp, kTmpLen,
-                                         &output, &error_number);
-  if (get_host_status != 0) {
-    return absl::UnavailableError(
-        absl::StrCat("gethostbyname_r error: ", hstrerror(error_number)));
+  // Get the addrinfo for the hostname.
+  struct addrinfo* info = nullptr;
+  int err = getaddrinfo(hostname.c_str(), /*service=*/nullptr, &hints, &info);
+  if (err != 0) {
+    return absl::InternalError(
+        absl::StrCat("getaddrinfo error: ", gai_strerror(err)));
   }
-  // Return the first address.
-  if (output->h_addr_list[0] != nullptr) {
-    return inet_ntoa(*reinterpret_cast<in_addr*>(output->h_addr_list[0]));
+  if (info == nullptr) {
+    return absl::NotFoundError("Cannot convert host to IP address");
   }
+  absl::Cleanup free_info([info] { freeaddrinfo(info); });
 
-  return absl::NotFoundError("Cannot convert host to IP address");
+  // Convert the addrinfo into a dotted number string.
+  // The max length for IPv6 is long enough for either IPv4 or IPv6.
+  char ip[INET6_ADDRSTRLEN];
+  err = getnameinfo(info->ai_addr, info->ai_addrlen, ip, INET6_ADDRSTRLEN,
+                    /*service=*/nullptr, 0, NI_NUMERICHOST);
+  if (err != 0) {
+    return absl::InternalError(
+        absl::StrCat("getnameinfo error: ", gai_strerror(err)));
+  }
+  return ip;
 }
+
 }  // namespace utils
 }  // namespace krypton
 }  // namespace privacy

@@ -16,19 +16,35 @@ package com.google.android.libraries.privacy.ppn.internal;
 
 import android.accounts.Account;
 import android.content.Context;
+import android.net.Network;
 import android.os.Bundle;
 import android.os.RemoteException;
+import android.util.Log;
+import androidx.annotation.Nullable;
+import androidx.work.ListenableWorker;
+import androidx.work.WorkManager;
 import com.google.android.gms.auth.GoogleAuthException;
 import com.google.android.gms.auth.GoogleAuthUtil;
+import com.google.android.gms.auth.TokenData;
 import com.google.android.gms.common.GooglePlayServicesNotAvailableException;
 import com.google.android.gms.common.GooglePlayServicesRepairableException;
 import com.google.android.libraries.privacy.ppn.PpnAccountManager;
+import com.google.android.libraries.privacy.ppn.PpnAccountRefresher;
 import com.google.android.libraries.privacy.ppn.PpnException;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.concurrent.Executor;
 
 /** An account manager for first-party apps. This uses GMSCore APIs to get look up Accounts. */
 public class GoogleAccountManager implements PpnAccountManager {
-  private static final String TAG = "PPN GoogleAccountManager";
+  private static final String TAG = "GoogleAccountManager";
+
+  @Override
+  public PpnAccountRefresher createAccountRefresher(
+      WorkManager workManager, Executor backgroundExecutor, String accountName, String scope) {
+    return new GoogleAccountRefresher(workManager, this, backgroundExecutor, accountName, scope);
+  }
 
   @Override
   public Account getAccount(Context context, String accountName) throws PpnException {
@@ -51,13 +67,37 @@ public class GoogleAccountManager implements PpnAccountManager {
   }
 
   @Override
-  public String getOAuthToken(Context context, Account account, String scope) throws PpnException {
-    // TODO: Perhaps add a mechanism for passing in a particular network.
+  public PpnTokenData getOAuthToken(
+      Context context, Account account, String scope, @Nullable Network network)
+      throws PpnException {
     Bundle extras = new Bundle();
+    if (network != null) {
+      extras.putParcelable(GoogleAuthUtil.KEY_NETWORK_TO_USE, network);
+    }
     try {
-      return GoogleAuthUtil.getTokenWithNotification(context, account, scope, extras);
+      TokenData tokenData =
+          GoogleAuthUtil.getTokenWithDetailsAndNotification(context, account, scope, extras);
+      Long expirationTimeSecs = tokenData.getExpirationTimeSecs();
+      Instant expiration;
+      if (expirationTimeSecs != null) {
+        expiration = Instant.ofEpochSecond(tokenData.getExpirationTimeSecs());
+        Duration expiresIn = Duration.between(Instant.now(), expiration);
+        Log.w(TAG, "OAuth token expires in " + expiresIn + " at " + expiration);
+      } else {
+        // It's not clear why gmscore sometimes gives us null expiration times, but we should assume
+        // the timeout is long enough that PPN should try to use the token, but short enough that
+        // next time it needs one, it tries to fetch again.
+        expiration = Instant.now().plusSeconds(60);
+        Log.w(TAG, "OAuth token has null expiration time. Assuming it expires in 1 minute.");
+      }
+      return new PpnTokenData(tokenData.getToken(), expiration);
     } catch (IOException | GoogleAuthException e) {
       throw new PpnException("Unable to obtain oauth token.", e);
     }
+  }
+
+  @Override
+  public Class<? extends ListenableWorker> getWorkerClass() {
+    return GoogleAccountRefreshWorker.class;
   }
 }

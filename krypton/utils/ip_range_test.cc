@@ -31,29 +31,56 @@ namespace {
 
 using ::testing::Eq;
 using ::testing::Optional;
-using ::testing::status::IsOkAndHolds;
 using ::testing::status::StatusIs;
 
-TEST(IPRange, TestGetHostFromHostPort) {
+TEST(IPRange, TestGetPortFromHostPort) {
+  std::string host;
+  std::string port;
+
   // Bare port.
-  EXPECT_THAT(GetHostFromHostPort(":12345"), IsOkAndHolds(""));
+  EXPECT_OK(ParseHostPort(":12345", &host, &port));
+  EXPECT_EQ(host, "");
+  EXPECT_EQ(port, "12345");
+}
+
+TEST(IPRange, TestGetDomainAndPortFromHostPort) {
+  std::string host;
+  std::string port;
 
   // Domains.
-  EXPECT_THAT(GetHostFromHostPort("example.com"), IsOkAndHolds("example.com"));
-  EXPECT_THAT(GetHostFromHostPort("example.com:12345"),
-              IsOkAndHolds("example.com"));
+  EXPECT_OK(ParseHostPort("example.com:12345", &host, &port));
+  EXPECT_EQ(host, "example.com");
+  EXPECT_EQ(port, "12345");
+}
+
+TEST(IPRange, TestGetIP4AddressAndPortFromHostPort) {
+  std::string host;
+  std::string port;
 
   // IPv4
-  EXPECT_THAT(GetHostFromHostPort("127.0.0.1"), IsOkAndHolds("127.0.0.1"));
-  EXPECT_THAT(GetHostFromHostPort("127.0.0.1:12345"),
-              IsOkAndHolds("127.0.0.1"));
+  EXPECT_OK(ParseHostPort("127.0.0.1:12345", &host, &port));
+  EXPECT_EQ(host, "127.0.0.1");
+  EXPECT_EQ(port, "12345");
+}
+
+TEST(IPRange, TestGetIP6AddressAndPortFromHostPort) {
+  std::string host;
+  std::string port;
+
+  // IPv6
+  EXPECT_OK(ParseHostPort("[2604:fe::03]:12345", &host, &port));
+  EXPECT_EQ(host, "2604:fe::03");
+  EXPECT_EQ(port, "12345");
+}
+
+TEST(IPRange, TestGetBareIP6AddressAndPortFromHostPort) {
+  std::string host;
+  std::string port;
 
   // Bare IPv6
-  EXPECT_THAT(GetHostFromHostPort("2604:fe::3"), IsOkAndHolds("2604:fe::3"));
-
-  // IPv6 with port
-  EXPECT_THAT(GetHostFromHostPort("[2604:fe::03]:12345"),
-              IsOkAndHolds("2604:fe::03"));
+  EXPECT_OK(ParseHostPort("2604:fe::3", &host, &port));
+  EXPECT_EQ(host, "2604:fe::3");
+  EXPECT_EQ(port, "");
 }
 
 // Testing V4

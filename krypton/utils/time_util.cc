@@ -14,6 +14,8 @@
 
 #include "privacy/net/krypton/utils/time_util.h"
 
+#include <cstdint>
+
 #include "privacy/net/krypton/utils/status.h"
 
 namespace privacy {
@@ -41,8 +43,8 @@ inline ::absl::Status ValidateDuration(const google::protobuf::Duration& d) {
 absl::Status ToProtoDuration(absl::Duration d,
                              google::protobuf::Duration* proto) {
   // s and n may both be negative, per the Duration proto spec.
-  const int64 s = absl::IDivDuration(d, absl::Seconds(1), &d);
-  const int64 n = absl::IDivDuration(d, absl::Nanoseconds(1), &d);
+  const int64_t s = absl::IDivDuration(d, absl::Seconds(1), &d);
+  const int64_t n = absl::IDivDuration(d, absl::Nanoseconds(1), &d);
   proto->set_seconds(s);
   proto->set_nanos(n);
   PPN_RETURN_IF_ERROR(ValidateDuration(*proto));
@@ -58,6 +60,13 @@ absl::Status ToProtoTime(absl::Time t, google::protobuf::Timestamp* proto) {
   proto->set_seconds(duration_proto.seconds());
   proto->set_nanos(duration_proto.nanos());
   return absl::OkStatus();
+}
+
+absl::StatusOr<absl::Duration> DurationFromProto(
+    const google::protobuf::Duration& proto) {
+  auto seconds = absl::Seconds(proto.seconds());
+  auto nanos = absl::Nanoseconds(proto.nanos());
+  return seconds + nanos;
 }
 
 absl::StatusOr<absl::Time> ParseTimestamp(absl::string_view s) {

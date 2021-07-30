@@ -14,12 +14,14 @@
 
 #include "privacy/net/krypton/add_egress_request.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/jsoncpp/reader.h"
@@ -33,9 +35,12 @@ const char token[] =
     "{\"type\":1,\"info\":\"INFO\",\"signature\":"
     "\"SIGNATURE\"}";
 const char kCopperControlPlaneAddress[] = "192.168.0.10";
-const uint32 kClientSpi = 10;
+const uint32_t kClientSpi = 10;
 
-class AddEgressRequestTest : public ::testing::Test {};
+class AddEgressRequestTest : public ::testing::Test {
+ public:
+  KryptonConfig config_;
+};
 
 TEST_F(AddEgressRequestTest, TestBridgeRequest) {
   HttpResponse http_response;
@@ -49,7 +54,9 @@ TEST_F(AddEgressRequestTest, TestBridgeRequest) {
 
   // Construct an temporary auth response.
   auto auth_response = std::make_shared<AuthAndSignResponse>();
-  EXPECT_OK(auth_response->DecodeFromProto(http_response));
+  KryptonConfig config;
+  config.add_copper_hostname_suffix("g-tun.com");
+  EXPECT_OK(auth_response->DecodeFromProto(http_response, config));
   AddEgressRequest request;
   auto http_request = request.EncodeToProtoForBridge(auth_response);
   EXPECT_TRUE(http_request);
@@ -75,27 +82,33 @@ TEST_P(PpnAddEgressRequest, TestPpnRequest) {
 
   // Use the actual crypto utils to ensure the base64 encoded strings are sent
   // in Json requests.
-  crypto::SessionCrypto crypto;
+  crypto::SessionCrypto crypto(&config_);
   auto keys = crypto.GetMyKeyMaterial();
 
   HttpResponse response;
   response.set_json_body(R"json({"jwt": "some_jwt_token"})json");
   auto auth_response = std::make_shared<AuthAndSignResponse>();
-  EXPECT_OK(auth_response->DecodeFromProto(response));
+  KryptonConfig config;
+  config.add_copper_hostname_suffix("g-tun.com");
+  EXPECT_OK(auth_response->DecodeFromProto(response, config));
 
   AddEgressRequest::PpnDataplaneRequestParams params;
   params.auth_response = auth_response;
   params.crypto = &crypto;
   params.copper_control_plane_address = kCopperControlPlaneAddress;
-  params.dataplane_protocol = DataplaneProtocol::BRIDGE;
-  params.suite = CryptoSuite::AES128_GCM;
+  params.dataplane_protocol = KryptonConfig::BRIDGE;
+  params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;
   if (GetParam()) {
     // Blind signing is enabled.
     params.blind_token_enabled = true;
     params.blind_message = "raw message";
     params.unblinded_token_signature = "raw message signature";
+  } else {
+    params.blind_token_enabled = false;
   }
+  params.region_token_and_signature = "raw region and sig";
+  params.apn_type = "ppn";
 
   auto http_request = request.EncodeToProtoForPpn(params);
   EXPECT_TRUE(http_request);
@@ -113,6 +126,8 @@ TEST_P(PpnAddEgressRequest, TestPpnRequest) {
   } else {
     EXPECT_EQ(actual["unblinded_token"], "some_jwt_token");
   }
+  EXPECT_EQ(actual["region_token_and_signature"], "raw region and sig");
+  EXPECT_EQ(actual["ppn"]["apn_type"], "ppn");
   EXPECT_EQ(actual["ppn"]["client_public_value"], keys.public_value);
   EXPECT_EQ(actual["ppn"]["client_nonce"], keys.nonce);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
@@ -127,7 +142,7 @@ TEST_P(PpnAddEgressRequest, TestPpnRequest) {
 INSTANTIATE_TEST_SUITE_P(BlindSigning, PpnAddEgressRequest, ::testing::Bool());
 
 TEST_F(AddEgressRequestTest, TestRekeyParameters) {
-  crypto::SessionCrypto crypto;
+  crypto::SessionCrypto crypto(&config_);
   auto keys = crypto.GetMyKeyMaterial();
 
   AddEgressRequest request;
@@ -136,8 +151,8 @@ TEST_F(AddEgressRequestTest, TestRekeyParameters) {
   params.auth_response = auth_response;
   params.crypto = &crypto;
   params.copper_control_plane_address = kCopperControlPlaneAddress;
-  params.dataplane_protocol = DataplaneProtocol::BRIDGE;
-  params.suite = CryptoSuite::AES128_GCM;
+  params.dataplane_protocol = KryptonConfig::BRIDGE;
+  params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = true;
   params.signature = "some_signature";
   params.uplink_spi = 1234;

@@ -41,6 +41,19 @@ public interface Krypton {
    */
   void stop() throws KryptonException;
 
+  /** Snoozes the Krypton service, closing open connections. */
+  void snooze(long snoozeDurationMs) throws KryptonException;
+
+  /** Extends how long Krypton service is snoozed for. */
+  void extendSnooze(long extendSnoozeDurationMs) throws KryptonException;
+
+  /**
+   * Resumes Krypton service.
+   *
+   * <p>Implemented in the native library |Krypton::Resume|
+   */
+  void resume() throws KryptonException;
+
   /**
    * Switches the outbound network of the device.
    *
@@ -59,14 +72,14 @@ public interface Krypton {
    */
   void setNoNetworkAvailable() throws KryptonException;
 
-  /** Pause PPN. Implicitly resumes on setNetwork. */
-  void pause(int durationMilliseconds) throws KryptonException;
-
   /** Update the state of the Safe Disconnect feature in Krypton. */
   void setSafeDisconnectEnabled(boolean enable) throws KryptonException;
 
   /** Returns whether Safe Disconnect is enabled in Krypton. */
   boolean isSafeDisconnectEnabled() throws KryptonException;
+
+  /** Puts Krypton in a horrible wedged state, for testing app bypass, etc. */
+  void setSimulatedNetworkFailure(boolean simulatedNetworkFailure) throws KryptonException;
 
   /** Collect telemetry data from Krypton, and resets it. */
   KryptonTelemetry collectTelemetry() throws KryptonException;

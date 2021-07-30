@@ -51,12 +51,22 @@ message KryptonConfig {
 
   optional ReconnectorConfig reconnector_config = 4;
 
+  // Only one of ipsec_datapath or bridge_over_ppn be specified.
+  // Deprecate this and use datapath variable.
   // Use IpSec datapath.
-  optional bool ipsec_datapath = 5 [default = true];
+  optional bool ipsec_datapath = 5 [deprecated = true, default = true];
+  // Running bridge over PPN.
+  optional bool bridge_over_ppn = 7 [deprecated = true, default = false];
+
   // Could be DNS address or v4/v6 address of the copper controller.
   optional string copper_controller_address = 6;
-  // Running bridge over PPN.
-  optional bool bridge_over_ppn = 7 [default = false];
+  // For tests and probers, this overrides the copper_controller_address
+  // and the copper hostname from zinc
+  // and influence the control_plane_sock_addr sent to brass.
+  optional string copper_hostname_override = 17;
+  // Used to validate a copper hostname domain from backend.
+  repeated string copper_hostname_suffix = 16;
+
   // AES128 to AES256 in bits.  128 or 16 bytes is for AES128. 256 or 32 bytes
   // is for AES256.
   optional uint32 cipher_suite_key_length = 8 [default = 256];
@@ -70,4 +80,11 @@ message KryptonConfig {
 
   // Whether Krypton should enable Safe Disconnect on startup.
   optional bool safe_disconnect_enabled = 14 [default = false];
+
+  enum DatapathProtocol {
+    DEFAULT = 0;
+    IPSEC = 1;
+    BRIDGE = 2;
+  }
+  optional DatapathProtocol datapath_protocol = 15 [default = IPSEC];
 }

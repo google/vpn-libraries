@@ -31,10 +31,15 @@ class MockVpnService : public VpnServiceInterface {
  public:
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<PacketPipe>>, CreateTunnel,
               (const TunFdData&), (override));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<PacketPipe>>,
-              CreateProtectedNetworkSocket, (const NetworkInfo&), (override));
+
+  MOCK_METHOD(absl::StatusOr<int>, CreateProtectedNetworkSocket,
+              (const NetworkInfo&), (override));
+
   MOCK_METHOD(absl::Status, ConfigureIpSec, (const IpSecTransformParams&),
               (override));
+
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<PacketPipe>>, CreateNetworkPipe,
+              (const NetworkInfo&, const Endpoint&), (override));
 };
 
 }  // namespace krypton

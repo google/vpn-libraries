@@ -15,23 +15,30 @@
 package com.google.android.libraries.privacy.ppn.krypton;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.when;
 import static org.robolectric.Shadows.shadowOf;
 
 import android.os.ConditionVariable;
 import android.os.Looper;
+import androidx.test.core.app.ApplicationProvider;
+import androidx.work.testing.WorkManagerTestInitHelper;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
+import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
+import com.google.android.libraries.privacy.ppn.internal.DisconnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.KryptonConfig;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
+import com.google.android.libraries.privacy.ppn.internal.http.BoundSocketFactoryFactory;
+import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.testing.mockito.Mocks;
 import com.squareup.okhttp.mockwebserver.RecordedRequest;
 import java.time.Duration;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.net.SocketFactory;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.Rule;
@@ -49,7 +56,8 @@ public class KryptonTest {
 
   @Rule public Mocks mocks = new Mocks(this);
   @Mock private KryptonListener kryptonListener;
-  private final Executor backgroundExecutor = Executors.newSingleThreadExecutor();
+  @Mock private BoundSocketFactoryFactory socketFactoryFactory;
+  private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
   private final MockZinc mockZinc = new MockZinc();
   private final MockBrass mockBrass = new MockBrass();
 
@@ -85,8 +93,16 @@ public class KryptonTest {
   }
 
   Krypton createKrypton() {
-    HttpFetcher httpFetcher = new HttpFetcher(new TestBoundSocketFactoryFactory());
-    return new KryptonImpl(httpFetcher, kryptonListener, backgroundExecutor);
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext());
+    when(socketFactoryFactory.withCurrentNetwork()).thenReturn(SocketFactory.getDefault());
+    when(socketFactoryFactory.withNetwork(any())).thenReturn(SocketFactory.getDefault());
+    HttpFetcher httpFetcher = new HttpFetcher(socketFactoryFactory);
+    return new KryptonImpl(
+        ApplicationProvider.getApplicationContext(),
+        httpFetcher,
+        kryptonListener,
+        backgroundExecutor);
   }
 
   @Test
@@ -96,21 +112,27 @@ public class KryptonTest {
 
     doReturn("some_auth_token").when(kryptonListener).onKryptonNeedsOAuthToken();
 
-    AtomicReference<PpnStatus> status = new AtomicReference<>();
+    AtomicReference<DisconnectionStatus> firstStatus = new AtomicReference<>();
+    AtomicReference<DisconnectionStatus> secondStatus = new AtomicReference<>();
     doAnswer(
             invocation -> {
-              status.set(invocation.getArgument(0));
-              condition.open();
+              if (!firstStatus.compareAndSet(null, invocation.getArgument(0))) {
+                secondStatus.set(invocation.getArgument(0));
+                condition.open();
+              }
               return null;
             })
         .when(kryptonListener)
-        .onKryptonDisconnected(any(PpnStatus.class));
+        .onKryptonDisconnected(any(DisconnectionStatus.class));
 
     try {
       krypton.start(createConfig(INVALID_URL, INVALID_URL));
       assertThat(condition.block(1000)).isTrue();
-      // Validate the Status
-      assertThat(status.get().getCode()).isEqualTo(PpnStatus.Code.INTERNAL);
+      // Validate the calls to onKryptonDisconnected
+      assertThat(firstStatus.get().getCode()).isEqualTo(PpnStatus.Code.INTERNAL.getCode());
+      assertThat(secondStatus.get().getCode())
+          .isEqualTo(PpnStatus.Code.DEADLINE_EXCEEDED.getCode());
+      assertThat(secondStatus.get().getIsBlockingTraffic()).isFalse();
     } finally {
       krypton.stop();
     }
@@ -159,29 +181,34 @@ public class KryptonTest {
 
     doReturn("some_auth_token").when(kryptonListener).onKryptonNeedsOAuthToken();
 
-    AtomicReference<PpnStatus> status = new AtomicReference<>();
+    AtomicReference<DisconnectionStatus> firstStatus = new AtomicReference<>();
+    AtomicReference<DisconnectionStatus> secondStatus = new AtomicReference<>();
     doAnswer(
             invocation -> {
-              status.set(invocation.getArgument(0));
-              condition.open();
+              if (!firstStatus.compareAndSet(null, invocation.getArgument(0))) {
+                secondStatus.set(invocation.getArgument(0));
+                condition.open();
+              }
               return null;
             })
         .when(kryptonListener)
-        .onKryptonDisconnected(any(PpnStatus.class));
+        .onKryptonDisconnected(any(DisconnectionStatus.class));
 
     try {
       krypton.start(createConfig(mockZinc.url(), INVALID_URL));
       assertThat(condition.block(1000)).isTrue();
 
-      // Validate the Status
-      assertThat(status.get().getCode()).isEqualTo(PpnStatus.Code.INTERNAL);
+      // Validate the calls to onKryptonDisconnected
+      assertThat(firstStatus.get().getCode()).isEqualTo(PpnStatus.Code.INTERNAL.getCode());
+      assertThat(secondStatus.get().getCode())
+          .isEqualTo(PpnStatus.Code.DEADLINE_EXCEEDED.getCode());
+      assertThat(secondStatus.get().getIsBlockingTraffic()).isFalse();
       // Validate the AuthAndSignRequest
       final RecordedRequest authAndSignRequest = mockZinc.takeRequest();
       final String authAndSignBody = authAndSignRequest.getBody().readUtf8();
       assertThat(authAndSignBody).isEqualTo(buildAuthAndSignRequestBody().toString());
       assertThat(authAndSignRequest.getHeader("Content-Type"))
           .isEqualTo("application/json; charset=utf-8");
-
 
     } finally {
       krypton.stop();
@@ -225,11 +252,6 @@ public class KryptonTest {
       final RecordedRequest addEgressRequest = mockBrass.takeRequest();
       assertThat(addEgressRequest.getHeader("Content-Type"))
           .isEqualTo("application/json; charset=utf-8");
-
-      // Test Pause that it is reaching native code.
-      KryptonException expected = assertThrows(KryptonException.class, () -> krypton.pause(0));
-      assertThat(expected).hasMessageThat().isEqualTo("UNIMPLEMENTED: Implement this");
-
     } finally {
       krypton.stop();
     }
@@ -252,13 +274,18 @@ public class KryptonTest {
     doReturn(0xbeef).when(kryptonListener).onKryptonNeedsTunFd(any(TunFdData.class));
     doReturn("some_auth_token").when(kryptonListener).onKryptonNeedsOAuthToken();
 
+    AtomicReference<DisconnectionStatus> firstStatus = new AtomicReference<>();
+    AtomicReference<DisconnectionStatus> secondStatus = new AtomicReference<>();
     doAnswer(
             invocation -> {
-              restartCondition.open();
+              if (!firstStatus.compareAndSet(null, invocation.getArgument(0))) {
+                secondStatus.set(invocation.getArgument(0));
+                restartCondition.open();
+              }
               return null;
             })
         .when(kryptonListener)
-        .onKryptonDisconnected(any(PpnStatus.class));
+        .onKryptonDisconnected(any(DisconnectionStatus.class));
 
     doAnswer(
             invocation -> {
@@ -272,6 +299,12 @@ public class KryptonTest {
       krypton.start(createConfig(mockZinc.url(), mockBrass.url()));
 
       assertThat(restartCondition.block(2000)).isTrue();
+
+      // Validate the calls to onKryptonDisconnected
+      assertThat(firstStatus.get().getCode()).isEqualTo(Code.FAILED_PRECONDITION.getCode());
+      assertThat(secondStatus.get().getCode())
+          .isEqualTo(PpnStatus.Code.DEADLINE_EXCEEDED.getCode());
+      assertThat(secondStatus.get().getIsBlockingTraffic()).isFalse();
 
       // Let the Looper run everything till the first reconnect timer of 2 secs expires.
       shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));

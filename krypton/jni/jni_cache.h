@@ -53,12 +53,16 @@ class JniCache {
   // Throws exception to the java layer when krypton API is called.
   void ThrowKryptonException(const std::string& message);
 
-  // com.google.android.libraries.privacy.ppn.krypton.HttpFetcher
+  // com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher
   jobject GetHttpFetcherObject() const;
   jclass GetHttpFetcherClass() const;
 
   jmethodID GetHttpFetcherPostJsonMethod() const {
     return http_fetcher_post_json_method_;
+  }
+
+  jmethodID GetHttpFetcherLookupDnsMethod() const {
+    return http_fetcher_lookup_dns_method_;
   }
 
   // com.google.android.libraries.privacy.ppn.krypton.TimerIdManager
@@ -122,35 +126,23 @@ class JniCache {
     return krypton_configure_ipsec_method_;
   }
 
+  jmethodID GetKryptonSnoozedMethod() const { return krypton_snoozed_method_; }
+
+  jmethodID GetKryptonResumedMethod() const { return krypton_resumed_method_; }
+
  private:
-  JniCache();
+  JniCache() {}
   ~JniCache() = default;
 
-  // Initializes and fetches the corresponding Http Fetcher methods.
-  void InitializeHttpFetcherMethod(JNIEnv* env);
+  // Initializes all of the cached data members.
+  absl::Status InitializeCachedMembers(JNIEnv* env);
 
-  // Initializes and fetches the corresponding TimerIdManager methods.
-  void InitializeTimerIdManager(JNIEnv* env);
-
-  // Initializes and fetches the corresponding Logging methods.
-  void InitializeLogMethod(JNIEnv* env);
-
-  // Initializes the Log method.
-  void InitializeExceptions(JNIEnv* env);
-
-  // Initializes the notification methods.
-  void InitializeNotifications(JNIEnv* env);
-
-  // Initializes the createTunFd method.
-  void InitializeCreateTunFdMethod(JNIEnv* env);
-
-  // Initializes the createNetworkFd method.
-  void InitializeCreateNetworkFdMethod(JNIEnv* env);
-
-  // Initializes the getOAuthToken method.
-  void InitializeGetOAuthTokenMethod(JNIEnv* env);
-
-  void InitializeConfigureIpSecMethod(JNIEnv* env);
+  absl::Status InitializeHttpFetcherMethod(JNIEnv* env);
+  absl::Status InitializeTimerIdManager(JNIEnv* env);
+  absl::Status InitializeLogMethod(JNIEnv* env);
+  absl::Status InitializeExceptions(JNIEnv* env);
+  absl::Status InitializeNotifications(JNIEnv* env);
+  absl::Status InitializeVpnServiceMethods(JNIEnv* env);
 
   jclass GetKryptonExceptionClass() const;
 
@@ -161,6 +153,7 @@ class JniCache {
   std::unique_ptr<JavaObject<jclass>> http_fetcher_class_;
   std::unique_ptr<JavaObject<jobject>> http_fetcher_object_;
   jmethodID http_fetcher_post_json_method_;
+  jmethodID http_fetcher_lookup_dns_method_;
 
   // privacy.ppn.krypton.TimerIdManager
   std::unique_ptr<JavaObject<jclass>> timer_id_manager_class_;
@@ -189,10 +182,8 @@ class JniCache {
   jmethodID krypton_create_network_fd_method_;
   jmethodID krypton_get_oauth_token_method_;
   jmethodID krypton_configure_ipsec_method_;
-
- private:
-  // TODO: Make it thread safe.
-  absl::Mutex mutex_;
+  jmethodID krypton_snoozed_method_;
+  jmethodID krypton_resumed_method_;
 };
 
 // Utility class that wraps a jobject (or subclass), holds a global reference to

@@ -15,6 +15,9 @@
 #ifndef PRIVACY_NET_KRYPTON_PAL_KRYPTON_NOTIFICATION_INTERFACE_H_
 #define PRIVACY_NET_KRYPTON_PAL_KRYPTON_NOTIFICATION_INTERFACE_H_
 
+#include <cstdint>
+
+#include "privacy/net/krypton/proto/connection_status.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "third_party/absl/status/status.h"
 
@@ -28,16 +31,18 @@ class KryptonNotificationInterface {
   virtual ~KryptonNotificationInterface() = default;
 
   // Lifecycle events.
-  virtual void Connected() = 0;
-  virtual void Connecting() = 0;
+  virtual void Connected(const ConnectionStatus& status) = 0;
+  virtual void Connecting(const ConnectingStatus& status) = 0;
   virtual void ControlPlaneConnected() = 0;
-  virtual void StatusUpdated() = 0;
-  virtual void Disconnected(const absl::Status& status) = 0;
+  virtual void StatusUpdated(const ConnectionStatus& status) = 0;
+  virtual void Disconnected(const DisconnectionStatus& status) = 0;
   virtual void NetworkDisconnected(const NetworkInfo& network_info,
                                    const absl::Status& status) = 0;
   virtual void PermanentFailure(const absl::Status& status) = 0;
   virtual void Crashed() = 0;
-  virtual void WaitingToReconnect(const int64 retry_millis) = 0;
+  virtual void WaitingToReconnect(const ReconnectionStatus& status) = 0;
+  virtual void Snoozed(const SnoozeStatus& status) = 0;
+  virtual void Resumed(const ResumeStatus& status) = 0;
 };
 
 }  // namespace krypton

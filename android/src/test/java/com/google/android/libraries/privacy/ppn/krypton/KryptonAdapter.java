@@ -15,11 +15,15 @@
 package com.google.android.libraries.privacy.ppn.krypton;
 
 import com.google.android.libraries.privacy.ppn.PpnException;
-import com.google.android.libraries.privacy.ppn.PpnReconnectStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
+import com.google.android.libraries.privacy.ppn.internal.ConnectingStatus;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
+import com.google.android.libraries.privacy.ppn.internal.DisconnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.IpSecTransformParams;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo;
+import com.google.android.libraries.privacy.ppn.internal.ReconnectionStatus;
+import com.google.android.libraries.privacy.ppn.internal.ResumeStatus;
+import com.google.android.libraries.privacy.ppn.internal.SnoozeStatus;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
 
 /** A simple implementation of KryptonListener with default methods. */
@@ -28,7 +32,7 @@ class KryptonAdapter implements KryptonListener {
   public void onKryptonConnected(ConnectionStatus status) {}
 
   @Override
-  public void onKryptonConnecting() {}
+  public void onKryptonConnecting(ConnectingStatus connectingStatus) {}
 
   @Override
   public void onKryptonControlPlaneConnected() {}
@@ -37,7 +41,7 @@ class KryptonAdapter implements KryptonListener {
   public void onKryptonStatusUpdated(ConnectionStatus status) {}
 
   @Override
-  public void onKryptonDisconnected(PpnStatus status) {}
+  public void onKryptonDisconnected(DisconnectionStatus disconnectionStatus) {}
 
   @Override
   public void onKryptonNetworkFailed(PpnStatus status, NetworkInfo networkInfo) {}
@@ -49,7 +53,13 @@ class KryptonAdapter implements KryptonListener {
   public void onKryptonCrashed() {}
 
   @Override
-  public void onKryptonWaitingToReconnect(PpnReconnectStatus status) {}
+  public void onKryptonWaitingToReconnect(ReconnectionStatus status) {}
+
+  @Override
+  public void onKryptonSnoozed(SnoozeStatus status) {}
+
+  @Override
+  public void onKryptonResumed(ResumeStatus status) {}
 
   @Override
   public int onKryptonNeedsTunFd(TunFdData tunFdData) throws PpnException {

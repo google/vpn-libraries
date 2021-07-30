@@ -15,11 +15,13 @@
 #ifndef PRIVACY_NET_KRYPTON_ADD_EGRESS_REQUEST_H_
 #define PRIVACY_NET_KRYPTON_ADD_EGRESS_REQUEST_H_
 
+#include <cstdint>
 #include <memory>
 
+#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
-#include "privacy/net/krypton/dataplane_protocol.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/jsoncpp/value.h"
@@ -43,17 +45,21 @@ class AddEgressRequest {
     std::shared_ptr<AuthAndSignResponse> auth_response;
     const crypto::SessionCrypto* crypto;  // Not owned.
     std::string copper_control_plane_address;
-    CryptoSuite suite;
-    DataplaneProtocol dataplane_protocol;
+    ppn::PpnDataplaneRequest::CryptoSuite suite;
+    KryptonConfig::DatapathProtocol dataplane_protocol;
     bool is_rekey;
     std::string signature;
-    uint32 uplink_spi;
-    bool blind_token_enabled = false;
+    uint32_t uplink_spi;
+    bool blind_token_enabled = true;
     // Raw text that was sent to Zinc also needs to be sent to Brass.
     std::string blind_message;
     // This is the unblinded signature after receiving the blinding signature
     // from Zinc that needs to be sent to Brass.
     std::string unblinded_token_signature;
+    // This is the region overriding token and signature for sending to Brass.
+    std::string region_token_and_signature;
+    // This is the APN type from Zinc and used to decide APN in bridge-proxy.
+    std::string apn_type;
   };
 
   // Returns the corresponding headers and json_body separately.

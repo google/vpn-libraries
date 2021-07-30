@@ -20,126 +20,195 @@ import android.net.IpSecManager;
 import android.net.IpSecManager.ResourceUnavailableException;
 import android.net.IpSecManager.SecurityParameterIndex;
 import android.net.IpSecManager.SpiUnavailableException;
+import android.net.IpSecManager.UdpEncapsulationSocket;
 import android.net.IpSecTransform;
-import android.net.Network;
 import android.os.ParcelFileDescriptor;
-import android.system.Os;
-import android.system.OsConstants;
+import android.util.Log;
+import androidx.annotation.Nullable;
 import com.google.android.libraries.privacy.ppn.internal.IpSecTransformParams;
+import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
+import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
+import com.google.android.libraries.privacy.ppn.xenon.Xenon;
 import com.google.protobuf.ByteString;
-import java.io.FileDescriptor;
 import java.io.IOException;
-import java.net.Inet4Address;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
+import java.util.Optional;
 
 /** Implementation of KryptonIpSecHelper. */
 public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
-  private final Context context;
-  private final IpSecManager ipSecManager;
+  private static final String TAG = "KryptonIpSecHelperImpl";
 
-  public KryptonIpSecHelperImpl(Context context) {
+  private final Context context;
+  private final Xenon xenon;
+
+  private final IpSecManager ipSecManager;
+  @Nullable private SecurityParameterIndex uplinkSpi = null;
+  @Nullable private SecurityParameterIndex downlinkSpi = null;
+  @Nullable private IpSecTransform inTransform = null;
+  @Nullable private IpSecTransform outTransform = null;
+
+  // A lock guarding all of the mutable state of this class.
+  private final Object lock = new Object();
+
+  public KryptonIpSecHelperImpl(Context context, Xenon xenon) {
     this.context = context;
     this.ipSecManager = (IpSecManager) context.getSystemService(Context.IPSEC_SERVICE);
+    this.xenon = xenon;
+  }
+
+  /** Closes any objects allocated for the IpSecManager. */
+  private void close() {
+    synchronized (lock) {
+      if (uplinkSpi != null) {
+        uplinkSpi.close();
+      }
+      if (downlinkSpi != null) {
+        downlinkSpi.close();
+      }
+      if (inTransform != null) {
+        inTransform.close();
+      }
+      if (outTransform != null) {
+        outTransform.close();
+      }
+    }
   }
 
   @Override
   public void transformFd(IpSecTransformParams params) throws KryptonException {
-    ParcelFileDescriptor fd;
-    try {
-      fd = ParcelFileDescriptor.fromFd(params.getNetworkFd());
-    } catch (IOException e) {
-      throw new KryptonException("Unable to create ParcelFileDescriptor to transform.", e);
+    Log.w(TAG, "Setting up transformFd for network = " + params.getNetworkId());
+    PpnNetwork ppnNetwork = xenon.getNetwork(params.getNetworkId());
+    if (ppnNetwork == null) {
+      throw new KryptonException("Unable to fetch network with id " + params.getNetworkId());
     }
-
-    // TODO: Figure out Android API 22-28 support for fromNetworkHandle(...).
-    Network network = Network.fromNetworkHandle(params.getNetworkId());
 
     InetAddress destinationAddress;
     try {
-      destinationAddress = getDestinationAddress(network, params.getDestinationAddress());
+      destinationAddress = getDestinationAddress(ppnNetwork, params.getDestinationAddress());
     } catch (UnknownHostException e) {
       throw new KryptonException("Unable to resolve destination address for transform.", e);
     }
 
     InetAddress localAddress;
     try {
-      localAddress = getLocalAddress(network, destinationAddress);
+      localAddress = getLocalAddress(ppnNetwork, destinationAddress);
     } catch (Exception e) {
-      throw new KryptonException("Unable to get local address for transform.", e);
+      throw new KryptonException(
+          "Unable to get local address for " + destinationAddress + " for transform.", e);
     }
 
-    try {
-      // uplink SPI is the remote server SPI.
-      SecurityParameterIndex uplinkSpi =
-          ipSecManager.allocateSecurityParameterIndex(destinationAddress, params.getUplinkSpi());
+    synchronized (lock) {
+      // If any of these members are already set, clear them.
+      close();
 
-      // downlink SPI is the local SPI.
-      SecurityParameterIndex downlinkSpi =
-          ipSecManager.allocateSecurityParameterIndex(localAddress, params.getDownlinkSpi());
+      // Temporarily give ownership of the fd to a ParcelFileDescriptor so that we can pass it to
+      // the VpnService APIs.
+      ParcelFileDescriptor fd = ParcelFileDescriptor.adoptFd(params.getNetworkFd());
 
-      IpSecTransform outTransform =
-          buildTransform(
-              destinationAddress,
-              uplinkSpi,
-              getKeyingMaterial(params.getUplinkKey(), params.getUplinkSalt()));
+      try {
+        // uplink SPI is the remote server SPI.
+        if (params.getUplinkSpi() == 0) {
+          throw new KryptonException("missing uplink spi");
+        }
+        uplinkSpi =
+            ipSecManager.allocateSecurityParameterIndex(destinationAddress, params.getUplinkSpi());
 
-      IpSecTransform inTransform =
-          buildTransform(
-              localAddress,
-              downlinkSpi,
-              getKeyingMaterial(params.getDownlinkKey(), params.getDownlinkSalt()));
+        // downlink SPI is the local SPI.
+        if (params.getDownlinkSpi() == 0) {
+          throw new KryptonException("missing downlink spi");
+        }
+        downlinkSpi =
+            ipSecManager.allocateSecurityParameterIndex(localAddress, params.getDownlinkSpi());
 
-      ipSecManager.applyTransportModeTransform(
-          fd.getFileDescriptor(), IpSecManager.DIRECTION_IN, inTransform);
-      ipSecManager.applyTransportModeTransform(
-          fd.getFileDescriptor(), IpSecManager.DIRECTION_OUT, outTransform);
-    } catch (ResourceUnavailableException | SpiUnavailableException | IOException e) {
-      throw new KryptonException("Unable to apply IPSec transforms to fd.", e);
+        Optional<UdpEncapsulationSocket> encapSocket = Optional.empty();
+        if (params.getDestinationAddressFamily() == AddressFamily.V4) {
+          encapSocket = Optional.of(ipSecManager.openUdpEncapsulationSocket());
+        }
+
+        outTransform =
+            buildTransform(
+                localAddress,
+                uplinkSpi,
+                getKeyingMaterial(params.getUplinkKey(), params.getUplinkSalt()),
+                encapSocket,
+                params.getDestinationPort());
+
+        inTransform =
+            buildTransform(
+                destinationAddress,
+                downlinkSpi,
+                getKeyingMaterial(params.getDownlinkKey(), params.getDownlinkSalt()),
+                encapSocket,
+                params.getDestinationPort());
+
+        ipSecManager.applyTransportModeTransform(
+            fd.getFileDescriptor(), IpSecManager.DIRECTION_IN, inTransform);
+        ipSecManager.applyTransportModeTransform(
+            fd.getFileDescriptor(), IpSecManager.DIRECTION_OUT, outTransform);
+
+      } catch (Exception e) {
+        close();
+        throw new KryptonException("Unable to apply IpSec transforms to fd.", e);
+      } finally {
+        // The ParcelFileDescriptor shouldn't own the fd anymore. Krypton is responsible for it.
+        fd.detachFd();
+      }
     }
   }
 
   @Override
   public void removeTransformFromFd(int networkFd) throws KryptonException {
     try {
+      Log.w(TAG, "Removing transforms.");
       ipSecManager.removeTransportModeTransforms(ParcelFileDescriptor.fromFd(networkFd).getFileDescriptor());
+      close();
     } catch (IOException e) {
       throw new KryptonException("Error encountered when removing transform from fd.", e);
     }
   }
 
-  private static InetAddress getDestinationAddress(Network network, String destinationAddress)
+  private static InetAddress getDestinationAddress(PpnNetwork network, String destinationAddress)
       throws UnknownHostException {
-    return network.getByName(destinationAddress);
+    return network.getNetwork().getByName(destinationAddress);
   }
 
-  private static InetAddress getLocalAddress(Network network, InetAddress destination)
+  private InetAddress getLocalAddress(PpnNetwork network, InetAddress destination)
       throws Exception {
-    boolean isIpv4 = (destination instanceof Inet4Address);
-
-    FileDescriptor sock =
-        Os.socket(
-            isIpv4 ? OsConstants.AF_INET : OsConstants.AF_INET6,
-            OsConstants.SOCK_DGRAM,
-            OsConstants.IPPROTO_UDP);
-    network.bindSocket(sock);
-    Os.connect(sock, destination, 443);
-    InetSocketAddress localAddr = (InetSocketAddress) Os.getsockname(sock);
-    Os.close(sock);
-    return localAddr.getAddress();
+    DatagramSocket socket = new DatagramSocket();
+    try {
+      network.getNetwork().bindSocket(socket);
+      socket.connect(destination, 443);
+      if (socket.getLocalAddress().isAnyLocalAddress()) {
+        throw new KryptonException(
+            "Local address is wildcard address. This usually means the network does not support"
+                + " the same protocol (IPv4 vs IPv6) as the remote address.");
+      }
+      return socket.getLocalAddress();
+    } finally {
+      socket.close();
+    }
   }
 
   private IpSecTransform buildTransform(
-      InetAddress address, SecurityParameterIndex spi, byte[] keyMat)
+      InetAddress address,
+      SecurityParameterIndex spi,
+      byte[] keyMaterial,
+      Optional<UdpEncapsulationSocket> encapSocket,
+      int remotePort)
       throws ResourceUnavailableException, SpiUnavailableException, IOException {
-    IpSecAlgorithm algorithm = new IpSecAlgorithm(IpSecAlgorithm.AUTH_CRYPT_AES_GCM, keyMat);
-    IpSecTransform transform =
-        new IpSecTransform.Builder(context)
-            .setAuthenticatedEncryption(algorithm)
-            .buildTransportModeTransform(address, spi);
-    return transform;
+    IpSecAlgorithm algorithm =
+        new IpSecAlgorithm(IpSecAlgorithm.AUTH_CRYPT_AES_GCM, keyMaterial, 128);
+    IpSecTransform.Builder builder =
+        new IpSecTransform.Builder(context).setAuthenticatedEncryption(algorithm);
+
+    if (encapSocket.isPresent()) {
+      builder = builder.setIpv4Encapsulation(encapSocket.get(), remotePort);
+    }
+
+    return builder.buildTransportModeTransform(address, spi);
   }
 
   private static byte[] getKeyingMaterial(ByteString keyByteString, ByteString saltByteString) {

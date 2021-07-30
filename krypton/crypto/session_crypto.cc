@@ -16,10 +16,12 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <tuple>
 
 #include "base/logging.h"
 #include "privacy/net/krypton/crypto/rsa_fdh_blinder.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/memory/memory.h"
@@ -99,7 +101,8 @@ std::string RandomUTF8String(size_t len, absl::string_view alphabet) {
 
 }  // namespace
 
-SessionCrypto::SessionCrypto() : bn_ctx_(BN_CTX_new()) {
+SessionCrypto::SessionCrypto(const KryptonConfig *config)
+    : bn_ctx_(BN_CTX_new()), config_(config) {
   DCHECK_NE(bn_ctx_.get(), nullptr);
   uint8_t private_key[X25519_PRIVATE_KEY_LEN];
   uint8_t public_value[X25519_PUBLIC_VALUE_LEN];
@@ -128,14 +131,16 @@ SessionCrypto::SessionCrypto() : bn_ctx_(BN_CTX_new()) {
     return;
   }
 
-  auto status_or_key_handle = ::crypto::tink::KeysetHandle::GenerateNew(
+  // TODO: Maybe we should refactor this so that the constructor
+  // can't silently fail.
+  // NOTE: This is a crypto::tink::util::StatusOr, not an absl::StatusOr.
+  auto key_handle = ::crypto::tink::KeysetHandle::GenerateNew(
       ::crypto::tink::SignatureKeyTemplates::Ed25519());
-  if (!status_or_key_handle.ok()) {
-    LOG(ERROR) << "Error generating Ed25519 key handle"
-               << status_or_key_handle.status();
+  if (!key_handle.ok()) {
+    LOG(ERROR) << "Error generating Ed25519 key handle" << key_handle.status();
     return;
   }
-  key_handle_ = std::move(status_or_key_handle.ValueOrDie());
+  key_handle_ = std::move(key_handle).ValueOrDie();
 }
 
 void SessionCrypto::SetLocalNonceBase64TestOnly(
@@ -193,9 +198,7 @@ absl::StatusOr<std::string> SessionCrypto::SharedKeyBase64TestOnly() const {
 
 absl::Status SessionCrypto::SetRemoteKeyMaterial(
     const std::string &remote_public_value, const std::string &remote_nonce) {
-  if (ip_sec_transform_params_) {
-    return absl::AlreadyExistsError("IpSec parameters are already generated");
-  }
+  LOG(INFO) << "Remote key material received";
 
   std::string remote_public;
   if (!absl::Base64Unescape(remote_public_value, &remote_public)) {
@@ -224,7 +227,7 @@ absl::Status SessionCrypto::SetRemoteKeyMaterial(
   return absl::OkStatus();
 }
 
-absl::Status SessionCrypto::ComputeIpSecKeyMaterial() {
+absl::StatusOr<TransformParams> SessionCrypto::ComputeIpSecKeyMaterial() {
   PPN_ASSIGN_OR_RETURN(auto shared_key, SharedKey());
 
   PPN_ASSIGN_OR_RETURN(
@@ -243,24 +246,20 @@ absl::Status SessionCrypto::ComputeIpSecKeyMaterial() {
   //|                        |                       |Uplink   |Downlink |
   //| Uplink Key(32)         |Downlink Key (32)      |Salt(4)  |Salt(4)  |
   //+--------------------------------------------------------------------+
-  ip_sec_transform_params_ = IpSecTransformParams();
-  ip_sec_transform_params_->set_uplink_key(
+  TransformParams transform_params;
+  auto ip_sec_transform_params = transform_params.mutable_ipsec();
+  ip_sec_transform_params->set_uplink_key(
       hkdf_string.substr(kUplinkKeyPosition, kUplinkKeySize));
-  ip_sec_transform_params_->set_downlink_key(
+  ip_sec_transform_params->set_downlink_key(
       hkdf_string.substr(kDownlinkKeyPosition, kDownlinkKeySize));
-  ip_sec_transform_params_->set_uplink_salt(
+  ip_sec_transform_params->set_uplink_salt(
       hkdf_string.substr(kUplinkSaltPosition, kUplinkSaltSize));
-  ip_sec_transform_params_->set_downlink_salt(
+  ip_sec_transform_params->set_downlink_salt(
       hkdf_string.substr(kDownlinkSaltPosition, kDownlinkSaltSize));
 
-  return absl::OkStatus();
-}
+  ip_sec_transform_params->set_downlink_spi(downlink_spi());
 
-absl::StatusOr<IpSecTransformParams> SessionCrypto::GetIpSecTransformParams() {
-  if (!ip_sec_transform_params_) {
-    PPN_RETURN_IF_ERROR(ComputeIpSecKeyMaterial());
-  }
-  return ip_sec_transform_params_.value();
+  return transform_params;
 }
 
 SessionCrypto::KeyMaterial SessionCrypto::GetMyKeyMaterial() const {
@@ -270,32 +269,32 @@ SessionCrypto::KeyMaterial SessionCrypto::GetMyKeyMaterial() const {
   return keys;
 }
 
-absl::Status SessionCrypto::ComputeBridgeKeyMaterial(CryptoSuite suite) {
+absl::StatusOr<TransformParams> SessionCrypto::ComputeBridgeKeyMaterial() {
+  LOG(INFO) << "Computing BridgeKeyMaterial";
   int key_length = 0;
   // Length of the hkdf length.
   int hkdf_length = 0;
-  switch (suite) {
-    case CryptoSuite::AES128_GCM:
+  switch (config_->cipher_suite_key_length()) {
+    case kAes128KeySize * 8:
       key_length = kAes128KeySize;
       hkdf_length = key_length * 2;
       break;
-    case CryptoSuite::AES256_GCM:
+    case kAes256KeySize * 8:
       key_length = kAes256KeySize;
       hkdf_length = key_length * 2;
       break;
     default:
-      return absl::InvalidArgumentError("Unspecified key length");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unspecified key length:", config_->cipher_suite_key_length()));
   }
 
   PPN_ASSIGN_OR_RETURN(auto shared_key, SharedKey());
-
   PPN_ASSIGN_OR_RETURN(
       auto hkdf_secret_data,
       ::crypto::tink::subtle::Hkdf::ComputeHkdf(
           ::crypto::tink::subtle::SHA256,
           ::crypto::tink::util::SecretDataFromStringView(shared_key),
           absl::StrCat(local_nonce_, remote_nonce_), kInfo, hkdf_length));
-
   auto hkdf_string =
       ::crypto::tink::util::SecretDataAsStringView(hkdf_secret_data);
 
@@ -304,20 +303,29 @@ absl::Status SessionCrypto::ComputeBridgeKeyMaterial(CryptoSuite suite) {
   //|                           |                       |
   //| Uplink Key(16/32)         |Downlink Key (16/32)   |
   //+---------------------------------------------------+
-  bridge_transform_params_ = BridgeTransformParams();
-  bridge_transform_params_->set_uplink_key(
+  TransformParams transform_params;
+  auto bridge_transform_params = transform_params.mutable_bridge();
+  bridge_transform_params->set_uplink_key(
       hkdf_string.substr(kBridgeUplinkKeyPosition, key_length));
-  bridge_transform_params_->set_downlink_key(
+  bridge_transform_params->set_downlink_key(
       hkdf_string.substr(kBridgeUplinkKeyPosition + key_length, key_length));
 
-  return absl::OkStatus();
+  return transform_params;
 }
-absl::StatusOr<BridgeTransformParams> SessionCrypto::GetBridgeTransformParams(
-    CryptoSuite suite) {
-  if (!bridge_transform_params_) {
-    PPN_RETURN_IF_ERROR(ComputeBridgeKeyMaterial(suite));
+
+absl::StatusOr<TransformParams> SessionCrypto::GetTransformParams() {
+  switch (config_->datapath_protocol()) {
+    case KryptonConfig::BRIDGE: {
+      return ComputeBridgeKeyMaterial();
+    } break;
+    case KryptonConfig::IPSEC: {
+      return ComputeIpSecKeyMaterial();
+    } break;
+    default: {
+      return absl::InvalidArgumentError(
+          "Invalid KryptonConfig for datapath protocol");
+    }
   }
-  return bridge_transform_params_.value();
 }
 
 absl::Status SessionCrypto::SetBlindingPublicKey(absl::string_view rsa_public) {
@@ -379,18 +387,18 @@ absl::optional<std::string> SessionCrypto::GetBrassUnblindedToken(
   if (blinder_ == nullptr) {
     return absl::nullopt;
   }
-  auto status_or_unblind_signature =
+  auto unblind_signature =
       blinder_->Unblind(zinc_blind_signature, bn_ctx_.get());
-  if (!status_or_unblind_signature.ok()) {
+  if (!unblind_signature.ok()) {
     return absl::nullopt;
   }
-  ::absl::Status verify_result = verifier_->Verify(
-      original_message_, status_or_unblind_signature.value(), bn_ctx_.get());
+  ::absl::Status verify_result =
+      verifier_->Verify(original_message_, *unblind_signature, bn_ctx_.get());
   if (!verify_result.ok()) {
-    LOG(ERROR) << "Verify of original message_ failed" << verify_result;
+    LOG(ERROR) << "Verify of original_message_ failed: " << verify_result;
     return absl::nullopt;
   }
-  return absl::Base64Escape(status_or_unblind_signature.value());
+  return absl::Base64Escape(*unblind_signature);
 }
 
 }  // namespace crypto

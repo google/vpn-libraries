@@ -17,6 +17,7 @@
 
 #include <utility>
 
+#include "privacy/net/krypton/proto/ppn_status.proto.h"
 #include "third_party/absl/base/optimization.h"
 #include "third_party/absl/status/status.h"
 
@@ -60,6 +61,13 @@ absl::StatusCode GetStatusCodeForHttpStatus(int http_status);
 
 // Status code errors that are treated as permanent errors.
 bool IsPermanentError(absl::StatusCode code);
+
+/** Gets PPN-specific details from the given Status. */
+PpnStatusDetails GetPpnStatusDetails(absl::Status status);
+
+/** Attaches PPN-specific detailts to the given Status. */
+void SetPpnStatusDetails(absl::Status* status, PpnStatusDetails details);
+
 }  // namespace utils
 }  // namespace krypton
 }  // namespace privacy

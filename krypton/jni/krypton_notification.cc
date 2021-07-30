@@ -16,6 +16,7 @@
 
 #include <jni.h>
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -23,6 +24,8 @@
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/jni/jni_utils.h"
 #include "privacy/net/krypton/proto/connection_status.proto.h"
+#include "privacy/net/krypton/proto/ppn_status.proto.h"
+#include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
 
@@ -30,7 +33,7 @@ namespace privacy {
 namespace krypton {
 namespace jni {
 
-void KryptonNotification::Connected() {
+void KryptonNotification::Connected(const ConnectionStatus& status) {
   LOG(INFO) << "Sending Connected notification";
   auto jni_cache = JniCache::Get();
   auto env = jni_cache->GetJavaEnv();
@@ -39,17 +42,15 @@ void KryptonNotification::Connected() {
     return;
   }
 
-  // TODO: Pass a ConnectionStatus into this method.
-  ConnectionStatus status;
-  std::string statusBytes;
-  status.SerializeToString(&statusBytes);
+  std::string status_bytes;
+  status.SerializeToString(&status_bytes);
 
   env.value()->CallVoidMethod(jni_cache->GetKryptonObject(),
                               jni_cache->GetKryptonConnectedMethod(),
-                              JavaByteArray(env.value(), statusBytes).get());
+                              JavaByteArray(env.value(), status_bytes).get());
 }
 
-void KryptonNotification::Connecting() {
+void KryptonNotification::Connecting(const ConnectingStatus& status) {
   LOG(INFO) << "Sending Connecting notification";
   auto jni_cache = JniCache::Get();
   auto env = jni_cache->GetJavaEnv();
@@ -58,13 +59,12 @@ void KryptonNotification::Connecting() {
     return;
   }
 
-  ConnectionStatus status;
-  std::string statusBytes;
-  status.SerializeToString(&statusBytes);
+  std::string status_bytes;
+  status.SerializeToString(&status_bytes);
 
   env.value()->CallVoidMethod(jni_cache->GetKryptonObject(),
                               jni_cache->GetKryptonConnectingMethod(),
-                              JavaByteArray(env.value(), statusBytes).get());
+                              JavaByteArray(env.value(), status_bytes).get());
 }
 
 void KryptonNotification::ControlPlaneConnected() {
@@ -77,17 +77,12 @@ void KryptonNotification::ControlPlaneConnected() {
     return;
   }
 
-  ConnectionStatus status;
-  std::string statusBytes;
-  status.SerializeToString(&statusBytes);
-
-  env.value()->CallVoidMethod(jni_cache->GetKryptonObject(),
-                              jni_cache->
-                              GetKryptonControlPlaneConnectedMethod(),
-                              JavaByteArray(env.value(), statusBytes).get());
+  env.value()->CallVoidMethod(
+      jni_cache->GetKryptonObject(),
+      jni_cache->GetKryptonControlPlaneConnectedMethod());
 }
 
-void KryptonNotification::StatusUpdated() {
+void KryptonNotification::StatusUpdated(const ConnectionStatus& status) {
   LOG(INFO) << "Sending StatusUpdated notification";
   auto jni_cache = JniCache::Get();
   auto env = jni_cache->GetJavaEnv();
@@ -96,8 +91,6 @@ void KryptonNotification::StatusUpdated() {
     return;
   }
 
-  // TODO: Pass a ConnectionStatus into this method.
-  ConnectionStatus status;
   std::string status_bytes;
   status.SerializeToString(&status_bytes);
 
@@ -106,9 +99,9 @@ void KryptonNotification::StatusUpdated() {
                               JavaByteArray(env.value(), status_bytes).get());
 }
 
-void KryptonNotification::Disconnected(const absl::Status& status) {
-  LOG(INFO) << "Sending Disconnected notification with code "
-            << status.raw_code() << ": " << status;
+void KryptonNotification::Disconnected(const DisconnectionStatus& status) {
+  LOG(INFO) << "Sending Disconnected notification with code " << status.code()
+            << ": " << status.message();
   auto jni_cache = JniCache::Get();
   auto env = jni_cache->GetJavaEnv();
   if (!env) {
@@ -116,10 +109,12 @@ void KryptonNotification::Disconnected(const absl::Status& status) {
     return;
   }
 
-  env.value()->CallVoidMethod(
-      jni_cache->GetKryptonObject(), jni_cache->GetKryptonDisconnectedMethod(),
-      status.raw_code(),
-      JavaString(env.value(), std::string(status.message())).get());
+  std::string status_bytes;
+  status.SerializeToString(&status_bytes);
+
+  env.value()->CallVoidMethod(jni_cache->GetKryptonObject(),
+                              jni_cache->GetKryptonDisconnectedMethod(),
+                              JavaByteArray(env.value(), status_bytes).get());
 }
 
 void KryptonNotification::PermanentFailure(const absl::Status& status) {
@@ -132,10 +127,15 @@ void KryptonNotification::PermanentFailure(const absl::Status& status) {
     return;
   }
 
+  PpnStatusDetails details = utils::GetPpnStatusDetails(status);
+  std::string details_bytes;
+  details.SerializeToString(&details_bytes);
+
   env.value()->CallVoidMethod(
       jni_cache->GetKryptonObject(),
       jni_cache->GetKryptonPermanentFailureMethod(), status.raw_code(),
-      JavaString(env.value(), std::string(status.message())).get());
+      JavaString(env.value(), std::string(status.message())).get(),
+      JavaByteArray(env.value(), details_bytes).get());
 }
 
 void KryptonNotification::NetworkDisconnected(const NetworkInfo& network_info,
@@ -152,11 +152,16 @@ void KryptonNotification::NetworkDisconnected(const NetworkInfo& network_info,
   std::string network_info_bytes;
   network_info.SerializeToString(&network_info_bytes);
 
+  PpnStatusDetails details = utils::GetPpnStatusDetails(status);
+  std::string details_bytes;
+  details.SerializeToString(&details_bytes);
+
   env.value()->CallVoidMethod(
       jni_cache->GetKryptonObject(),
       jni_cache->GetKryptonNetworkDisconnectedMethod(),
       JavaByteArray(env.value(), network_info_bytes).get(), status.raw_code(),
-      JavaString(env.value(), std::string(status.message())).get());
+      JavaString(env.value(), std::string(status.message())).get(),
+      JavaByteArray(env.value(), details_bytes).get());
 }
 
 void KryptonNotification::Crashed() {
@@ -173,8 +178,8 @@ void KryptonNotification::Crashed() {
                               jni_cache->GetKryptonCrashedMethod());
 }
 
-void KryptonNotification::WaitingToReconnect(const int64 retry_millis) {
-  LOG(INFO) << "Sending WaitingToReconnect notification: " << retry_millis;
+void KryptonNotification::WaitingToReconnect(const ReconnectionStatus& status) {
+  LOG(INFO) << "Sending WaitingToReconnect notification.";
   auto jni_cache = JniCache::Get();
   auto env = jni_cache->GetJavaEnv();
   if (!env) {
@@ -182,9 +187,44 @@ void KryptonNotification::WaitingToReconnect(const int64 retry_millis) {
     return;
   }
 
+  std::string status_bytes;
+  status.SerializeToString(&status_bytes);
+
   env.value()->CallVoidMethod(jni_cache->GetKryptonObject(),
                               jni_cache->GetKryptonWaitingToReconnectMethod(),
-                              retry_millis);
+                              JavaByteArray(env.value(), status_bytes).get());
+}
+
+void KryptonNotification::Snoozed(const SnoozeStatus& status) {
+  auto jni_cache = JniCache::Get();
+  auto env = jni_cache->GetJavaEnv();
+  if (!env) {
+    LOG(ERROR) << "Cannot find JavaEnv to send Snoozed notification";
+    return;
+  }
+
+  std::string status_bytes;
+  status.SerializeToString(&status_bytes);
+
+  env.value()->CallVoidMethod(jni_cache->GetKryptonObject(),
+                              jni_cache->GetKryptonSnoozedMethod(),
+                              JavaByteArray(env.value(), status_bytes).get());
+}
+
+void KryptonNotification::Resumed(const ResumeStatus& status) {
+  auto jni_cache = JniCache::Get();
+  auto env = jni_cache->GetJavaEnv();
+  if (!env) {
+    LOG(ERROR) << "Cannot find JavaEnv to send Resumed notification";
+    return;
+  }
+
+  std::string status_bytes;
+  status.SerializeToString(&status_bytes);
+
+  env.value()->CallVoidMethod(jni_cache->GetKryptonObject(),
+                              jni_cache->GetKryptonResumedMethod(),
+                              JavaByteArray(env.value(), status_bytes).get());
 }
 
 }  // namespace jni

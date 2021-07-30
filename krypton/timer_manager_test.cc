@@ -28,7 +28,9 @@
 namespace privacy {
 namespace krypton {
 namespace {
+
 using ::testing::Return;
+using ::testing::status::IsOkAndHolds;
 
 class TimerManagerTest : public ::testing::Test {
  public:
@@ -37,10 +39,9 @@ class TimerManagerTest : public ::testing::Test {
     EXPECT_CALL(timer_interface_,
                 StartTimer(expected_timer_id, absl::Milliseconds(5)))
         .WillOnce(Return(absl::OkStatus()));
-    auto status_or_timer_id =
-        timer_manager_.StartTimer(absl::Milliseconds(5), callback);
-    EXPECT_OK(status_or_timer_id);
-    return status_or_timer_id.value();
+    EXPECT_THAT(timer_manager_.StartTimer(absl::Milliseconds(5), callback),
+                IsOkAndHolds(expected_timer_id));
+    return expected_timer_id;
   }
 
   MockTimerInterface timer_interface_;

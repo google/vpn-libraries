@@ -32,7 +32,7 @@ namespace krypton {
 namespace jni {
 
 HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
-  LOG(INFO) << "Calling HttpFetcher JNI method to " << request.url();
+  LOG(INFO) << "Calling HttpFetcher postJson JNI method to " << request.url();
   auto jni_ppn = JniCache::Get();
   auto env = jni_ppn->GetJavaEnv();
   if (!env) {
@@ -72,6 +72,27 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
   env.value()->ReleaseByteArrayElements(java_response_array, bytes, 0);
 
   return response;
+}
+
+absl::StatusOr<std::string> HttpFetcher::LookupDns(
+    const std::string& hostname) {
+  LOG(INFO) << "Calling HttpFetcher JNI method to look up DNS for " << hostname;
+  auto jni_ppn = JniCache::Get();
+  auto env = jni_ppn->GetJavaEnv();
+  if (!env) {
+    return absl::InternalError("Java Env is not found");
+  }
+
+  jstring java_ip = static_cast<jstring>(env.value()->CallObjectMethod(
+      jni_ppn->GetHttpFetcherObject(), jni_ppn->GetHttpFetcherLookupDnsMethod(),
+      JavaString(env.value(), hostname).get()));
+
+  // If Java returned null, then treat it as an Internal error.
+  if (java_ip == nullptr) {
+    return absl::InternalError("empty response from java");
+  }
+
+  return ConvertJavaStringToUTF8(env.value(), java_ip);
 }
 
 }  // namespace jni

@@ -20,6 +20,7 @@
 #include <string>
 #include <thread>  //NOLINT
 
+#include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
@@ -50,11 +51,12 @@ namespace krypton {
 // As PPN is the library, Krypton provides the equivalent of the |main| method.
 class Krypton {
  public:
-  Krypton(HttpFetcherInterface* http_fetcher,
+  Krypton(DatapathBuilder* datapath_builder, HttpFetcherInterface* http_fetcher,
           KryptonNotificationInterface* notification,
           VpnServiceInterface* vpn_service, OAuthInterface* oauth,
           TimerManager* timer_manager)
-      : http_fetcher_(http_fetcher),
+      : datapath_builder_(datapath_builder),
+        http_fetcher_(http_fetcher),
         notification_(notification),
         vpn_service_(vpn_service),
         oauth_(oauth),
@@ -70,12 +72,16 @@ class Krypton {
   // Stop the Krypton library.  To have a clean exit, |Stop| needs to be called.
   void Stop() { Stop(absl::OkStatus()); }
 
+  // Snooze Krypton.
+  void Snooze(absl::Duration duration);
+
+  void Resume();
+
+  void ExtendSnooze(absl::Duration extendDuration);
+
   // Utility method for caller to block till krypton exits. Please do not use
   // this for JNI.
   void WaitForTermination() ABSL_LOCKS_EXCLUDED(stopped_lock_);
-
-  // Pause Krypton
-  absl::Status Pause(absl::Duration duration);
 
   // Set network.
   absl::Status SetNetwork(const NetworkInfo& network_info);
@@ -89,6 +95,9 @@ class Krypton {
   // Returns state of the Safe Disconnect feature.
   bool IsSafeDisconnectEnabled();
 
+  // Puts Krypton into a horrible wedged state. For testing.
+  void SetSimulatedNetworkFailure(bool simulated_network_failure);
+
   // Collects telemetry to determine how well Krypton is running.
   void CollectTelemetry(KryptonTelemetry* telemetry);
 
@@ -101,22 +110,24 @@ class Krypton {
 
   void Stop(const absl::Status& status) ABSL_LOCKS_EXCLUDED(stopped_lock_);
 
+  DatapathBuilder* datapath_builder_;           // Not owned.
   HttpFetcherInterface* http_fetcher_;          // Not owned.
   KryptonNotificationInterface* notification_;  // Not owned.
   VpnServiceInterface* vpn_service_;            // Not owned.
   OAuthInterface* oauth_;                       // Not owned.
   TimerManager* timer_manager_;                 // Not owned.
 
+  std::unique_ptr<TunnelManager> tunnel_manager_;
   std::unique_ptr<SessionManager> session_manager_;
   std::unique_ptr<Reconnector> reconnector_;
   std::unique_ptr<utils::LooperThread> notification_thread_;
+  std::unique_ptr<KryptonClock> clock_;
 
   bool stopped_ ABSL_GUARDED_BY(stopped_lock_);
   absl::Mutex stopped_lock_;
   absl::CondVar stopped_condition_ ABSL_GUARDED_BY(stopped_lock_);
 
   KryptonConfig config_;
-  bool safe_disconnect_enabled_;
 };
 
 }  // namespace krypton

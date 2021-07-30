@@ -19,6 +19,7 @@
 
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
+#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/jsoncpp/value.h"
 
@@ -34,6 +35,8 @@ class HttpFetcher : public HttpFetcherInterface {
 
   // Fetches the content from a remote server. This is a blocking call.
   HttpResponse PostJson(const HttpRequest& request) override;
+
+  absl::StatusOr<std::string> LookupDns(const std::string& hostname) override;
 };
 
 }  // namespace jni

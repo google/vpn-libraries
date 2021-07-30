@@ -16,8 +16,10 @@ package com.google.android.libraries.privacy.ppn;
 
 import androidx.annotation.Nullable;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -41,6 +43,8 @@ public class PpnOptions {
   private static final Duration DEFAULT_CONNECTIVITY_CHECK_RETRY_DELAY = Duration.ofSeconds(15);
   private static final int DEFAULT_CONNECTIVITY_CHECK_MAX_RETRIES = 5;
 
+  private static final String DEFAULT_COPPER_HOSTNAME_SUFFIX = "g-tun.com";
+
   private final String zincUrl;
   private final String zincPublicSigningKeyUrl;
   private final String brassUrl;
@@ -52,6 +56,7 @@ public class PpnOptions {
   private final int connectivityCheckMaxRetries;
 
   private final Optional<String> copperControllerAddress;
+  private final List<String> copperHostnameSuffix;
 
   private final Optional<Boolean> ipSecEnabled;
   private final Optional<Boolean> bridgeOnPpnEnabled;
@@ -68,6 +73,7 @@ public class PpnOptions {
 
   private final Set<String> disallowedApplications;
 
+  private final boolean dnsCacheEnabled;
   private final ExecutorService backgroundExecutor;
   private final Optional<PpnAccountManager> accountManager;
 
@@ -83,6 +89,7 @@ public class PpnOptions {
     this.connectivityCheckMaxRetries = builder.connectivityCheckMaxRetries;
 
     this.copperControllerAddress = builder.copperControllerAddress;
+    this.copperHostnameSuffix = builder.copperHostnameSuffix;
 
     this.ipSecEnabled = builder.ipSecEnabled;
     this.bridgeOnPpnEnabled = builder.bridgeOnPpnEnabled;
@@ -99,6 +106,7 @@ public class PpnOptions {
 
     this.disallowedApplications = Collections.unmodifiableSet(builder.disallowedApplications);
 
+    this.dnsCacheEnabled = builder.dnsCacheEnabled;
     this.backgroundExecutor =
         builder.backgroundExecutor.isPresent()
             ? builder.backgroundExecutor.get()
@@ -140,6 +148,10 @@ public class PpnOptions {
 
   public Optional<String> getCopperControllerAddress() {
     return copperControllerAddress;
+  }
+
+  public List<String> getCopperHostnameSuffix() {
+    return copperHostnameSuffix;
   }
 
   public Optional<Boolean> isIpSecEnabled() {
@@ -186,6 +198,10 @@ public class PpnOptions {
     return disallowedApplications;
   }
 
+  public boolean isDnsCacheEnabled() {
+    return dnsCacheEnabled;
+  }
+
   public ExecutorService getBackgroundExecutor() {
     return backgroundExecutor;
   }
@@ -205,6 +221,7 @@ public class PpnOptions {
     private Duration connectivityCheckRetryDelay = DEFAULT_CONNECTIVITY_CHECK_RETRY_DELAY;
     private int connectivityCheckMaxRetries = DEFAULT_CONNECTIVITY_CHECK_MAX_RETRIES;
     private Optional<String> copperControllerAddress = Optional.empty();
+    private List<String> copperHostnameSuffix = List.of(DEFAULT_COPPER_HOSTNAME_SUFFIX);
 
     private Optional<Boolean> ipSecEnabled = Optional.empty();
     private Optional<Boolean> bridgeOnPpnEnabled = Optional.empty();
@@ -221,6 +238,7 @@ public class PpnOptions {
 
     private Set<String> disallowedApplications = Collections.emptySet();
 
+    private boolean dnsCacheEnabled = true;
     private Optional<ExecutorService> backgroundExecutor = Optional.empty();
     private Optional<PpnAccountManager> accountManager = Optional.empty();
 
@@ -350,6 +368,26 @@ public class PpnOptions {
       return this;
     }
 
+    /**
+     * Sets the copper hostname suffix list.
+     *
+     * <p>If null list is passed in, it will be ignored.
+     *
+     * <p>Empty element will be ignored too.
+     */
+    public Builder setCopperHostnameSuffix(List<String> suffixList) {
+      if (suffixList != null) {
+        List<String> copperSuffix = new ArrayList<>();
+        for (String suffix : suffixList) {
+          if (!suffix.isEmpty()) {
+            copperSuffix.add(suffix);
+          }
+        }
+        this.copperHostnameSuffix = copperSuffix;
+      }
+      return this;
+    }
+
     /** Sets whether to use IPSec for the data path. */
     public Builder setIpSecEnabled(boolean ipSecEnabled) {
       this.ipSecEnabled = Optional.of(ipSecEnabled);
@@ -413,8 +451,8 @@ public class PpnOptions {
       return this;
     }
 
-    public Builder setSafeDisconnectEnabled(boolean enable) {
-      this.safeDisconnectEnabled = enable;
+    public Builder setSafeDisconnectEnabled(boolean enabled) {
+      this.safeDisconnectEnabled = enabled;
       return this;
     }
 
@@ -425,6 +463,12 @@ public class PpnOptions {
         copy.add(packageName);
       }
       this.disallowedApplications = Collections.unmodifiableSet(copy);
+      return this;
+    }
+
+    /** Sets whether to use an internal DNS cache in the library. */
+    public Builder setDnsCacheEnabled(boolean enabled) {
+      this.dnsCacheEnabled = enabled;
       return this;
     }
 

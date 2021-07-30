@@ -27,13 +27,11 @@ import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
-import org.robolectric.annotation.Config;
 
 /**
  * Unit test for {@link NetMath}.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config()
 public class NetMathTest {
 
   @Test

@@ -87,5 +87,10 @@ void HttpFetcher::PostJsonAsyncInternal(
   }
 }
 
+absl::StatusOr<std::string> HttpFetcher::LookupDns(
+    const std::string& hostname) {
+  return pal_interface_->LookupDns(hostname);
+}
+
 }  // namespace krypton
 }  // namespace privacy

@@ -24,6 +24,7 @@
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/match.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/jsoncpp/reader.h"
@@ -33,8 +34,8 @@
 namespace privacy {
 namespace krypton {
 
-absl::Status AuthAndSignResponse::DecodeFromProto(
-    const HttpResponse& response) {
+absl::Status AuthAndSignResponse::DecodeFromProto(const HttpResponse& response,
+                                                  const KryptonConfig& config) {
   if (!response.json_body().empty()) {
     Json::Reader reader;
     Json::Value body_root;
@@ -45,7 +46,7 @@ absl::Status AuthAndSignResponse::DecodeFromProto(
       return parsing_status_;
     }
 
-    parsing_status_ = DecodeJsonBody(body_root);
+    parsing_status_ = DecodeJsonBody(body_root, config);
     if (!parsing_status_.ok()) {
       LOG(ERROR) << parsing_status_;
       return parsing_status_;
@@ -55,7 +56,8 @@ absl::Status AuthAndSignResponse::DecodeFromProto(
   return parsing_status_ = absl::OkStatus();
 }
 
-absl::Status AuthAndSignResponse::DecodeJsonBody(Json::Value value) {
+absl::Status AuthAndSignResponse::DecodeJsonBody(Json::Value value,
+                                                 const KryptonConfig& config) {
   if (!value.isObject()) {
     return absl::InvalidArgumentError("JSON body is not of type JSON object");
   }
@@ -83,6 +85,53 @@ absl::Status AuthAndSignResponse::DecodeJsonBody(Json::Value value) {
     }
   }
 
+  if (value.isMember(JsonKeys::kCopperControllerHostname)) {
+    auto hostname_string = value[JsonKeys::kCopperControllerHostname];
+    if (!hostname_string.isString()) {
+      return absl::InvalidArgumentError(
+          "copper_controller_hostname is not a string");
+    }
+    const std::string hostname = hostname_string.asString();
+    if (!hostname.empty()) {
+      bool matched = false;
+      // If zinc provides a hostname,
+      // we check whether it fits any suffix in the copper_hostname_suffix list;
+      // there's no empty suffix in the copper_hostname_suffix list.
+      for (const auto& suffix : config.copper_hostname_suffix()) {
+        if (absl::EndsWith(hostname, suffix)) {
+          copper_controller_hostname_ = hostname;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        // TODO: investigate making AuthAndSignResponse reusable.
+        return absl::InvalidArgumentError(absl::StrCat(
+            "copper_controller_hostname doesn't have allowed suffix: ",
+            hostname));
+      }
+    }
+  }
+
+  if (value.isMember(JsonKeys::kRegionTokenAndSignature)) {
+    auto region_token_and_sig = value[JsonKeys::kRegionTokenAndSignature];
+    if (!region_token_and_sig.isString()) {
+      return absl::InvalidArgumentError("region_token_and_sig is not a string");
+    }
+    region_token_and_signatures_ = region_token_and_sig.asString();
+  }
+
+  if (value.isMember(JsonKeys::kApnType)) {
+    const auto apn_type = value[JsonKeys::kApnType];
+    if (!apn_type.isString()) {
+      return absl::InvalidArgumentError("apn_type is not a string");
+    }
+    const std::string type = apn_type.asString();
+    if (type != "ppn" && type != "bridge") {
+      return absl::InvalidArgumentError("unexpected apn_type");
+    }
+    apn_type_ = type;
+  }
   return absl::OkStatus();
 }
 

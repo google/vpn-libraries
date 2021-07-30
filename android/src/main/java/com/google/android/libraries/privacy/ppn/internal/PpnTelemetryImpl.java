@@ -48,10 +48,17 @@ abstract class PpnTelemetryImpl implements PpnTelemetry {
   public abstract List<Duration> egressLatency();
 
   @Override
+  @SuppressWarnings("AutoValueImmutableFields")
+  public abstract List<Duration> disconnectionDurations();
+
+  @Override
   public abstract int successfulRekeys();
 
   @Override
   public abstract int networkSwitches();
+
+  @Override
+  public abstract int disconnectionCount();
 
   public static Builder builder() {
     // Assign default values for optional fields here.
@@ -60,8 +67,10 @@ abstract class PpnTelemetryImpl implements PpnTelemetry {
         .setOauthLatency(new ArrayList<>())
         .setZincLatency(new ArrayList<>())
         .setEgressLatency(new ArrayList<>())
+        .setDisconnectionDurations(new ArrayList<>())
         .setNetworkSwitches(0)
-        .setSuccessfulRekeys(0);
+        .setSuccessfulRekeys(0)
+        .setDisconnectionCount(0);
   }
 
   @AutoValue.Builder
@@ -80,9 +89,13 @@ abstract class PpnTelemetryImpl implements PpnTelemetry {
 
     public abstract Builder setEgressLatency(List<Duration> value);
 
+    public abstract Builder setDisconnectionDurations(List<Duration> value);
+
     public abstract Builder setSuccessfulRekeys(int value);
 
     public abstract Builder setNetworkSwitches(int value);
+
+    public abstract Builder setDisconnectionCount(int value);
 
     public abstract PpnTelemetryImpl build();
   }

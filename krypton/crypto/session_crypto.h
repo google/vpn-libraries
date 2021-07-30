@@ -15,12 +15,14 @@
 #ifndef PRIVACY_NET_KRYPTON_CRYPTO_SESSION_CRYPTO_H_
 #define PRIVACY_NET_KRYPTON_CRYPTO_SESSION_CRYPTO_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <tuple>
 
+#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/crypto/rsa_fdh_blinder.h"
-#include "privacy/net/krypton/crypto/suite.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
@@ -41,7 +43,7 @@ namespace crypto {
 // This is not thread safe.
 class SessionCrypto {
  public:
-  SessionCrypto();
+  explicit SessionCrypto(const KryptonConfig* config);
   ~SessionCrypto() = default;
 
   struct KeyMaterial {
@@ -58,12 +60,8 @@ class SessionCrypto {
   absl::Status SetRemoteKeyMaterial(const std::string& remote_public_value,
                                     const std::string& nonce);
 
-  // Provides the parameters needed for IpSec params.
-  absl::StatusOr<IpSecTransformParams> GetIpSecTransformParams();
-
-  // Provides the parameters needed for Bridge.
-  absl::StatusOr<BridgeTransformParams> GetBridgeTransformParams(
-      CryptoSuite suite);
+  // Provides the parameters needed for packet transform params.
+  absl::StatusOr<TransformParams> GetTransformParams();
 
   // Generate a signature based on a public value. Here is an example:
   // Crypto key 1 : Used in initiation
@@ -72,19 +70,22 @@ class SessionCrypto {
   // public value should be base64 encoded.
   absl::StatusOr<std::string> GenerateSignature(
       absl::string_view other_public_value);
+
   // Get the base64 RekeyVerificationKey. This is used by the server to verify
   // the next request.
   absl::StatusOr<std::string> GetRekeyVerificationKey() const;
 
   // Test Only: Get the shared secret.
   absl::StatusOr<std::string> SharedKeyBase64TestOnly() const;
+
   // Test Only: override the salt.
   void SetLocalNonceBase64TestOnly(absl::string_view client_nonce);
   void SetRemoteNonceBase64TestOnly(absl::string_view server_nonce);
+
   // Private key.
   std::string PrivateKeyTestOnly() const { return private_key_; }
 
-  uint32 downlink_spi() const { return downlink_spi_; }
+  uint32_t downlink_spi() const { return downlink_spi_; }
 
   // Set the public key received in PublicKeyResponse. Parameter is PEM
   // RSA public key.
@@ -112,8 +113,8 @@ class SessionCrypto {
   BN_CTX* bn_ctx() { return bn_ctx_.get(); }
 
  private:
-  absl::Status ComputeIpSecKeyMaterial();
-  absl::Status ComputeBridgeKeyMaterial(CryptoSuite suite);
+  absl::StatusOr<TransformParams> ComputeIpSecKeyMaterial();
+  absl::StatusOr<TransformParams> ComputeBridgeKeyMaterial();
   // Shared key for the session. Returns failure if the |SetRemotePublicValue|
   // is not called successfully. Use |SharedKeyBase64| for Base64 encoded
   // value.
@@ -124,9 +125,7 @@ class SessionCrypto {
   std::string private_key_;
   std::string public_value_;
   std::string remote_public_value_;  // Remote's public value.
-  absl::optional<IpSecTransformParams> ip_sec_transform_params_;
-  absl::optional<BridgeTransformParams> bridge_transform_params_;
-  uint32 downlink_spi_;
+  uint32_t downlink_spi_;
   std::unique_ptr<::crypto::tink::KeysetHandle> key_handle_ = nullptr;
   bssl::UniquePtr<BN_CTX> bn_ctx_ = nullptr;
   std::unique_ptr<RsaFdhBlinder> blinder_ = nullptr;
@@ -134,6 +133,7 @@ class SessionCrypto {
   std::string original_message_;
   absl::optional<std::string> rekey_signature_;
   std::string blind_signing_public_key_hash_;
+  const KryptonConfig* config_;  // not owned.
 };
 }  // namespace crypto
 }  // namespace krypton

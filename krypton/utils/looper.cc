@@ -92,7 +92,7 @@ void LooperThread::Join() {
   LOG(INFO) << "Looper is joined: " << name_;
 }
 
-std::optional<std::function<void()>> LooperThread::Dequeue() {
+absl::optional<std::function<void()>> LooperThread::Dequeue() {
   absl::MutexLock l(&mutex_);
   while (queue_.empty()) {
     if (lameduck_) {
@@ -150,7 +150,7 @@ void LooperThread::AddCleanupHandler(std::function<void()> runnable) {
   cleanup_queue_.emplace_back(runnable);
 }
 
-std::optional<std::function<void()>> LooperThread::DequeueCleanupHandler() {
+absl::optional<std::function<void()>> LooperThread::DequeueCleanupHandler() {
   absl::MutexLock l(&mutex_);
   if (!lameduck_) {
     LOG(FATAL) << "Attempted to dequeue cleanup handler on running looper: "

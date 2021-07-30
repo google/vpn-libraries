@@ -16,7 +16,9 @@
 
 #include <string>
 
-#include "privacy/net/krypton/pal/http_fetcher_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
+#include "privacy/net/krypton/pal/mock_datapath_builder_interface.h"
+#include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/mock_notification_interface.h"
 #include "privacy/net/krypton/pal/mock_oauth_interface.h"
 #include "privacy/net/krypton/pal/mock_timer_interface.h"
@@ -35,34 +37,37 @@
 namespace privacy {
 namespace krypton {
 
-class HttpFetcherForTest : public HttpFetcherInterface {
- public:
-  HttpResponse PostJson(const HttpRequest&) override { return HttpResponse(); }
-};
-
 class KryptonTest : public ::testing::Test {
  public:
-  KryptonTest() {
+  KryptonTest() : thread_("KryptonTest") {
     config_.set_zinc_url("http://www.example.com/auth");
     config_.set_brass_url("http://brass.example.com/addegress");
     config_.set_service_type("some_type");
   }
 
+  void SetUp() override {
+    EXPECT_CALL(datapath_builder_, BuildDatapath(testing::_, testing::_))
+        .WillOnce(testing::Return(
+            new datapath::android::IpSecDatapath(&thread_, &vpn_service_)));
+  }
+
  protected:
   KryptonConfig config_;
 
-  HttpFetcherForTest http_fetcher_;
+  MockDatapathBuilder datapath_builder_;
+  MockHttpFetcher http_fetcher_;
   MockNotification notification_;
   MockVpnService vpn_service_;
   MockOAuth oauth_;
   MockTimerInterface timer_interface_;
 
   TimerManager timer_manager_{&timer_interface_};
+  utils::LooperThread thread_;
 };
 
 TEST_F(KryptonTest, InitializationTest) {
-  Krypton krypton(&http_fetcher_, &notification_, &vpn_service_, &oauth_,
-                  &timer_manager_);
+  Krypton krypton(&datapath_builder_, &http_fetcher_, &notification_,
+                  &vpn_service_, &oauth_, &timer_manager_);
   // TODO: Fix this test so that the notification is notified and
   // verified.
   absl::Notification done;
@@ -74,8 +79,8 @@ TEST_F(KryptonTest, InitializationTest) {
 }
 
 TEST_F(KryptonTest, DebugInfoTest) {
-  Krypton krypton(&http_fetcher_, &notification_, &vpn_service_, &oauth_,
-                  &timer_manager_);
+  Krypton krypton(&datapath_builder_, &http_fetcher_, &notification_,
+                  &vpn_service_, &oauth_, &timer_manager_);
   // TODO: Fix this test so that the notification is notified and
   // verified.
   absl::Notification done;

@@ -21,6 +21,7 @@
 #include <string>
 
 #include "base/logging.h"
+#include "privacy/net/krypton/jni/datapath_builder.h"
 #include "privacy/net/krypton/jni/http_fetcher.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/jni/jni_timer_interface_impl.h"
@@ -46,6 +47,7 @@ using privacy::krypton::KryptonTelemetry;
 using privacy::krypton::NetworkInfo;
 using privacy::krypton::TimerManager;
 using privacy::krypton::jni::ConvertJavaByteArrayToString;
+using privacy::krypton::jni::DatapathBuilderImpl;
 using privacy::krypton::jni::HttpFetcher;
 using privacy::krypton::jni::JniCache;
 using privacy::krypton::jni::JniTimerInterfaceImpl;
@@ -69,7 +71,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_startNative(
 
 // Stop the Krypton library.
 JNIEXPORT void JNICALL
-Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_stop(
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_stopNative(
     JNIEnv* env, jobject krypton_instance);
 
 // Switch API for switching across different access networks.
@@ -87,10 +89,19 @@ JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_timerExpired(
     JNIEnv* env, jobject krypton_instance, int timer_id);
 
-// Pause
+// Snooze
 JNIEXPORT void JNICALL
-Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_pause(
-    JNIEnv* env, jobject krypton_instance, int duration_msecs);
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_snooze(
+    JNIEnv* env, jobject krypton_instance, int snooze_duration_ms);
+
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_extendSnooze(
+    JNIEnv* env, jobject krypton_instance, int extend_snooze_duration_ms);
+
+// Resume
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_resume(
+    JNIEnv* env, jobject krypton_instance);
 
 // SetSafeDisconnectEnabled
 JNIEXPORT void JNICALL
@@ -101,6 +112,11 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setSafeDisconn
 JNIEXPORT bool JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_isSafeDisconnectEnabled(
     JNIEnv* env, jobject krypton_instance);
+
+// SetSimulatedNetworkFailure
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setSimulatedNetworkFailure(
+    JNIEnv* env, jobject krypton_instance, jboolean simulated_network_failure);
 
 // CollectTelemetry
 JNIEXPORT jbyteArray JNICALL
@@ -127,6 +143,8 @@ struct KryptonCache {
     oauth = absl::make_unique<OAuth>();
     jni_timer_interface = absl::make_unique<JniTimerInterfaceImpl>();
     timer_manager = absl::make_unique<TimerManager>(jni_timer_interface.get());
+    datapath_builder =
+        absl::make_unique<DatapathBuilderImpl>(vpn_service.get());
   }
 
   ~KryptonCache() {
@@ -149,6 +167,7 @@ struct KryptonCache {
   std::unique_ptr<KryptonNotification> notification;
   std::unique_ptr<VpnService> vpn_service;
   std::unique_ptr<OAuth> oauth;
+  std::unique_ptr<DatapathBuilderImpl> datapath_builder;
 };
 
 std::unique_ptr<KryptonCache> krypton_cache;
@@ -176,14 +195,14 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_init(
   // Create the new Krypton object and make it the singleton.
   krypton_cache = absl::make_unique<KryptonCache>();
   krypton_cache->krypton = absl::make_unique<privacy::krypton::Krypton>(
-      krypton_cache->http_fetcher.get(), krypton_cache->notification.get(),
-      krypton_cache->vpn_service.get(), krypton_cache->oauth.get(),
-      krypton_cache->timer_manager.get());
+      krypton_cache->datapath_builder.get(), krypton_cache->http_fetcher.get(),
+      krypton_cache->notification.get(), krypton_cache->vpn_service.get(),
+      krypton_cache->oauth.get(), krypton_cache->timer_manager.get());
 }
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_startNative(
-    JNIEnv* env, jobject  /*krypton_instance*/, jbyteArray config_byte_array) {
+    JNIEnv* env, jobject /*krypton_instance*/, jbyteArray config_byte_array) {
   LOG(INFO) << "Starting Krypton native library";
   if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
     JniCache::Get()->ThrowKryptonException("Krypton was not initialized.");
@@ -199,12 +218,21 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_startNative(
     return;
   }
 
+  // TODO: Minor bookkeeping of proto and should be remove it once
+  // the API is migrated.
+  if (!config.has_datapath_protocol()) {
+    if (config.ipsec_datapath()) {
+      config.set_datapath_protocol(KryptonConfig::IPSEC);
+    } else if (config.bridge_over_ppn()) {
+      config.set_datapath_protocol(KryptonConfig::BRIDGE);
+    }
+  }
   krypton_cache->krypton->Start(config);
 }
 
 JNIEXPORT void JNICALL
-Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_stop(
-    JNIEnv*  /*env*/, jobject /*thiz*/) {
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_stopNative(
+    JNIEnv* /*env*/, jobject /*thiz*/) {
   // Initialize the Krypton library.
   LOG(INFO) << "Stopping Krypton native library";
   if (krypton_cache != nullptr) {
@@ -215,7 +243,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_stop(
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setNoNetworkAvailable(
-    JNIEnv*  /*env*/, jobject  /*krypton_instance*/) {
+    JNIEnv* /*env*/, jobject /*krypton_instance*/) {
   LOG(INFO) << "SetNoNetworkAvailable is called";
 
   if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
@@ -232,7 +260,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setNoNetworkAv
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setNetworkNative(
-    JNIEnv* env, jobject  /*krypton_instance*/, jbyteArray request_byte_array) {
+    JNIEnv* env, jobject /*krypton_instance*/, jbyteArray request_byte_array) {
   NetworkInfo request;
   std::string request_bytes =
       ConvertJavaByteArrayToString(env, request_byte_array);
@@ -255,7 +283,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setNetworkNati
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_timerExpired(
-    JNIEnv*  /*env*/, jobject  /*krypton_instance*/, int timer_id) {
+    JNIEnv* /*env*/, jobject /*krypton_instance*/, int timer_id) {
   if (krypton_cache == nullptr || krypton_cache->timer_manager == nullptr) {
     JniCache::Get()->ThrowKryptonException(
         "Krypton or TimerManager is not running");
@@ -265,19 +293,38 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_timerExpired(
 }
 
 JNIEXPORT void JNICALL
-Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_pause(
-    JNIEnv*  /*env*/, jobject  /*krypton_instance*/, int duration_msecs) {
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_snooze(
+    JNIEnv* /*env*/, jobject /*krypton_instance*/, int snooze_duration_ms) {
   if (krypton_cache == nullptr || krypton_cache->timer_manager == nullptr) {
     JniCache::Get()->ThrowKryptonException(
         "Krypton or TimerManager is not running");
     return;
   }
-  auto duration = absl::Milliseconds(duration_msecs);
-  auto status = krypton_cache->krypton->Pause(duration);
-  if (!status.ok()) {
-    JniCache::Get()->ThrowKryptonException(status.ToString());
+  krypton_cache->krypton->Snooze(absl::Milliseconds(snooze_duration_ms));
+}
+
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_extendSnooze(
+    JNIEnv* /*env*/, jobject /*krypton_instance*/,
+    int extend_snooze_duration_ms) {
+  if (krypton_cache == nullptr || krypton_cache->timer_manager == nullptr) {
+    JniCache::Get()->ThrowKryptonException(
+        "Krypton or TimerManager is not running");
     return;
   }
+  krypton_cache->krypton->ExtendSnooze(
+      absl::Milliseconds(extend_snooze_duration_ms));
+}
+
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_resume(
+    JNIEnv* /*env*/, jobject /*krypton_instance*/) {
+  if (krypton_cache == nullptr || krypton_cache->timer_manager == nullptr) {
+    JniCache::Get()->ThrowKryptonException(
+        "Krypton or TimerManager is not running");
+    return;
+  }
+  krypton_cache->krypton->Resume();
 }
 
 JNIEXPORT void JNICALL
@@ -302,9 +349,22 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_isSafeDisconne
   return krypton_cache->krypton->IsSafeDisconnectEnabled();
 }
 
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setSimulatedNetworkFailure(
+    JNIEnv* /*env*/, jobject /*krypton_instance*/,
+    jboolean simulated_network_failure) {
+  LOG(INFO) << "setSimulatedNetworkFailure is called";
+  if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
+    JniCache::Get()->ThrowKryptonException("Krypton is not running");
+    return;
+  }
+  krypton_cache->krypton->SetSimulatedNetworkFailure(
+      simulated_network_failure != 0u);
+}
+
 JNIEXPORT jbyteArray JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_collectTelemetryNative(
-    JNIEnv* env, jobject  /*krypton_instance*/) {
+    JNIEnv* env, jobject /*krypton_instance*/) {
   LOG(INFO) << "collectTelemetry is called";
 
   if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
@@ -325,7 +385,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_collectTelemet
 
 JNIEXPORT jbyteArray JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_getDebugInfoNative(
-    JNIEnv* env, jobject  /*krypton_instance*/) {
+    JNIEnv* env, jobject /*krypton_instance*/) {
   LOG(INFO) << "getDebugInfoBytes is called";
 
   if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {

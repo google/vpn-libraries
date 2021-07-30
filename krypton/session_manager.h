@@ -22,6 +22,7 @@
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
+#include "privacy/net/krypton/pal/datapath_builder_interface.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
@@ -44,7 +45,8 @@ class KryptonDebugInfo;
 // SessionManager manages the session.
 class SessionManager : public SessionManagerInterface {
  public:
-  SessionManager(HttpFetcherInterface* http_fetcher,
+  SessionManager(DatapathBuilder* datapath_builder,
+                 HttpFetcherInterface* http_fetcher,
                  TimerManager* timer_manager, VpnServiceInterface* vpn_service,
                  OAuthInterface* oauth, KryptonConfig* config,
                  utils::LooperThread* notification_thread);
@@ -52,10 +54,12 @@ class SessionManager : public SessionManagerInterface {
   void RegisterNotificationInterface(Session::NotificationInterface*) override;
   void EstablishSession(absl::string_view zinc_url, absl::string_view brass_url,
                         absl::string_view service_type, int restart_count,
+                        TunnelManagerInterface* tunnel_manager,
                         absl::optional<NetworkInfo> network_info) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void TerminateSession() override ABSL_LOCKS_EXCLUDED(mutex_);
+  void TerminateSession(bool forceFailOpen) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::optional<Session*> session() const override {
     absl::MutexLock l(&mutex_);
@@ -73,6 +77,7 @@ class SessionManager : public SessionManagerInterface {
 
  private:
   mutable absl::Mutex mutex_;
+  DatapathBuilder* datapath_builder_;                 // Not owned.
   HttpFetcherInterface* http_fetcher_;                // Not owned.
   Session::NotificationInterface* notification_;      // Not owned.
   TimerManager* timer_manager_;                       // Not owned.

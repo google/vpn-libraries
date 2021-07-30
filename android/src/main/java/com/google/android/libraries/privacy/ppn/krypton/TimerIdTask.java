@@ -14,27 +14,83 @@
 
 package com.google.android.libraries.privacy.ppn.krypton;
 
+import android.os.Handler;
 import android.util.Log;
+import androidx.work.Data;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
+import com.google.common.annotations.VisibleForTesting;
+import java.time.Duration;
+import java.util.UUID;
 
-/** A single unit timer object that represents one timer. */
-final class TimerIdTask implements Runnable {
-  public static final String TAG = "TimerIdTask";
+/**
+ * TimerIdTask represents a single Krypton Timer, wrapping a TimerIdRunnable (android.os.Handler)
+ * and a TimerIdWorker (androidx.work.WorkManager).
+ */
+public class TimerIdTask {
+  private final Handler handler;
+  private final WorkManager workManager;
+  private final UUID managerId;
   private final int timerId;
-  private final TimerIdListener listener;
+  private final Duration delay;
 
-  /**
-   * @param listener is called with onTimerExpired
-   * @param timerId id of the timer.
-   */
-  public TimerIdTask(TimerIdListener listener, int timerId) {
+  private final OneTimeWorkRequest workRequest;
+  private final TimerIdRunnable runnable;
+
+  public static final String TAG = "TimerIdTask";
+  public static final String KEY_TIMER_ID = "timerId";
+  public static final String KEY_MANAGER_UUID = "managerId";
+
+  // For testing purposes.
+  private boolean isCancelled;
+
+  public TimerIdTask(
+      TimerIdListener listener,
+      UUID managerId,
+      Handler handler,
+      WorkManager workManager,
+      int timerId,
+      Duration delay) {
+    this.handler = handler;
+    this.workManager = workManager;
+    this.managerId = managerId;
     this.timerId = timerId;
-    this.listener = listener;
+    this.delay = delay;
+    this.isCancelled = false;
+
+    this.runnable = new TimerIdRunnable(listener, timerId);
+    this.workRequest = createOneTimeWorkRequest();
   }
 
-  @Override
-  public void run() {
-    Log.w(TAG, "Timer Id " + timerId + " expired");
-    // This signals the TimerIdManager that this timer is expired.
-    listener.onTimerExpired(timerId);
+  public void start() {
+    if (!handler.postDelayed(runnable, delay.toMillis())) {
+      throw new IllegalStateException("postDelayed returned false.");
+    }
+    workManager.enqueue(workRequest);
+    Log.w(TAG, "Started TimerIdTask " + timerId + " with delay of " + delay);
+  }
+
+  public void cancel() {
+    Log.w(TAG, "Canceling TimerIdTask " + timerId);
+    handler.removeCallbacksAndMessages(runnable);
+    workManager.cancelWorkById(workRequest.getId());
+    isCancelled = true;
+  }
+
+  private OneTimeWorkRequest createOneTimeWorkRequest() {
+    Data workerData =
+        new Data.Builder()
+            .putInt(KEY_TIMER_ID, timerId)
+            .putString(KEY_MANAGER_UUID, managerId.toString())
+            .build();
+    return new OneTimeWorkRequest.Builder(TimerIdWorker.class)
+        .setInitialDelay(delay)
+        .setInputData(workerData)
+        .build();
+  }
+
+  @VisibleForTesting
+  boolean isCancelled() {
+    return isCancelled;
   }
 }

@@ -15,11 +15,15 @@
 
 #include "privacy/net/krypton/utils/status.h"
 
+#include "privacy/net/krypton/proto/ppn_status.proto.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/strings/cord.h"
 
 namespace privacy {
 namespace krypton {
 namespace utils {
+
+constexpr char kPpnStatusDetailsPayloadKey[] = "privacy.google.com/ppn.status";
 
 absl::StatusCode GetStatusCodeForHttpStatus(int http_status) {
   switch (http_status) {
@@ -48,6 +52,15 @@ absl::StatusCode GetStatusCodeForHttpStatus(int http_status) {
     case 504:
       return absl::StatusCode::kDeadlineExceeded;
   }
+  if (http_status >= 200 && http_status < 300) {
+    return absl::StatusCode::kOk;
+  }
+  if (http_status >= 400 && http_status < 500) {
+    return absl::StatusCode::kFailedPrecondition;
+  }
+  if (http_status >= 500 && http_status < 600) {
+    return absl::StatusCode::kInternal;
+  }
   return absl::StatusCode::kUnknown;
 }
 
@@ -60,6 +73,23 @@ bool IsPermanentError(absl::StatusCode code) {
       return false;
   }
 }
+
+PpnStatusDetails GetPpnStatusDetails(absl::Status status) {
+  PpnStatusDetails details;
+  auto payload = status.GetPayload(kPpnStatusDetailsPayloadKey);
+  if (payload) {
+    std::string s;
+    absl::CopyCordToString(*payload, &s);
+    details.ParseFromString(s);
+  }
+  return details;
+}
+
+void SetPpnStatusDetails(absl::Status* status, PpnStatusDetails details) {
+  status->SetPayload(kPpnStatusDetailsPayloadKey,
+                     absl::Cord(details.SerializeAsString()));
+}
+
 }  // namespace utils
 }  // namespace krypton
 }  // namespace privacy

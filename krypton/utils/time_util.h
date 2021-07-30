@@ -26,6 +26,9 @@ namespace privacy {
 namespace krypton {
 namespace utils {
 
+absl::StatusOr<absl::Duration> DurationFromProto(
+    const google::protobuf::Duration& proto);
+
 absl::Status ToProtoDuration(absl::Duration d,
                              google::protobuf::Duration* proto);
 

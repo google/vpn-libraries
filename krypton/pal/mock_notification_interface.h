@@ -15,6 +15,8 @@
 #ifndef PRIVACY_NET_KRYPTON_PAL_MOCK_NOTIFICATION_INTERFACE_H_
 #define PRIVACY_NET_KRYPTON_PAL_MOCK_NOTIFICATION_INTERFACE_H_
 
+#include <cstdint>
+
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "testing/base/public/gmock.h"
@@ -26,17 +28,20 @@ namespace krypton {
 // Mock interface for Notification.  Used for testing.
 class MockNotification : public KryptonNotificationInterface {
  public:
-  MOCK_METHOD(void, Connected, (), (override));
-  MOCK_METHOD(void, Connecting, (), (override));
+  MOCK_METHOD(void, Connected, (const ConnectionStatus&), (override));
+  MOCK_METHOD(void, Connecting, (const ConnectingStatus&), (override));
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
-  MOCK_METHOD(void, StatusUpdated, (), (override));
-  MOCK_METHOD(void, Disconnected, (const absl::Status&), (override));
+  MOCK_METHOD(void, StatusUpdated, (const ConnectionStatus&), (override));
+  MOCK_METHOD(void, Disconnected, (const DisconnectionStatus&), (override));
   MOCK_METHOD(void, PermanentFailure, (const absl::Status&), (override));
   MOCK_METHOD(void, NetworkDisconnected,
               (const NetworkInfo& network_info, const absl::Status&),
               (override));
   MOCK_METHOD(void, Crashed, (), (override));
-  MOCK_METHOD(void, WaitingToReconnect, (const int64 retry_millis), (override));
+  MOCK_METHOD(void, WaitingToReconnect, (const ReconnectionStatus&),
+              (override));
+  MOCK_METHOD(void, Snoozed, (const SnoozeStatus&), (override));
+  MOCK_METHOD(void, Resumed, (const ResumeStatus&), (override));
 };
 
 }  // namespace krypton

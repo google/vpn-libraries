@@ -15,11 +15,15 @@
 package com.google.android.libraries.privacy.ppn.krypton;
 
 import com.google.android.libraries.privacy.ppn.PpnException;
-import com.google.android.libraries.privacy.ppn.PpnReconnectStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
+import com.google.android.libraries.privacy.ppn.internal.ConnectingStatus;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
+import com.google.android.libraries.privacy.ppn.internal.DisconnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.IpSecTransformParams;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo;
+import com.google.android.libraries.privacy.ppn.internal.ReconnectionStatus;
+import com.google.android.libraries.privacy.ppn.internal.ResumeStatus;
+import com.google.android.libraries.privacy.ppn.internal.SnoozeStatus;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
 
 /** Notification of events from Krypton. */
@@ -31,8 +35,12 @@ public interface KryptonListener {
    */
   void onKryptonConnected(ConnectionStatus status);
 
-  /** Called when Krypton starts trying to establish a new session. */
-  void onKryptonConnecting();
+  /**
+   * Called when Krypton starts trying to establish a new session.
+   *
+   * @param status Information about the state of PPN while connecting.
+   */
+  void onKryptonConnecting(ConnectingStatus status);
 
   /** Called when the PPN control plane connects to the backend. */
   void onKryptonControlPlaneConnected();
@@ -40,8 +48,12 @@ public interface KryptonListener {
   /** Called to update Krypton clients with metadata about the data connection. */
   void onKryptonStatusUpdated(ConnectionStatus status);
 
-  /** Called when the PPN data plane disconnects from the backend. */
-  void onKryptonDisconnected(PpnStatus status);
+  /**
+   * Called when the PPN data plane disconnects from the backend.
+   *
+   * @param status Information about the disconnection.
+   */
+  void onKryptonDisconnected(DisconnectionStatus status);
 
   /** Called when Krypton decides the current network has failed. */
   void onKryptonNetworkFailed(PpnStatus status, NetworkInfo networkInfo);
@@ -56,7 +68,13 @@ public interface KryptonListener {
    * Called when Krypton starts a reconnection sequence. Passes a PpnReconnectStatus to PPN
    * containing the time until the next connection attempt.
    */
-  void onKryptonWaitingToReconnect(PpnReconnectStatus status);
+  void onKryptonWaitingToReconnect(ReconnectionStatus status);
+
+  /** Called when Krypton is snoozed. */
+  void onKryptonSnoozed(SnoozeStatus status);
+
+  /** Called when Krypton is resumed. */
+  void onKryptonResumed(ResumeStatus disconnectionStatus);
 
   /**
    * Called by Krypton whenever it needs the VPN service to establish new TUN fds.

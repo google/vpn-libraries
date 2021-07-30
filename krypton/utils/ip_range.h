@@ -29,10 +29,11 @@ namespace privacy {
 namespace krypton {
 namespace utils {
 
-// Returns just the host part from a string containing a host and optional port.
-absl::StatusOr<std::string> GetHostFromHostPort(absl::string_view host_port);
+// Extracts the port and host out of the `host_port` string.
+absl::Status ParseHostPort(absl::string_view host_port, std::string* host,
+                           std::string* port);
 
-absl::StatusOr<std::string> ResolveIPV4Address(const std::string& hostname);
+absl::StatusOr<std::string> ResolveIPAddress(const std::string& hostname);
 
 // Checks if the string is a dotted notation of IPv4 address.
 bool IsValidV4Address(absl::string_view ip) MUST_USE_RESULT;

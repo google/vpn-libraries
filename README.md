@@ -1,7 +1,7 @@
 # Google VPN
 
 VPN client library that provides a secure, encrypted tunnel for connected
-devices:
+devices
 
 *   [Introduction](#introduction)
 *   [Current Status](#current-status)
@@ -30,7 +30,7 @@ direct adoption into other client applications given the dependencies that exist
 with other parts of the system. While the team that maintains the project at
 Google made a best effort to ensure parity between the open source library and
 the version implemented across various clients, we cannot offer explicit
-guarantees.
+guarantees
 
 ## Learn more
 

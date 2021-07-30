@@ -20,7 +20,6 @@
 #include "base/logging.h"
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/egress_manager.h"
-
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
@@ -35,12 +34,14 @@
 namespace privacy {
 namespace krypton {
 
-SessionManager::SessionManager(HttpFetcherInterface* http_fetcher,
+SessionManager::SessionManager(DatapathBuilder* datapath_builder,
+                               HttpFetcherInterface* http_fetcher,
                                TimerManager* timer_manager,
                                VpnServiceInterface* vpn_service,
                                OAuthInterface* oauth, KryptonConfig* config,
                                utils::LooperThread* krypton_notification_thread)
-    : http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher)),
+    : datapath_builder_(datapath_builder),
+      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher)),
       timer_manager_(ABSL_DIE_IF_NULL(timer_manager)),
       vpn_service_(ABSL_DIE_IF_NULL(vpn_service)),
       oauth_(ABSL_DIE_IF_NULL(oauth)),
@@ -53,12 +54,13 @@ void SessionManager::RegisterNotificationInterface(
 }
 
 void SessionManager::EstablishSession(
-    absl::string_view zinc_url, absl::string_view brass_url,
-    absl::string_view service_type, int restart_count,
+    absl::string_view /*zinc_url*/, absl::string_view brass_url,
+    absl::string_view /*service_type*/, int restart_count,
+    TunnelManagerInterface* tunnel_manager,
     absl::optional<NetworkInfo> network_info) {
   if (session_created_) {
     LOG(INFO) << "Session is not terminated, terminating it now.";
-    TerminateSession();
+    TerminateSession(/*forceFailOpen=*/false);
   }
   DCHECK(notification_) << "Notification needs to be set";
   absl::MutexLock l(&mutex_);
@@ -69,18 +71,18 @@ void SessionManager::EstablishSession(
                                   looper_thread_.get());
   egress_manager_ = absl::make_unique<EgressManager>(brass_url, http_fetcher_,
                                                      looper_thread_.get());
-
-  // TODO: Initialize datapath_, once we have an implementation.
-
+  datapath_ = std::unique_ptr<DatapathInterface>(
+      datapath_builder_->BuildDatapath(config_, looper_thread_.get()));
   session_ = absl::make_unique<Session>(
       auth_.get(), egress_manager_.get(), datapath_.get(), vpn_service_,
-      timer_manager_, network_info, config_, krypton_notification_thread_);
+      timer_manager_, http_fetcher_, tunnel_manager, network_info, config_,
+      krypton_notification_thread_);
   session_->RegisterNotificationHandler(notification_);
   session_->Start();
   session_created_ = true;
 }
 
-void SessionManager::TerminateSession() {
+void SessionManager::TerminateSession(bool forceFailOpen) {
   LOG(INFO) << "Calling Terminate Session";
   absl::MutexLock l(&mutex_);
   if (!session_created_) {
@@ -113,7 +115,7 @@ void SessionManager::TerminateSession() {
 
   LOG(INFO) << "Stopping session";
   if (session_ != nullptr) {
-    session_->Stop();
+    session_->Stop(forceFailOpen);
     session_.reset();
   }
   LOG(INFO) << "Session stopped";

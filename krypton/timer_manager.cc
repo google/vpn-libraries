@@ -83,6 +83,7 @@ void TimerManager::TimerExpiry(int timer_id) {
     }
   }
   if (timer_cb != nullptr) {
+    LOG(INFO) << "Calling callback for timer id << " << timer_id;
     timer_cb();
   }
 }

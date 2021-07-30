@@ -20,7 +20,7 @@
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/json_keys.h"
-#include "privacy/net/krypton/pal/http_fetcher_interface.h"
+#include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/mock_oauth_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
@@ -42,11 +42,6 @@ using ::testing::EqualsProto;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
 using ::testing::proto::Partially;
-
-class HttpFetcherImplForTest : public HttpFetcherInterface {
- public:
-  MOCK_METHOD(HttpResponse, PostJson, (const HttpRequest&), (override));
-};
 
 class MockAuthNotification : public Auth::NotificationInterface {
  public:
@@ -127,13 +122,13 @@ class AuthTest : public ::testing::Test {
     return response;
   }
 
-  HttpFetcherImplForTest http_fetcher_;
+  MockHttpFetcher http_fetcher_;
   MockAuthNotification auth_notification_;
   MockOAuth oauth_;
   std::unique_ptr<Auth> auth_;
   KryptonConfig config_;
   utils::LooperThread looper_thread_{"Auth test"};
-  crypto::SessionCrypto crypto_;
+  crypto::SessionCrypto crypto_{&config_};
 };
 
 TEST_F(AuthTest, AuthAndResponseWithAdditionalRekey) {

@@ -55,6 +55,8 @@ public class PpnTelemetryManagerTest {
     assertThat(telemetry.ppnServiceUptime().toMillis()).isEqualTo(0);
     assertThat(telemetry.ppnConnectionUptime().toMillis()).isEqualTo(0);
     assertThat(telemetry.networkUptime().toMillis()).isEqualTo(0);
+    assertThat(telemetry.disconnectionDurations()).isEmpty();
+    assertThat(telemetry.disconnectionCount()).isEqualTo(0);
   }
 
   @Test
@@ -62,40 +64,22 @@ public class PpnTelemetryManagerTest {
     PpnTelemetryManager telemetryManager = new PpnTelemetryManager(mockClock);
 
     Clock initClock = getStartClock();
-    Clock startClock = Clock.offset(initClock, Duration.ofMillis(1));
-    Clock networkAvailableClock = Clock.offset(initClock, Duration.ofMillis(2));
-    Clock connectClock = Clock.offset(initClock, Duration.ofMillis(3));
-    Clock disconnectClock = Clock.offset(initClock, Duration.ofMillis(4));
-    Clock networkUnavailableClock = Clock.offset(initClock, Duration.ofMillis(5));
-    Clock stopClock = Clock.offset(initClock, Duration.ofMillis(6));
-    Clock measureClock = Clock.offset(initClock, Duration.ofMillis(7));
 
-    when(mockClock.getClock()).thenReturn(startClock);
-    telemetryManager.notifyStarted();
-
-    when(mockClock.getClock()).thenReturn(networkAvailableClock);
-    telemetryManager.notifyNetworkAvailable();
-
-    when(mockClock.getClock()).thenReturn(connectClock);
-    telemetryManager.notifyConnected();
-
-    when(mockClock.getClock()).thenReturn(disconnectClock);
-    telemetryManager.notifyDisconnected();
-
-    when(mockClock.getClock()).thenReturn(networkUnavailableClock);
-    telemetryManager.notifyNetworkUnavailable();
-
-    when(mockClock.getClock()).thenReturn(stopClock);
-    telemetryManager.notifyStopped();
-
-    when(mockClock.getClock()).thenReturn(measureClock);
-    PpnTelemetry telemetry = telemetryManager.collect(null);
+    notifyStarted(telemetryManager, initClock, 1);
+    notifyNetworkAvailable(telemetryManager, initClock, 2);
+    notifyConnected(telemetryManager, initClock, 3);
+    notifyDisconnected(telemetryManager, initClock, 4);
+    notifyNetworkUnavailable(telemetryManager, initClock, 5);
+    notifyStopped(telemetryManager, initClock, 6);
+    PpnTelemetry telemetry = collect(telemetryManager, initClock, 7);
 
     verify(mockClock, times(7)).getClock();
     verifyNoMoreInteractions(mockClock);
     assertThat(telemetry.ppnServiceUptime().toMillis()).isEqualTo(5);
     assertThat(telemetry.ppnConnectionUptime().toMillis()).isEqualTo(1);
     assertThat(telemetry.networkUptime().toMillis()).isEqualTo(3);
+    assertThat(telemetry.disconnectionDurations()).hasSize(1);
+    assertThat(telemetry.disconnectionCount()).isEqualTo(1);
   }
 
   @Test
@@ -119,9 +103,165 @@ public class PpnTelemetryManagerTest {
     assertThat(telemetry.networkSwitches()).isEqualTo(2);
   }
 
+  @Test
+  public void disconnectionFollowedByReconnection_collectsOneDisconnection() throws Exception {
+    PpnTelemetryManager telemetryManager = new PpnTelemetryManager(mockClock);
+    Clock initClock = getStartClock();
+
+    notifyStarted(telemetryManager, initClock, 1);
+    notifyNetworkAvailable(telemetryManager, initClock, 2);
+    notifyConnected(telemetryManager, initClock, 3);
+    notifyDisconnected(telemetryManager, initClock, 4);
+    notifyConnected(telemetryManager, initClock, 5);
+    PpnTelemetry telemetry = collect(telemetryManager, initClock, 7);
+
+    assertThat(telemetry.disconnectionDurations()).containsExactly(Duration.ofMillis(1));
+    assertThat(telemetry.disconnectionCount()).isEqualTo(1);
+  }
+
+  @Test
+  public void disconnectionFollowedByNetworkLossAndReconnect_collectsTwoDisconnections()
+      throws Exception {
+    PpnTelemetryManager telemetryManager = new PpnTelemetryManager(mockClock);
+    Clock initClock = getStartClock();
+
+    notifyStarted(telemetryManager, initClock, 1);
+    notifyNetworkAvailable(telemetryManager, initClock, 2);
+    notifyConnected(telemetryManager, initClock, 3);
+    notifyDisconnected(telemetryManager, initClock, 4);
+    notifyNetworkUnavailable(telemetryManager, initClock, 5);
+    notifyNetworkAvailable(telemetryManager, initClock, 6);
+    notifyConnected(telemetryManager, initClock, 8);
+    PpnTelemetry telemetry = collect(telemetryManager, initClock, 9);
+
+    assertThat(telemetry.disconnectionDurations())
+        .containsExactly(Duration.ofMillis(1), Duration.ofMillis(2))
+        .inOrder();
+    assertThat(telemetry.disconnectionCount()).isEqualTo(1);
+  }
+
+  @Test
+  public void disconnectionFollowedbyMultipleNetworkLossesAndReconnect_collectsThreeDisconnections()
+      throws Exception {
+    PpnTelemetryManager telemetryManager = new PpnTelemetryManager(mockClock);
+    Clock initClock = getStartClock();
+
+    notifyStarted(telemetryManager, initClock, 1);
+    notifyNetworkAvailable(telemetryManager, initClock, 2);
+    notifyConnected(telemetryManager, initClock, 3);
+    notifyDisconnected(telemetryManager, initClock, 4);
+    notifyNetworkUnavailable(telemetryManager, initClock, 5);
+    notifyNetworkAvailable(telemetryManager, initClock, 6);
+    notifyNetworkUnavailable(telemetryManager, initClock, 7);
+    notifyNetworkAvailable(telemetryManager, initClock, 8);
+    notifyConnected(telemetryManager, initClock, 10);
+    PpnTelemetry telemetry = collect(telemetryManager, initClock, 11);
+
+    assertThat(telemetry.disconnectionDurations())
+        .containsExactly(Duration.ofMillis(1), Duration.ofMillis(1), Duration.ofMillis(2))
+        .inOrder();
+    assertThat(telemetry.disconnectionCount()).isEqualTo(1);
+  }
+
+  @Test
+  public void disconnectionFollowedByStop_collectsOneDisconnection() throws Exception {
+    PpnTelemetryManager telemetryManager = new PpnTelemetryManager(mockClock);
+    Clock initClock = getStartClock();
+
+    notifyStarted(telemetryManager, initClock, 1);
+    notifyNetworkAvailable(telemetryManager, initClock, 2);
+    notifyConnected(telemetryManager, initClock, 3);
+    notifyDisconnected(telemetryManager, initClock, 4);
+    notifyStopped(telemetryManager, initClock, 5);
+    PpnTelemetry telemetry = collect(telemetryManager, initClock, 11);
+
+    assertThat(telemetry.disconnectionDurations()).containsExactly(Duration.ofMillis(1));
+    assertThat(telemetry.disconnectionCount()).isEqualTo(1);
+  }
+
+  @Test
+  public void disconnectionFollowedByNetworkLossAndStop_collectsOneDisconnection()
+      throws Exception {
+    PpnTelemetryManager telemetryManager = new PpnTelemetryManager(mockClock);
+    Clock initClock = getStartClock();
+
+    notifyStarted(telemetryManager, initClock, 1);
+    notifyNetworkAvailable(telemetryManager, initClock, 2);
+    notifyConnected(telemetryManager, initClock, 3);
+    notifyDisconnected(telemetryManager, initClock, 4);
+    notifyNetworkUnavailable(telemetryManager, initClock, 6);
+    notifyStopped(telemetryManager, initClock, 7);
+    PpnTelemetry telemetry = collect(telemetryManager, initClock, 11);
+
+    assertThat(telemetry.disconnectionDurations()).containsExactly(Duration.ofMillis(2));
+    assertThat(telemetry.disconnectionCount()).isEqualTo(1);
+  }
+
+  @Test
+  public void noDisconnection_shouldNotCollectDisconnectionSpan() throws Exception {
+    PpnTelemetryManager telemetryManager = new PpnTelemetryManager(mockClock);
+    Clock initClock = getStartClock();
+
+    notifyStarted(telemetryManager, initClock, 1);
+    notifyNetworkAvailable(telemetryManager, initClock, 2);
+    notifyConnected(telemetryManager, initClock, 3);
+    notifyNetworkUnavailable(telemetryManager, initClock, 6);
+    notifyStopped(telemetryManager, initClock, 7);
+    PpnTelemetry telemetry = collect(telemetryManager, initClock, 11);
+
+    assertThat(telemetry.disconnectionDurations()).isEmpty();
+    assertThat(telemetry.disconnectionCount()).isEqualTo(0);
+  }
+
+  private void notifyStarted(PpnTelemetryManager telemetryManager, Clock initClock, int millis) {
+    Clock startClock = Clock.offset(initClock, Duration.ofMillis(millis));
+    when(mockClock.getClock()).thenReturn(startClock);
+    telemetryManager.notifyStarted();
+  }
+
+  private void notifyStopped(PpnTelemetryManager telemetryManager, Clock initClock, int millis) {
+    Clock stopClock = Clock.offset(initClock, Duration.ofMillis(millis));
+    when(mockClock.getClock()).thenReturn(stopClock);
+    telemetryManager.notifyStopped();
+  }
+
+  private void notifyNetworkAvailable(
+      PpnTelemetryManager telemetryManager, Clock initClock, int millis) {
+    Clock networkAvailableClock = Clock.offset(initClock, Duration.ofMillis(millis));
+    when(mockClock.getClock()).thenReturn(networkAvailableClock);
+    telemetryManager.notifyNetworkAvailable();
+  }
+
+  private void notifyNetworkUnavailable(
+      PpnTelemetryManager telemetryManager, Clock initClock, int millis) {
+    Clock networkUnavailableClock = Clock.offset(initClock, Duration.ofMillis(millis));
+    when(mockClock.getClock()).thenReturn(networkUnavailableClock);
+    telemetryManager.notifyNetworkUnavailable();
+  }
+
+  private void notifyConnected(PpnTelemetryManager telemetryManager, Clock initClock, int millis) {
+    Clock connectClock = Clock.offset(initClock, Duration.ofMillis(millis));
+    when(mockClock.getClock()).thenReturn(connectClock);
+    telemetryManager.notifyConnected();
+  }
+
+  private void notifyDisconnected(
+      PpnTelemetryManager telemetryManager, Clock initClock, int millis) {
+    Clock disconnectClock = Clock.offset(initClock, Duration.ofMillis(millis));
+    when(mockClock.getClock()).thenReturn(disconnectClock);
+    telemetryManager.notifyDisconnected();
+  }
+
+  private PpnTelemetry collect(PpnTelemetryManager telemetryManager, Clock initClock, int millis) {
+    Clock measureClock = Clock.offset(initClock, Duration.ofMillis(millis));
+    when(mockClock.getClock()).thenReturn(measureClock);
+    return telemetryManager.collect(null);
+  }
+
   /** Returns a default fixed clock to use as the starting point for tests. */
   private Clock getStartClock() {
     Instant now = Instant.now();
     return Clock.fixed(now, ZoneId.systemDefault());
   }
+
 }

@@ -14,6 +14,7 @@
 
 #include "privacy/net/krypton/session.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -24,21 +25,23 @@
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
-#include "privacy/net/krypton/crypto/suite.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
-#include "privacy/net/krypton/fd_packet_pipe.h"
-#include "privacy/net/krypton/pal/http_fetcher_interface.h"
+#include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/mock_oauth_interface.h"
 #include "privacy/net/krypton/pal/mock_timer_interface.h"
 #include "privacy/net/krypton/pal/mock_vpn_service_interface.h"
+#include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/network_type.proto.h"
+#include "privacy/net/krypton/test_packet_pipe.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/cleanup/cleanup.h"
 #include "third_party/absl/memory/memory.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
@@ -58,7 +61,6 @@ constexpr int kInvalidFd = -1;
 constexpr int kValidNetworkFd = 0xbeef + 1;
 
 using ::testing::_;
-using ::testing::ByMove;
 using ::testing::DoAll;
 using ::testing::Eq;
 using ::testing::EqualsProto;
@@ -81,24 +83,6 @@ MATCHER_P(NetworkInfoEquals, expected, "") {
          expected.network_type() == actual->network_type();
 }
 
-// Checks that a given PacketPipe has the given file descriptor.
-MATCHER_P(PacketPipeHasFd, fd, "") {
-  auto fd_packet_pipe = arg;
-
-  auto status_or_fd = fd_packet_pipe->GetFd();
-  if (!status_or_fd.ok()) {
-    return false;
-  }
-
-  return status_or_fd.value() == fd;
-}
-
-// Helper macro for returning a PacketPipe wrapping a file descriptor, since
-// it's complicated and used in many locations.
-#define RETURN_TEST_PIPE(fd)                                   \
-  Return(ByMove(absl::StatusOr<std::unique_ptr<FdPacketPipe>>( \
-      std::make_unique<FdPacketPipe>(fd))))
-
 // Mock the Auth.
 class MockAuth : public Auth {
  public:
@@ -120,11 +104,6 @@ class MockEgressManager : public EgressManager {
               (const AddEgressRequest::PpnDataplaneRequestParams&), (override));
 };
 
-class MockHttpFetcherInterface : public HttpFetcherInterface {
- public:
-  MOCK_METHOD(HttpResponse, PostJson, (const HttpRequest&), (override));
-};
-
 class MockSessionNotification : public Session::NotificationInterface {
  public:
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
@@ -140,21 +119,32 @@ class MockSessionNotification : public Session::NotificationInterface {
 class MockDatapath : public DatapathInterface {
  public:
   MOCK_METHOD(absl::Status, Start,
-              (std::shared_ptr<AddEgressResponse>, const BridgeTransformParams&,
-               CryptoSuite),
+              (std::shared_ptr<AddEgressResponse>,
+               const TransformParams& params),
               (override));
   MOCK_METHOD(void, Stop, (), (override));
-  MOCK_METHOD(bool, is_running, (), (const, override));
   MOCK_METHOD(void, RegisterNotificationHandler,
               (DatapathInterface::NotificationInterface * notification),
               (override));
   MOCK_METHOD(absl::Status, SwitchNetwork,
-              (uint32, const std::vector<std::string>&,
-               absl::optional<NetworkInfo>, const PacketPipe*,
-               const PacketPipe*, int),
+              (uint32_t, const Endpoint&, absl::optional<NetworkInfo>,
+               PacketPipe*, int),
               (override));
-  MOCK_METHOD(absl::Status, Rekey, (const std::string&, const std::string&),
+  MOCK_METHOD(absl::Status, SetKeyMaterials, (const TransformParams&),
               (override));
+};
+
+class MockTunnelManager : public TunnelManagerInterface {
+ public:
+  MOCK_METHOD(absl::Status, Start, (), (override));
+  MOCK_METHOD(void, Stop, (), (override));
+  MOCK_METHOD(void, SetSafeDisconnectEnabled, (bool), (override));
+  MOCK_METHOD(bool, IsSafeDisconnectEnabled, (), (override));
+  MOCK_METHOD(void, StartSession, (), (override));
+  MOCK_METHOD(absl::StatusOr<PacketPipe*>, GetTunnel, (TunFdData), (override));
+  MOCK_METHOD(absl::Status, RecreateTunnelIfNeeded, (), (override));
+  MOCK_METHOD(void, TerminateSession, (bool), (override));
+  MOCK_METHOD(bool, IsTunnelActive, (), (override));
 };
 
 class SessionTest : public ::testing::Test {
@@ -189,25 +179,28 @@ class SessionTest : public ::testing::Test {
 
     session_ = absl::make_unique<Session>(
         &auth_, &egress_manager_, &datapath_, &vpn_service_, &timer_manager_,
-        absl::nullopt, &config_, &notification_thread_);
+        &http_fetcher_, &tunnel_manager_, absl::nullopt, &config_,
+        &notification_thread_);
     session_->RegisterNotificationHandler(&notification_);
   }
 
   void TearDown() override {
     auth_.Stop();
     egress_manager_.Stop();
+    tunnel_manager_.Stop();
+    for (auto& pipe : packet_pipes_) {
+      pipe->Close();
+    }
+    packet_pipes_.clear();
   }
 
-  virtual void ExpectSuccessfulAddEgress() {
-    EXPECT_CALL(egress_manager_, GetEgressNodeForBridge)
-        .WillOnce(
-            Invoke([&](std::shared_ptr<AuthAndSignResponse> /*auth_response*/) {
-              notification_thread_.Post(
-                  [this] { session_->EgressAvailable(false); });
-              return absl::OkStatus();
-            }));
-    EXPECT_OK(
-        egress_manager_.SaveEgressDetailsTestOnly(fake_add_egress_response_));
+  PacketPipe* CreateTestPipeOnHeap(int id) {
+    // Create a packet pipe on the heap.
+    auto packet_pipe = std::make_unique<TestPacketPipe>(id);
+    // Transfer ownership of the pipe to the test class.
+    packet_pipes_.emplace_back(std::move(packet_pipe));
+    // Return a pointer to the new pipe on the heap.
+    return packet_pipes_.back().get();
   }
 
   void ExpectSuccessfulAuth() {
@@ -219,90 +212,6 @@ class SessionTest : public ::testing::Test {
         .WillRepeatedly(Return(fake_auth_and_sign_response_));
   }
 
-  virtual void ExpectSuccessfulDatapathInit() {
-    EXPECT_CALL(timer_interface_, StartTimer(_, absl::Minutes(5)))
-        .WillOnce(Return(absl::OkStatus()));
-
-    EXPECT_CALL(notification_, ControlPlaneConnected());
-
-    EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
-        .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
-
-    EXPECT_CALL(datapath_, Start(fake_add_egress_response_, _, _))
-        .WillOnce(::testing::DoAll(
-            InvokeWithoutArgs(&done_, &absl::Notification::Notify),
-            Return(absl::OkStatus())));
-  }
-
-  void StartSessionAndConnectDatapathOnCellular() {
-    ExpectSuccessfulAuth();
-    ExpectSuccessfulAddEgress();
-    ExpectSuccessfulDatapathInit();
-
-    session_->Start();
-    WaitInitial();
-    network_fd_counter_ += 1;
-    EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
-        .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
-    EXPECT_CALL(vpn_service_,
-                CreateTunnel(EqualsProto(R"pb(tunnel_ip_addresses {
-                                                ip_family: IPV4
-                                                ip_range: "10.2.2.123"
-                                                prefix: 32
-                                              }
-                                              tunnel_ip_addresses {
-                                                ip_family: IPV6
-                                                ip_range: "fec2:0001::3"
-                                                prefix: 64
-                                              }
-                                              tunnel_dns_addresses {
-                                                ip_family: IPV4
-                                                ip_range: "8.8.8.8"
-                                                prefix: 32
-                                              }
-                                              tunnel_dns_addresses {
-                                                ip_family: IPV4
-                                                ip_range: "8.8.8.4"
-                                                prefix: 32
-                                              }
-                                              tunnel_dns_addresses {
-                                                ip_family: IPV6
-                                                ip_range: "2001:4860:4860::8888"
-                                                prefix: 128
-                                              }
-                                              tunnel_dns_addresses {
-                                                ip_family: IPV6
-                                                ip_range: "2001:4860:4860::8844"
-                                                prefix: 128
-                                              }
-                                              is_metered: false)pb")))
-        .WillOnce(RETURN_TEST_PIPE(++tun_fd_counter_));
-    EXPECT_CALL(vpn_service_,
-                CreateProtectedNetworkSocket(EqualsProto(
-                    R"pb(network_id: 1234 network_type: CELLULAR)pb")))
-        .WillOnce(RETURN_TEST_PIPE(network_fd_counter_));
-
-    NetworkInfo expected_network_info;
-    expected_network_info.set_network_id(1234);
-    expected_network_info.set_network_type(NetworkType::CELLULAR);
-    EXPECT_CALL(datapath_,
-                SwitchNetwork(1234, _, NetworkInfoEquals(expected_network_info),
-                              _, PacketPipeHasFd(tun_fd_counter_), _))
-        .WillOnce(Return(absl::OkStatus()));
-
-    NetworkInfo network_info;
-    network_info.set_network_id(1234);
-    network_info.set_network_type(NetworkType::CELLULAR);
-    EXPECT_OK(session_->SetNetwork(network_info));
-    WaitForNotifications();
-    EXPECT_CALL(notification_, DatapathConnected());
-
-    session_->DatapathEstablished();
-    EXPECT_THAT(session_->active_network_info(),
-                NetworkInfoEquals(expected_network_info));
-    EXPECT_THAT(session_->active_tun_fd_test_only(), Optional(tun_fd_counter_));
-  }
-
   void WaitInitial() {
     ASSERT_TRUE(done_.WaitForNotificationWithTimeout(absl::Seconds(3)));
   }
@@ -311,21 +220,24 @@ class SessionTest : public ::testing::Test {
     absl::Mutex lock;
     absl::CondVar condition;
     absl::MutexLock l(&lock);
-    notification_thread_.Post([&condition] { condition.SignalAll(); });
+    notification_thread_.Post([&lock, &condition] {
+      absl::MutexLock l(&lock);
+      condition.SignalAll();
+    });
     condition.Wait(&lock);
   }
 
   KryptonConfig config_{proto2::contrib::parse_proto::ParseTextProtoOrDie(
       R"pb(zinc_url: "http://www.example.com/auth"
            service_type: "service_type"
-           ipsec_datapath: false
-           bridge_over_ppn: false
+           datapath_protocol: BRIDGE
+           copper_hostname_suffix: [ 'g-tun.com' ]
            enable_blind_signing: false)pb")};
 
   int tun_fd_counter_ = kValidTunFd;  // Starting value of tun fd.
   int network_fd_counter_ = kValidTunFd + 1000;
   MockSessionNotification notification_;
-  MockHttpFetcherInterface http_fetcher_;
+  MockHttpFetcher http_fetcher_;
   MockOAuth oauth_;
   utils::LooperThread notification_thread_{"Session Test"};
   MockAuth auth_{&config_, &http_fetcher_, &oauth_, &notification_thread_};
@@ -337,6 +249,8 @@ class SessionTest : public ::testing::Test {
   TimerManager timer_manager_{&timer_interface_};
 
   MockVpnService vpn_service_;
+  MockTunnelManager tunnel_manager_;
+  std::vector<std::unique_ptr<PacketPipe>> packet_pipes_;
   std::unique_ptr<Session> session_;
   std::shared_ptr<AuthAndSignResponse> fake_auth_and_sign_response_;
   std::shared_ptr<AddEgressResponse> fake_add_egress_response_;
@@ -344,331 +258,6 @@ class SessionTest : public ::testing::Test {
   bool is_rekey_ = false;
   absl::Notification done_;
 };
-
-TEST_F(SessionTest, AuthenticationFailure) {
-  absl::Notification done;
-  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
-    notification_thread_.Post(
-        [this] { session_->AuthFailure(absl::InternalError("Some error")); });
-  }));
-  EXPECT_CALL(notification_, ControlPlaneDisconnected(::testing::_))
-      .WillOnce(InvokeWithoutArgs(&done, &absl::Notification::Notify));
-  session_->Start();
-  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
-  EXPECT_EQ(Session::State::kSessionError, session_->state());
-}
-
-TEST_F(SessionTest, AuthenticationPermanentFailure) {
-  absl::Notification done;
-  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
-    notification_thread_.Post([this] {
-      session_->AuthFailure(absl::PermissionDeniedError("Some error"));
-    });
-  }));
-
-  EXPECT_CALL(notification_, PermanentFailure(::testing::_))
-      .WillOnce(InvokeWithoutArgs(&done, &absl::Notification::Notify));
-
-  session_->Start();
-  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
-  EXPECT_EQ(Session::State::kPermanentError, session_->state());
-}
-
-// This test assumes Authentication was successful.
-TEST_F(SessionTest, AddEgressFailure) {
-  absl::Notification done;
-  ExpectSuccessfulAuth();
-
-  EXPECT_CALL(egress_manager_, GetEgressNodeForBridge)
-      .WillOnce(Invoke([&](std::shared_ptr<AuthAndSignResponse>) {
-        return absl::NotFoundError("Add Egress Failure");
-      }));
-  EXPECT_CALL(notification_, ControlPlaneDisconnected(::testing::_))
-      .WillOnce(InvokeWithoutArgs(&done, &absl::Notification::Notify));
-  session_->Start();
-  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
-  EXPECT_THAT(session_->latest_status(),
-              StatusIs(absl::StatusCode::kNotFound, "Add Egress Failure"));
-}
-
-TEST_F(SessionTest, DatapathInitFailure) {
-  absl::Notification done;
-  ExpectSuccessfulAuth();
-  ExpectSuccessfulAddEgress();
-
-  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
-      .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
-
-  EXPECT_CALL(datapath_, Start(fake_add_egress_response_, _, _))
-      .WillOnce(::testing::DoAll(
-          InvokeWithoutArgs(&done, &absl::Notification::Notify),
-          Return(absl::InvalidArgumentError("Initialization error"))));
-
-  session_->Start();
-  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
-  EXPECT_THAT(session_->latest_status(),
-              StatusIs(util::error::INVALID_ARGUMENT, "Initialization error"));
-
-  EXPECT_EQ(session_->state(), Session::State::kSessionError);
-}
-
-TEST_F(SessionTest, DatapathInitSuccessful) {
-  ExpectSuccessfulAuth();
-  ExpectSuccessfulAddEgress();
-  ExpectSuccessfulDatapathInit();
-
-  session_->Start();
-
-  WaitInitial();
-  EXPECT_THAT(session_->latest_status(), IsOk());
-
-  EXPECT_EQ(session_->state(), Session::State::kConnected);
-}
-
-TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
-  ExpectSuccessfulAuth();
-  ExpectSuccessfulAddEgress();
-  ExpectSuccessfulDatapathInit();
-
-  session_->Start();
-
-  WaitInitial();
-  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
-      .WillRepeatedly(Invoke([&]() {
-        EXPECT_OK(egress_manager_.SaveEgressDetailsTestOnly(
-            fake_add_egress_response_));
-        return fake_add_egress_response_;
-      }));
-  EXPECT_CALL(vpn_service_,
-              CreateTunnel(EqualsProto(R"pb(tunnel_ip_addresses {
-                                              ip_family: IPV4
-                                              ip_range: "10.2.2.123"
-                                              prefix: 32
-                                            }
-                                            tunnel_ip_addresses {
-                                              ip_family: IPV6
-                                              ip_range: "fec2:0001::3"
-                                              prefix: 64
-                                            }
-                                            tunnel_dns_addresses {
-                                              ip_family: IPV4
-                                              ip_range: "8.8.8.8"
-                                              prefix: 32
-                                            }
-                                            tunnel_dns_addresses {
-                                              ip_family: IPV4
-                                              ip_range: "8.8.8.4"
-                                              prefix: 32
-                                            }
-                                            tunnel_dns_addresses {
-                                              ip_family: IPV6
-                                              ip_range: "2001:4860:4860::8888"
-                                              prefix: 128
-                                            }
-                                            tunnel_dns_addresses {
-                                              ip_family: IPV6
-                                              ip_range: "2001:4860:4860::8844"
-                                              prefix: 128
-                                            }
-                                            is_metered: false)pb")))
-      .WillOnce(RETURN_TEST_PIPE(++tun_fd_counter_));
-
-  EXPECT_CALL(vpn_service_,
-              CreateProtectedNetworkSocket(EqualsProto(R"pb(network_type:
-                                                                CELLULAR)pb")))
-      .WillOnce(RETURN_TEST_PIPE(tun_fd_counter_));
-
-  NetworkInfo expected_network_info;
-  expected_network_info.set_network_type(NetworkType::CELLULAR);
-  EXPECT_CALL(datapath_,
-              SwitchNetwork(1234, _, NetworkInfoEquals(expected_network_info),
-                            _, PacketPipeHasFd(tun_fd_counter_), _))
-      .WillOnce(Return(absl::OkStatus()));
-
-  NetworkInfo network_info;
-  network_info.set_network_type(NetworkType::CELLULAR);
-
-  EXPECT_OK(session_->SetNetwork(network_info));
-
-  EXPECT_CALL(notification_, DatapathConnected());
-  session_->DatapathEstablished();
-
-  // No Network available.
-  EXPECT_CALL(datapath_, SwitchNetwork(1234, _, Eq(absl::nullopt), _,
-                                       PacketPipeHasFd(tun_fd_counter_), _))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_OK(session_->SetNetwork(absl::nullopt));
-}
-
-TEST_F(SessionTest, SwitchNetworkToSameNetworkType) {
-  StartSessionAndConnectDatapathOnCellular();
-
-  // Switch network to same type.
-  network_fd_counter_ += 1;
-  NetworkInfo new_network_info;
-  new_network_info.set_network_type(NetworkType::CELLULAR);
-
-  EXPECT_CALL(vpn_service_,
-              CreateProtectedNetworkSocket(EqualsProto(R"pb(network_type:
-                                                                CELLULAR)pb")))
-      .WillOnce(RETURN_TEST_PIPE(network_fd_counter_));
-  // Expect no tunnel fd change.
-  EXPECT_CALL(datapath_,
-              SwitchNetwork(1234, _, NetworkInfoEquals(new_network_info), _,
-                            PacketPipeHasFd(tun_fd_counter_), _))
-      .WillOnce(Return(absl::OkStatus()));
-
-  EXPECT_OK(session_->SetNetwork(new_network_info));
-  // Check all the parameters are correct in the session.
-  EXPECT_THAT(session_->active_network_info(),
-              NetworkInfoEquals(new_network_info));
-  EXPECT_THAT(session_->active_tun_fd_test_only(), Optional(tun_fd_counter_));
-}
-
-TEST_F(SessionTest, DatapathReattemptFailure) {
-  StartSessionAndConnectDatapathOnCellular();
-
-  NetworkInfo expected_network_info;
-  expected_network_info.set_network_id(1234);
-  expected_network_info.set_network_type(NetworkType::CELLULAR);
-  absl::Status status = absl::InternalError("Some error");
-  for (int i = 0; i < 3; ++i) {
-    // Initial failure
-    EXPECT_CALL(timer_interface_, StartTimer(_, absl::Milliseconds(500)))
-        .WillOnce(Return(absl::OkStatus()));
-
-    session_->DatapathFailed(status, network_fd_counter_);
-
-    EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(
-                                  EqualsProto(R"pb(network_type: CELLULAR
-                                                   network_id: 1234)pb")))
-        .WillOnce(RETURN_TEST_PIPE(network_fd_counter_));
-
-    // 2 Attempts on V6, 2 attempts on V4.  V6 preferred over v4.
-    if (i < 2) {
-      EXPECT_CALL(
-          datapath_,
-          SwitchNetwork(1234,
-                        ::testing::ElementsAre("[2604:ca00:f001:4::5]:2153"),
-                        NetworkInfoEquals(expected_network_info), _,
-                        PacketPipeHasFd(tun_fd_counter_), _))
-          .WillOnce(Return(absl::OkStatus()));
-    } else {
-      EXPECT_CALL(
-          datapath_,
-          SwitchNetwork(1234, ::testing::ElementsAre("64.9.240.165:2153"),
-                        NetworkInfoEquals(expected_network_info), _,
-                        PacketPipeHasFd(tun_fd_counter_), _))
-          .WillOnce(Return(absl::OkStatus()));
-    }
-
-    session_->AttemptDatapathReconnect();
-  }
-  // Reattempt not done as we reached the max reattempts.
-  EXPECT_CALL(notification_, DatapathDisconnected(_, status));
-
-  session_->DatapathFailed(status, network_fd_counter_);
-}
-
-TEST_F(SessionTest, DatapathFailureAndSuccessfulBeforeReattempt) {
-  StartSessionAndConnectDatapathOnCellular();
-
-  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Milliseconds(500)))
-      .WillOnce(Return(absl::OkStatus()));
-
-  session_->DatapathFailed(absl::InternalError("Some error"),
-                           network_fd_counter_);
-
-  // Datapath Successful.
-  WaitForNotifications();
-  EXPECT_CALL(notification_, DatapathConnected);
-  session_->DatapathEstablished();
-  EXPECT_EQ(-1, session_->DatapathReattemptTimerIdTestOnly());
-  EXPECT_EQ(0, session_->DatapathReattemptCountTestOnly());
-}
-
-TEST_F(SessionTest, SwitchNetworkToDifferentNetworkType) {
-  StartSessionAndConnectDatapathOnCellular();
-
-  // Switch network to different type.
-  network_fd_counter_ += 1;
-  NetworkInfo new_network_info;
-  new_network_info.set_network_type(NetworkType::WIFI);
-
-  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(
-                                EqualsProto(R"pb(network_type: WIFI)pb")))
-      .WillOnce(RETURN_TEST_PIPE(network_fd_counter_));
-  EXPECT_CALL(datapath_,
-              SwitchNetwork(1234, _, NetworkInfoEquals(new_network_info), _,
-                            PacketPipeHasFd(tun_fd_counter_), _))
-      .WillOnce(Return(absl::OkStatus()));
-
-  EXPECT_OK(session_->SetNetwork(new_network_info));
-  // Check all the parameters are correct in the session.
-  EXPECT_THAT(session_->active_network_info(),
-              NetworkInfoEquals(new_network_info));
-  EXPECT_THAT(session_->active_tun_fd_test_only(), Optional(tun_fd_counter_));
-}
-
-TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
-  absl::Notification done;
-  // Switch network after auth is successful and before session is in
-  // connected state.
-  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
-    NetworkInfo network_info;
-    network_info.set_network_type(NetworkType::CELLULAR);
-    notification_thread_.Post([this, network_info]() {
-      ASSERT_OK(session_->SetNetwork(network_info));
-    });
-
-    notification_thread_.Post([this]() { session_->AuthSuccessful(false); });
-  }));
-  EXPECT_CALL(auth_, auth_response)
-      .WillRepeatedly(Return(fake_auth_and_sign_response_));
-
-  ExpectSuccessfulAddEgress();
-  EXPECT_CALL(vpn_service_, CreateTunnel(_))
-      .WillOnce(RETURN_TEST_PIPE(++tun_fd_counter_));
-  EXPECT_CALL(notification_, ControlPlaneConnected());
-
-  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
-      .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
-
-  EXPECT_CALL(datapath_, Start(fake_add_egress_response_, _, _))
-      .WillOnce(::testing::DoAll(
-          InvokeWithoutArgs(&done, &absl::Notification::Notify),
-          Return(absl::OkStatus())));
-
-  EXPECT_CALL(vpn_service_,
-              CreateProtectedNetworkSocket(EqualsProto(R"pb(network_type:
-                                                                CELLULAR)pb")))
-      .WillOnce(RETURN_TEST_PIPE(network_fd_counter_));
-  NetworkInfo expected_network_info;
-  expected_network_info.set_network_type(NetworkType::CELLULAR);
-  EXPECT_CALL(datapath_,
-              SwitchNetwork(1234, _, NetworkInfoEquals(expected_network_info),
-                            _, PacketPipeHasFd(tun_fd_counter_), _))
-      .WillOnce(Return(absl::OkStatus()));
-
-  session_->Start();
-  done.WaitForNotificationWithTimeout(absl::Seconds(3));
-  EXPECT_CALL(notification_, DatapathConnected());
-  session_->DatapathEstablished();
-}
-
-TEST_F(SessionTest, PopulatesDebugInfo) {
-  session_->Start();
-
-  SessionDebugInfo debug_info;
-  session_->GetDebugInfo(&debug_info);
-
-  EXPECT_THAT(debug_info, EqualsProto(R"pb(
-                state: "kInitialized"
-                status: "OK"
-                successful_rekeys: 0
-                network_switches: 1
-              )pb"));
-}
 
 // Tests Bridge dataplane and PPN control plane.
 class BridgeOnPpnSession : public SessionTest {
@@ -703,18 +292,20 @@ class BridgeOnPpnSession : public SessionTest {
         fake_add_egress_http_response));
     session_ = absl::make_unique<Session>(
         &auth_, &egress_manager_, &datapath_, &vpn_service_, &timer_manager_,
-        absl::nullopt, &config_, &notification_thread_);
-    crypto::SessionCrypto remote;
+        &http_fetcher_, &tunnel_manager_, absl::nullopt, &config_,
+        &notification_thread_);
+    crypto::SessionCrypto remote(&config_);
     auto remote_key = remote.GetMyKeyMaterial();
     EXPECT_OK(session_->MutableCryptoTestOnly()->SetRemoteKeyMaterial(
         remote_key.public_value, remote_key.nonce));
     session_->RegisterNotificationHandler(&notification_);
   }
 
-  void ExpectSuccessfulAddEgress() override {
+  void ExpectSuccessfulAddEgress() {
     EXPECT_CALL(egress_manager_, GetEgressNodeForPpnIpSec)
         .WillOnce(Invoke(
-            [&](const AddEgressRequest::PpnDataplaneRequestParams& /*params*/) {
+            [&](const AddEgressRequest::PpnDataplaneRequestParams& params) {
+              EXPECT_EQ(params.dataplane_protocol, config_.datapath_protocol());
               notification_thread_.Post(
                   [this]() { session_->EgressAvailable(is_rekey_); });
 
@@ -724,7 +315,7 @@ class BridgeOnPpnSession : public SessionTest {
         egress_manager_.SaveEgressDetailsTestOnly(fake_add_egress_response_));
   }
 
-  void ExpectSuccessfulDatapathInit() override {
+  void ExpectSuccessfulDatapathInit() {
     EXPECT_CALL(timer_interface_, StartTimer(_, absl::Minutes(5)))
         .WillOnce(Return(absl::OkStatus()));
 
@@ -733,10 +324,77 @@ class BridgeOnPpnSession : public SessionTest {
     EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
         .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
 
-    EXPECT_CALL(datapath_, Start(fake_add_egress_response_, _, _))
+    EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
+
+    EXPECT_CALL(datapath_, Start(fake_add_egress_response_, _))
         .WillOnce(::testing::DoAll(
             InvokeWithoutArgs(&done_, &absl::Notification::Notify),
             Return(absl::OkStatus())));
+  }
+
+  void StartSessionAndConnectDatapathOnCellular() {
+    ExpectSuccessfulAuth();
+    ExpectSuccessfulAddEgress();
+    ExpectSuccessfulDatapathInit();
+
+    session_->Start();
+    WaitInitial();
+    network_fd_counter_ += 1;
+    EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+        .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
+    EXPECT_CALL(tunnel_manager_,
+                GetTunnel(EqualsProto(R"pb(tunnel_ip_addresses {
+                                             ip_family: IPV4
+                                             ip_range: "10.2.2.123"
+                                             prefix: 32
+                                           }
+                                           tunnel_ip_addresses {
+                                             ip_family: IPV6
+                                             ip_range: "fec2:0001::3"
+                                             prefix: 64
+                                           }
+                                           tunnel_dns_addresses {
+                                             ip_family: IPV4
+                                             ip_range: "8.8.8.8"
+                                             prefix: 32
+                                           }
+                                           tunnel_dns_addresses {
+                                             ip_family: IPV4
+                                             ip_range: "8.8.8.4"
+                                             prefix: 32
+                                           }
+                                           tunnel_dns_addresses {
+                                             ip_family: IPV6
+                                             ip_range: "2001:4860:4860::8888"
+                                             prefix: 128
+                                           }
+                                           tunnel_dns_addresses {
+                                             ip_family: IPV6
+                                             ip_range: "2001:4860:4860::8844"
+                                             prefix: 128
+                                           }
+                                           is_metered: false)pb")))
+        .WillOnce(Return(CreateTestPipeOnHeap(++tun_fd_counter_)));
+
+    NetworkInfo expected_network_info;
+    expected_network_info.set_network_id(1234);
+    expected_network_info.set_network_type(NetworkType::CELLULAR);
+    EXPECT_CALL(datapath_,
+                SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info),
+                              PacketPipeHasFd(tun_fd_counter_), _))
+        .WillOnce(Return(absl::OkStatus()));
+
+    NetworkInfo network_info;
+    network_info.set_network_id(1234);
+    network_info.set_network_type(NetworkType::CELLULAR);
+    EXPECT_OK(session_->SetNetwork(network_info));
+    WaitForNotifications();
+    EXPECT_CALL(notification_, DatapathConnected());
+
+    session_->DatapathEstablished();
+    EXPECT_THAT(session_->active_network_info(),
+                NetworkInfoEquals(expected_network_info));
+    EXPECT_THAT(session_->active_tun_fd_test_only(), Optional(tun_fd_counter_));
   }
 
   void BringDatapathToConnected() {
@@ -747,54 +405,51 @@ class BridgeOnPpnSession : public SessionTest {
     session_->Start();
 
     WaitInitial();
-    EXPECT_THAT(session_->latest_status(), IsOk());
+    EXPECT_THAT(session_->LatestStatusTestOnly(), IsOk());
 
     EXPECT_EQ(session_->state(), Session::State::kConnected);
 
     EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
         .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
-    EXPECT_CALL(vpn_service_,
-                CreateTunnel(EqualsProto(R"pb(tunnel_ip_addresses {
-                                                ip_family: IPV4
-                                                ip_range: "10.2.2.123"
-                                                prefix: 32
-                                              }
-                                              tunnel_ip_addresses {
-                                                ip_family: IPV6
-                                                ip_range: "fec2:0001::3"
-                                                prefix: 64
-                                              }
-                                              tunnel_dns_addresses {
-                                                ip_family: IPV4
-                                                ip_range: "8.8.8.8"
-                                                prefix: 32
-                                              }
-                                              tunnel_dns_addresses {
-                                                ip_family: IPV4
-                                                ip_range: "8.8.8.4"
-                                                prefix: 32
-                                              }
-                                              tunnel_dns_addresses {
-                                                ip_family: IPV6
-                                                ip_range: "2001:4860:4860::8888"
-                                                prefix: 128
-                                              }
-                                              tunnel_dns_addresses {
-                                                ip_family: IPV6
-                                                ip_range: "2001:4860:4860::8844"
-                                                prefix: 128
-                                              }
-                                              is_metered: false)pb")))
-        .WillOnce(RETURN_TEST_PIPE(++tun_fd_counter_));
+    EXPECT_CALL(tunnel_manager_,
+                GetTunnel(EqualsProto(R"pb(tunnel_ip_addresses {
+                                             ip_family: IPV4
+                                             ip_range: "10.2.2.123"
+                                             prefix: 32
+                                           }
+                                           tunnel_ip_addresses {
+                                             ip_family: IPV6
+                                             ip_range: "fec2:0001::3"
+                                             prefix: 64
+                                           }
+                                           tunnel_dns_addresses {
+                                             ip_family: IPV4
+                                             ip_range: "8.8.8.8"
+                                             prefix: 32
+                                           }
+                                           tunnel_dns_addresses {
+                                             ip_family: IPV4
+                                             ip_range: "8.8.8.4"
+                                             prefix: 32
+                                           }
+                                           tunnel_dns_addresses {
+                                             ip_family: IPV6
+                                             ip_range: "2001:4860:4860::8888"
+                                             prefix: 128
+                                           }
+                                           tunnel_dns_addresses {
+                                             ip_family: IPV6
+                                             ip_range: "2001:4860:4860::8844"
+                                             prefix: 128
+                                           }
+                                           is_metered: false)pb")))
+        .WillOnce(Return(CreateTestPipeOnHeap(++tun_fd_counter_)));
 
-    EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(
-                                  EqualsProto(R"pb(network_type: CELLULAR)pb")))
-        .WillOnce(RETURN_TEST_PIPE(tun_fd_counter_));
     NetworkInfo expected_network_info;
     expected_network_info.set_network_type(NetworkType::CELLULAR);
     EXPECT_CALL(datapath_,
                 SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info),
-                              _, PacketPipeHasFd(tun_fd_counter_), _))
+                              PacketPipeHasFd(tun_fd_counter_), _))
         .WillOnce(Return(absl::OkStatus()));
 
     NetworkInfo network_info;
@@ -805,6 +460,290 @@ class BridgeOnPpnSession : public SessionTest {
     session_->DatapathEstablished();
   }
 };
+
+TEST_F(SessionTest, AuthenticationFailure) {
+  absl::Notification done;
+  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
+    notification_thread_.Post(
+        [this] { session_->AuthFailure(absl::InternalError("Some error")); });
+  }));
+  EXPECT_CALL(notification_, ControlPlaneDisconnected(::testing::_))
+      .WillOnce(InvokeWithoutArgs(&done, &absl::Notification::Notify));
+  session_->Start();
+  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  EXPECT_EQ(Session::State::kSessionError, session_->state());
+}
+
+TEST_F(SessionTest, AuthenticationPermanentFailure) {
+  absl::Notification done;
+  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
+    notification_thread_.Post([this] {
+      session_->AuthFailure(absl::PermissionDeniedError("Some error"));
+    });
+  }));
+
+  EXPECT_CALL(notification_, PermanentFailure(::testing::_))
+      .WillOnce(InvokeWithoutArgs(&done, &absl::Notification::Notify));
+
+  session_->Start();
+  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  EXPECT_EQ(Session::State::kPermanentError, session_->state());
+}
+
+// This test assumes Authentication was successful.
+
+TEST_F(BridgeOnPpnSession, DatapathInitFailure) {
+  absl::Notification done;
+  ExpectSuccessfulAuth();
+  ExpectSuccessfulAddEgress();
+
+  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+      .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
+
+  EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
+  EXPECT_CALL(datapath_, Start(fake_add_egress_response_, _))
+      .WillOnce(::testing::DoAll(
+          InvokeWithoutArgs(&done, &absl::Notification::Notify),
+          Return(absl::InvalidArgumentError("Initialization error"))));
+
+  session_->Start();
+  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  EXPECT_THAT(session_->LatestStatusTestOnly(),
+              StatusIs(util::error::INVALID_ARGUMENT, "Initialization error"));
+
+  EXPECT_EQ(session_->state(), Session::State::kSessionError);
+}
+
+TEST_F(BridgeOnPpnSession, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
+  ExpectSuccessfulAuth();
+  ExpectSuccessfulAddEgress();
+  ExpectSuccessfulDatapathInit();
+  TestPacketPipe packet_pipe(++tun_fd_counter_);
+  auto close_pipe = absl::MakeCleanup([&packet_pipe] { packet_pipe.Close(); });
+
+  session_->Start();
+
+  WaitInitial();
+  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+      .WillRepeatedly(Invoke([&]() {
+        EXPECT_OK(egress_manager_.SaveEgressDetailsTestOnly(
+            fake_add_egress_response_));
+        return fake_add_egress_response_;
+      }));
+  EXPECT_CALL(tunnel_manager_,
+              GetTunnel(EqualsProto(R"pb(tunnel_ip_addresses {
+                                           ip_family: IPV4
+                                           ip_range: "10.2.2.123"
+                                           prefix: 32
+                                         }
+                                         tunnel_ip_addresses {
+                                           ip_family: IPV6
+                                           ip_range: "fec2:0001::3"
+                                           prefix: 64
+                                         }
+                                         tunnel_dns_addresses {
+                                           ip_family: IPV4
+                                           ip_range: "8.8.8.8"
+                                           prefix: 32
+                                         }
+                                         tunnel_dns_addresses {
+                                           ip_family: IPV4
+                                           ip_range: "8.8.8.4"
+                                           prefix: 32
+                                         }
+                                         tunnel_dns_addresses {
+                                           ip_family: IPV6
+                                           ip_range: "2001:4860:4860::8888"
+                                           prefix: 128
+                                         }
+                                         tunnel_dns_addresses {
+                                           ip_family: IPV6
+                                           ip_range: "2001:4860:4860::8844"
+                                           prefix: 128
+                                         }
+                                         is_metered: false)pb")))
+      .WillOnce(Return(&packet_pipe));
+
+  NetworkInfo expected_network_info;
+  expected_network_info.set_network_type(NetworkType::CELLULAR);
+  EXPECT_CALL(datapath_,
+              SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info),
+                            PacketPipeHasFd(tun_fd_counter_), _))
+      .WillOnce(Return(absl::OkStatus()));
+
+  NetworkInfo network_info;
+  network_info.set_network_type(NetworkType::CELLULAR);
+
+  EXPECT_OK(session_->SetNetwork(network_info));
+
+  EXPECT_CALL(notification_, DatapathConnected());
+  session_->DatapathEstablished();
+
+  // No Network available.
+  EXPECT_CALL(datapath_, SwitchNetwork(123, _, Eq(absl::nullopt),
+                                       PacketPipeHasFd(tun_fd_counter_), _))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_OK(session_->SetNetwork(absl::nullopt));
+}
+
+TEST_F(BridgeOnPpnSession, SwitchNetworkToSameNetworkType) {
+  StartSessionAndConnectDatapathOnCellular();
+
+  // Switch network to same type.
+  network_fd_counter_ += 1;
+  NetworkInfo new_network_info;
+  new_network_info.set_network_type(NetworkType::CELLULAR);
+
+  // Expect no tunnel fd change.
+  EXPECT_CALL(datapath_,
+              SwitchNetwork(123, _, NetworkInfoEquals(new_network_info),
+                            PacketPipeHasFd(tun_fd_counter_), _))
+      .WillOnce(Return(absl::OkStatus()));
+
+  EXPECT_OK(session_->SetNetwork(new_network_info));
+  // Check all the parameters are correct in the session.
+  EXPECT_THAT(session_->active_network_info(),
+              NetworkInfoEquals(new_network_info));
+  EXPECT_THAT(session_->active_tun_fd_test_only(), Optional(tun_fd_counter_));
+}
+
+TEST_F(BridgeOnPpnSession, DatapathReattemptFailure) {
+  StartSessionAndConnectDatapathOnCellular();
+
+  NetworkInfo expected_network_info;
+  expected_network_info.set_network_id(1234);
+  expected_network_info.set_network_type(NetworkType::CELLULAR);
+  absl::Status status = absl::InternalError("Some error");
+  for (int i = 0; i < 4; ++i) {
+    // Initial failure
+    EXPECT_CALL(timer_interface_, StartTimer(_, absl::Milliseconds(500)))
+        .WillOnce(Return(absl::OkStatus()));
+
+    session_->DatapathFailed(status);
+
+    // 2 Attempts on V6, 2 attempts on V4, interlaced.
+    // We use modulo because we alternate between the two.
+    if (i % 2 == 0) {
+      EXPECT_CALL(datapath_,
+                  SwitchNetwork(
+                      123,
+                      Endpoint("[2604:ca00:f001:4::5]:2153",
+                               "2604:ca00:f001:4::5", 2153, IPProtocol::kIPv6),
+                      NetworkInfoEquals(expected_network_info),
+                      PacketPipeHasFd(tun_fd_counter_), _))
+          .WillOnce(Return(absl::OkStatus()));
+    } else {
+      EXPECT_CALL(datapath_,
+                  SwitchNetwork(123,
+                                Endpoint("64.9.240.165:2153", "64.9.240.165",
+                                         2153, IPProtocol::kIPv4),
+                                NetworkInfoEquals(expected_network_info),
+                                PacketPipeHasFd(tun_fd_counter_), _))
+          .WillOnce(Return(absl::OkStatus()));
+    }
+
+    session_->AttemptDatapathReconnect();
+  }
+  // Reattempt not done as we reached the max reattempts.
+  EXPECT_CALL(notification_, DatapathDisconnected(_, status));
+
+  session_->DatapathFailed(status);
+}
+
+TEST_F(BridgeOnPpnSession, DatapathFailureAndSuccessfulBeforeReattempt) {
+  StartSessionAndConnectDatapathOnCellular();
+
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Milliseconds(500)))
+      .WillOnce(Return(absl::OkStatus()));
+
+  session_->DatapathFailed(absl::InternalError("Some error"));
+
+  // Datapath Successful.
+  WaitForNotifications();
+  EXPECT_CALL(notification_, DatapathConnected);
+  session_->DatapathEstablished();
+  EXPECT_EQ(-1, session_->DatapathReattemptTimerIdTestOnly());
+  EXPECT_EQ(0, session_->DatapathReattemptCountTestOnly());
+}
+
+TEST_F(BridgeOnPpnSession, SwitchNetworkToDifferentNetworkType) {
+  StartSessionAndConnectDatapathOnCellular();
+
+  // Switch network to different type.
+  network_fd_counter_ += 1;
+  NetworkInfo new_network_info;
+  new_network_info.set_network_type(NetworkType::WIFI);
+
+  EXPECT_CALL(datapath_,
+              SwitchNetwork(123, _, NetworkInfoEquals(new_network_info),
+                            PacketPipeHasFd(tun_fd_counter_), _))
+      .WillOnce(Return(absl::OkStatus()));
+
+  EXPECT_OK(session_->SetNetwork(new_network_info));
+  // Check all the parameters are correct in the session.
+  EXPECT_THAT(session_->active_network_info(),
+              NetworkInfoEquals(new_network_info));
+  EXPECT_THAT(session_->active_tun_fd_test_only(), Optional(tun_fd_counter_));
+}
+
+TEST_F(BridgeOnPpnSession, TestEndpointChangeBeforeEstablishingSession) {
+  absl::Notification done;
+  // Switch network after auth is successful and before session is in
+  // connected state.
+  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
+    NetworkInfo network_info;
+    network_info.set_network_type(NetworkType::CELLULAR);
+    notification_thread_.Post([this, network_info]() {
+      ASSERT_OK(session_->SetNetwork(network_info));
+    });
+
+    notification_thread_.Post([this]() { session_->AuthSuccessful(false); });
+  }));
+  EXPECT_CALL(auth_, auth_response)
+      .WillRepeatedly(Return(fake_auth_and_sign_response_));
+
+  EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
+
+  ExpectSuccessfulAddEgress();
+  TestPacketPipe packet_pipe(++tun_fd_counter_);
+  auto close_pipe = absl::MakeCleanup([&packet_pipe] { packet_pipe.Close(); });
+  EXPECT_CALL(tunnel_manager_, GetTunnel(_)).WillOnce(Return(&packet_pipe));
+  EXPECT_CALL(notification_, ControlPlaneConnected());
+
+  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+      .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
+
+  EXPECT_CALL(datapath_, Start(fake_add_egress_response_, _))
+      .WillOnce(::testing::DoAll(
+          InvokeWithoutArgs(&done, &absl::Notification::Notify),
+          Return(absl::OkStatus())));
+
+  NetworkInfo expected_network_info;
+  expected_network_info.set_network_type(NetworkType::CELLULAR);
+  EXPECT_CALL(datapath_,
+              SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info),
+                            PacketPipeHasFd(tun_fd_counter_), _))
+      .WillOnce(Return(absl::OkStatus()));
+
+  session_->Start();
+  done.WaitForNotificationWithTimeout(absl::Seconds(3));
+  EXPECT_CALL(notification_, DatapathConnected());
+  session_->DatapathEstablished();
+}
+
+TEST_F(SessionTest, PopulatesDebugInfo) {
+  session_->Start();
+
+  SessionDebugInfo debug_info;
+  session_->GetDebugInfo(&debug_info);
+
+  EXPECT_THAT(debug_info, EqualsProto(R"pb(
+                state: "kInitialized"
+                status: "OK"
+                successful_rekeys: 0
+                network_switches: 1
+              )pb"));
+}
 
 TEST_F(BridgeOnPpnSession, DatapathInitSuccessful) {
   BringDatapathToConnected();
@@ -817,7 +756,7 @@ TEST_F(BridgeOnPpnSession, DatapathPermanentFailure) {
   session_->DatapathPermanentFailure(absl::InvalidArgumentError("some error"));
 }
 
-TEST_F(BridgeOnPpnSession, TestRekey) {
+TEST_F(BridgeOnPpnSession, TestSetKeyMaterials) {
   ExpectSuccessfulAuth();
   ExpectSuccessfulAddEgress();
   ExpectSuccessfulDatapathInit();
@@ -829,7 +768,7 @@ TEST_F(BridgeOnPpnSession, TestRekey) {
   absl::Notification rekey_done;
   ExpectSuccessfulAuth();
   ExpectSuccessfulAddEgress();
-  EXPECT_CALL(datapath_, Rekey(_, _))
+  EXPECT_CALL(datapath_, SetKeyMaterials(_))
       .WillOnce(
           DoAll(InvokeWithoutArgs(&rekey_done, &absl::Notification::Notify),
                 Return(absl::OkStatus())));
@@ -837,6 +776,58 @@ TEST_F(BridgeOnPpnSession, TestRekey) {
   rekey_done.WaitForNotificationWithTimeout(absl::Seconds(3));
   SessionDebugInfo debug_info;
   session_->GetDebugInfo(&debug_info);
+}
+
+TEST_F(SessionTest, TestAuthResponseCopperControllerHostname) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(
+      R"string({"copper_controller_hostname":"eu.b.g-tun.com"})string");
+  auto decode_status =
+      fake_auth_and_sign_response_->DecodeFromProto(proto, config_);
+  ASSERT_OK(decode_status);
+  EXPECT_EQ(fake_auth_and_sign_response_->copper_controller_hostname(),
+            "eu.b.g-tun.com");
+  absl::Notification auth_done;
+  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
+    notification_thread_.Post([this, &auth_done] {
+      session_->AuthSuccessful(is_rekey_);
+      auth_done.Notify();
+    });
+  }));
+  EXPECT_CALL(auth_, auth_response)
+      .WillRepeatedly(Return(fake_auth_and_sign_response_));
+
+  EXPECT_CALL(http_fetcher_, LookupDns("eu.b.g-tun.com"));
+  session_->Start();
+
+  auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
+}
+
+TEST_F(SessionTest, TestEmptyAuthResponseCopperControllerHostname) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(R"string({"copper_controller_hostname":""})string");
+  auto decode_status =
+      fake_auth_and_sign_response_->DecodeFromProto(proto, config_);
+  ASSERT_OK(decode_status);
+  EXPECT_EQ(fake_auth_and_sign_response_->copper_controller_hostname(), "");
+  absl::Notification auth_done;
+  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
+    notification_thread_.Post([this, &auth_done] {
+      session_->AuthSuccessful(is_rekey_);
+      auth_done.Notify();
+    });
+  }));
+  EXPECT_CALL(auth_, auth_response)
+      .WillRepeatedly(Return(fake_auth_and_sign_response_));
+
+  EXPECT_CALL(http_fetcher_, LookupDns("na.b.g-tun.com"));
+  session_->Start();
+
+  auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
 }
 
 }  // namespace

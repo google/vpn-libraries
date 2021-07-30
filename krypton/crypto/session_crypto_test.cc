@@ -14,7 +14,9 @@
 
 #include "privacy/net/krypton/crypto/session_crypto.h"
 
+#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/crypto/rsa_fdh_blinder.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
@@ -34,12 +36,27 @@ namespace {
 
 using ::testing::EqualsProto;
 using ::testing::HasSubstr;
-using ::testing::status::IsOkAndHolds;
 using ::testing::status::StatusIs;
 
-TEST(SessionCryptoTest, TestInitialKeyGeneration) {
-  SessionCrypto local_crypto;
-  SessionCrypto remote_crypto;
+class SessionCryptoTest : public testing::Test {
+ public:
+  void SetUp() override {
+    bridge_config_aes_128_.set_datapath_protocol(KryptonConfig::BRIDGE);
+    bridge_config_aes_128_.set_cipher_suite_key_length(128);
+
+    bridge_config_aes_256_.set_datapath_protocol(KryptonConfig::BRIDGE);
+    bridge_config_aes_256_.set_cipher_suite_key_length(256);
+
+    ipsec_config_.set_datapath_protocol(KryptonConfig::IPSEC);
+  }
+  KryptonConfig bridge_config_aes_128_;
+  KryptonConfig bridge_config_aes_256_;
+  KryptonConfig ipsec_config_;
+};
+
+TEST_F(SessionCryptoTest, TestInitialKeyGeneration) {
+  SessionCrypto local_crypto(&bridge_config_aes_128_);
+  SessionCrypto remote_crypto(&bridge_config_aes_128_);
   LOG(INFO) << "Private Key "
             << absl::Base64Escape(local_crypto.PrivateKeyTestOnly());
 
@@ -52,16 +69,16 @@ TEST(SessionCryptoTest, TestInitialKeyGeneration) {
   EXPECT_EQ(X25519_PUBLIC_VALUE_LEN, unescaped_public.length());
 }
 
-TEST(SessionCryptoTest, TestSharedKeyBeforeSettingPublicValue) {
-  SessionCrypto local_crypto;
+TEST_F(SessionCryptoTest, TestSharedKeyBeforeSettingPublicValue) {
+  SessionCrypto local_crypto(&bridge_config_aes_128_);
 
   EXPECT_THAT(local_crypto.SharedKeyBase64TestOnly(),
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
-TEST(SessionCryptoTest, TestSharedKey) {
-  SessionCrypto local_crypto;
-  SessionCrypto remote_crypto;
+TEST_F(SessionCryptoTest, TestSharedKey) {
+  SessionCrypto local_crypto(&bridge_config_aes_128_);
+  SessionCrypto remote_crypto(&bridge_config_aes_128_);
 
   auto local_keys = local_crypto.GetMyKeyMaterial();
   auto remote_keys = remote_crypto.GetMyKeyMaterial();
@@ -75,16 +92,16 @@ TEST(SessionCryptoTest, TestSharedKey) {
             remote_crypto.SharedKeyBase64TestOnly());
 }
 
-TEST(SessionCryptoTest, TestIpSecTransformFailure) {
-  SessionCrypto local_crypto;
-  SessionCrypto remote_crypto;
-  EXPECT_THAT(local_crypto.GetIpSecTransformParams(),
+TEST_F(SessionCryptoTest, TestIpSecTransformFailure) {
+  SessionCrypto local_crypto(&bridge_config_aes_128_);
+  SessionCrypto remote_crypto(&bridge_config_aes_128_);
+  EXPECT_THAT(local_crypto.GetTransformParams(),
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
-TEST(SessionCryptoTest, TestIpSecTransformParams) {
-  SessionCrypto local_crypto;
-  SessionCrypto remote_crypto;
+TEST_F(SessionCryptoTest, TestIpSecTransformParams) {
+  SessionCrypto local_crypto(&ipsec_config_);
+  SessionCrypto remote_crypto(&ipsec_config_);
 
   auto local_keys = local_crypto.GetMyKeyMaterial();
   auto remote_keys = remote_crypto.GetMyKeyMaterial();
@@ -101,29 +118,37 @@ TEST(SessionCryptoTest, TestIpSecTransformParams) {
   EXPECT_OK(remote_crypto.SetRemoteKeyMaterial(local_keys.public_value,
                                                remote_keys.nonce));
 
-  auto status_or_local_ipsec_params = local_crypto.GetIpSecTransformParams();
-  EXPECT_OK(status_or_local_ipsec_params);
-  ASSERT_OK_AND_ASSIGN(auto local_ipsec_params, status_or_local_ipsec_params);
+  ASSERT_OK_AND_ASSIGN(auto transform_params,
+                       local_crypto.GetTransformParams());
+  auto local_ipsec_params = transform_params.ipsec();
 
   EXPECT_EQ(32, local_ipsec_params.downlink_key().length());
   EXPECT_EQ(32, local_ipsec_params.uplink_key().length());
   EXPECT_EQ(4, local_ipsec_params.uplink_salt().length());
   EXPECT_EQ(4l, local_ipsec_params.downlink_salt().length());
 
-  EXPECT_THAT(remote_crypto.GetIpSecTransformParams(),
-              IsOkAndHolds(EqualsProto(local_ipsec_params)));
+  ASSERT_OK_AND_ASSIGN(auto remote_transform_params,
+                       remote_crypto.GetTransformParams());
+  auto remote_ipsec_params = remote_transform_params.ipsec();
+
+  // SessionCrypto creates a random downlink_spi every time it runs, so we need
+  // to clear them before comparing two SessionCryptos.
+  remote_ipsec_params.clear_downlink_spi();
+  local_ipsec_params.clear_downlink_spi();
+
+  EXPECT_THAT(remote_ipsec_params, EqualsProto(local_ipsec_params));
 }
 
-TEST(SessionCryptoTest, TestBridgeTransformFailure) {
-  SessionCrypto local_crypto;
-  SessionCrypto remote_crypto;
-  EXPECT_THAT(local_crypto.GetBridgeTransformParams(CryptoSuite::AES128_GCM),
+TEST_F(SessionCryptoTest, TestBridgeTransformFailure) {
+  SessionCrypto local_crypto(&bridge_config_aes_128_);
+  SessionCrypto remote_crypto(&bridge_config_aes_128_);
+  EXPECT_THAT(local_crypto.GetTransformParams(),
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
-TEST(SessionCryptoTest, TestBridgeTransformParams128) {
-  SessionCrypto local_crypto;
-  SessionCrypto remote_crypto;
+TEST_F(SessionCryptoTest, TestBridgeTransformParams128) {
+  SessionCrypto local_crypto(&bridge_config_aes_128_);
+  SessionCrypto remote_crypto(&bridge_config_aes_128_);
 
   auto local_keys = local_crypto.GetMyKeyMaterial();
   auto remote_keys = remote_crypto.GetMyKeyMaterial();
@@ -140,22 +165,26 @@ TEST(SessionCryptoTest, TestBridgeTransformParams128) {
   EXPECT_OK(remote_crypto.SetRemoteKeyMaterial(local_keys.public_value,
                                                remote_keys.nonce));
 
-  auto status_or_bridge_transform_params =
-      local_crypto.GetBridgeTransformParams(CryptoSuite::AES128_GCM);
-  EXPECT_OK(status_or_bridge_transform_params);
-  ASSERT_OK_AND_ASSIGN(auto local_bridge_params,
-                       status_or_bridge_transform_params);
+  ASSERT_OK_AND_ASSIGN(auto transform_params,
+                       local_crypto.GetTransformParams());
+  const auto& local_bridge_params = transform_params.bridge();
 
   EXPECT_EQ(16, local_bridge_params.downlink_key().length());
   EXPECT_EQ(16, local_bridge_params.uplink_key().length());
 
-  EXPECT_THAT(remote_crypto.GetBridgeTransformParams(CryptoSuite::AES128_GCM),
-              IsOkAndHolds(EqualsProto(local_bridge_params)));
+  EXPECT_THAT(remote_crypto.GetTransformParams()->bridge(),
+              EqualsProto(local_bridge_params));
+
+  // Duplicate call to GetTransform and ensure the keys are the same.
+  ASSERT_OK_AND_ASSIGN(auto transform_params_1,
+                       local_crypto.GetTransformParams());
+  EXPECT_THAT(remote_crypto.GetTransformParams()->bridge(),
+              EqualsProto(transform_params_1.bridge()));
 }
 
-TEST(SessionCryptoTest, TestBridgeTransformParams256) {
-  SessionCrypto local_crypto;
-  SessionCrypto remote_crypto;
+TEST_F(SessionCryptoTest, TestBridgeTransformParams256) {
+  SessionCrypto local_crypto(&bridge_config_aes_256_);
+  SessionCrypto remote_crypto(&bridge_config_aes_256_);
 
   auto local_keys = local_crypto.GetMyKeyMaterial();
   auto remote_keys = remote_crypto.GetMyKeyMaterial();
@@ -172,28 +201,28 @@ TEST(SessionCryptoTest, TestBridgeTransformParams256) {
   EXPECT_OK(remote_crypto.SetRemoteKeyMaterial(local_keys.public_value,
                                                remote_keys.nonce));
 
-  auto status_or_bridge_transform_params =
-      local_crypto.GetBridgeTransformParams(CryptoSuite::AES256_GCM);
-  EXPECT_OK(status_or_bridge_transform_params);
-  ASSERT_OK_AND_ASSIGN(auto local_bridge_params,
-                       status_or_bridge_transform_params);
+  ASSERT_OK_AND_ASSIGN(auto transform_params,
+                       local_crypto.GetTransformParams());
+
+  ASSERT_TRUE(transform_params.has_bridge());
+  const auto& local_bridge_params = transform_params.bridge();
 
   EXPECT_EQ(32, local_bridge_params.downlink_key().length());
   EXPECT_EQ(32, local_bridge_params.uplink_key().length());
 
-  EXPECT_THAT(remote_crypto.GetBridgeTransformParams(CryptoSuite::AES256_GCM),
-              IsOkAndHolds(EqualsProto(local_bridge_params)));
+  EXPECT_THAT(remote_crypto.GetTransformParams()->bridge(),
+              EqualsProto(local_bridge_params));
 }
 
-TEST(SessionCryptoTest, VerifyRekey) {
+TEST_F(SessionCryptoTest, VerifyRekey) {
   // Here the steps to verify rekey.
   // Step 1: Two session crypto keys previous (one exchanged earlier) and the
   // current one.
   // Step 2: Generate a signature based on current crypto public value and old
   // verification key.
   // Step 3: Validate the current public value signature matches.
-  SessionCrypto previous;
-  SessionCrypto current;
+  SessionCrypto previous(&bridge_config_aes_128_);
+  SessionCrypto current(&bridge_config_aes_128_);
   std::string verification_key;
   std::string signature;
   std::string current_public_value;
@@ -201,17 +230,16 @@ TEST(SessionCryptoTest, VerifyRekey) {
   absl::Base64Unescape(current.GetMyKeyMaterial().public_value,
                        &current_public_value);
 
-  auto status_or_verification_key = previous.GetRekeyVerificationKey();
-  EXPECT_OK(status_or_verification_key);
-  absl::Base64Unescape(status_or_verification_key.ValueOrDie(),
-                       &verification_key);
+  ASSERT_OK_AND_ASSIGN(auto escaped_verification_key,
+                       previous.GetRekeyVerificationKey());
+  absl::Base64Unescape(escaped_verification_key, &verification_key);
 
   // Use previous ed25519 to generate a signature using the current public
   // value.
-  auto status_or_signature =
-      previous.GenerateSignature(current.GetMyKeyMaterial().public_value);
-  EXPECT_OK(status_or_signature);
-  absl::Base64Unescape(status_or_signature.ValueOrDie(), &signature);
+  ASSERT_OK_AND_ASSIGN(
+      auto escaped_signature,
+      previous.GenerateSignature(current.GetMyKeyMaterial().public_value));
+  absl::Base64Unescape(escaped_signature, &signature);
 
   // Step 3: Time for validation.
   // Validate the signature by getting the keyset_handle from the previous
@@ -225,7 +253,7 @@ TEST(SessionCryptoTest, VerifyRekey) {
   EXPECT_OK(verifier->Verify(signature, current_public_value));
 }
 
-TEST(SessionCryptoTest, BlindingOk) {
+TEST_F(SessionCryptoTest, BlindingOk) {
   // Some random public string.
   std::string rsa_pem = absl::StrCat(
       "-----BEGIN PUBLIC KEY-----\n",
@@ -237,7 +265,7 @@ TEST(SessionCryptoTest, BlindingOk) {
       "NVez52n5TLvQP3hRd4MTi7YvfhezRcA4aXyIDOv+TYi4p+OVTYQ+FMbkgoWBm5bq\n",
       "wQIDAQAB\n", "-----END PUBLIC KEY-----\n");
 
-  SessionCrypto crypto;
+  SessionCrypto crypto(&bridge_config_aes_128_);
   EXPECT_OK(crypto.SetBlindingPublicKey(rsa_pem));
   auto optional_blind = crypto.GetZincBlindToken();
   EXPECT_NE(optional_blind, absl::nullopt);
@@ -247,8 +275,8 @@ TEST(SessionCryptoTest, BlindingOk) {
             "aV07BUI5y+F8E/ESXXZRx8cKh0lT4J4VBDjlOl25850=");
 }
 
-TEST(SessionCryptoTest, BlindSignOk) {
-  SessionCrypto crypto;
+TEST_F(SessionCryptoTest, BlindSignOk) {
+  SessionCrypto crypto(&bridge_config_aes_128_);
 
   BN_CTX_start(crypto.bn_ctx());
   auto rsa_f4 = BN_CTX_get(crypto.bn_ctx());
@@ -285,8 +313,8 @@ TEST(SessionCryptoTest, BlindSignOk) {
   BN_CTX_end(crypto.bn_ctx());
 }
 
-TEST(SessionCryptoTest, BlindSignWrongSigner) {
-  SessionCrypto crypto;
+TEST_F(SessionCryptoTest, BlindSignWrongSigner) {
+  SessionCrypto crypto(&bridge_config_aes_128_);
 
   BN_CTX_start(crypto.bn_ctx());
   auto rsa_f4 = BN_CTX_get(crypto.bn_ctx());
@@ -321,13 +349,13 @@ TEST(SessionCryptoTest, BlindSignWrongSigner) {
   BN_CTX_end(crypto.bn_ctx());
 }
 
-TEST(SessionCryptoTest, TestInvalidPem) {
+TEST_F(SessionCryptoTest, TestInvalidPem) {
   // Some random public string.
   std::string rsa_pem = absl::StrCat(
       "-----BEGIN PUBLIC KEY-----\n",
       "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv90Xf/NN1lRGBofJQzJf\n");
 
-  SessionCrypto crypto;
+  SessionCrypto crypto(&bridge_config_aes_128_);
   EXPECT_THAT(crypto.SetBlindingPublicKey(rsa_pem),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("PEM Public Key parsing failed")));

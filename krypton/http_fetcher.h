@@ -23,6 +23,7 @@
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
+#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/jsoncpp/value.h"
@@ -68,6 +69,8 @@ class HttpFetcher {
   // calling the callback in |PostJsonAsync|.  Applicable only for
   // |PostJsonAsync|.
   void CancelAsync();
+
+  absl::StatusOr<std::string> LookupDns(const std::string& hostname);
 
  private:
   HttpFetcherInterface* pal_interface_;  // Not owned.

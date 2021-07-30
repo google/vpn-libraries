@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn.xenon;
 import androidx.annotation.Nullable;
 import com.google.android.libraries.privacy.ppn.PpnException;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo;
+import java.util.List;
 import org.json.JSONObject;
 
 /**
@@ -55,6 +56,9 @@ public interface Xenon {
 
   /** Reevaluates all the available networks to get the best network to use. */
   void reevaluateNetworks();
+
+  /** Returns all of Xenon's available networks, including the active network. */
+  List<PpnNetwork> getAvailableNetworks();
 
   /** Returns useful debug info for inspecting the state of Xenon. */
   JSONObject getDebugJson();

@@ -17,33 +17,62 @@ package com.google.android.libraries.privacy.ppn.krypton;
 import static com.google.common.truth.Truth.assertThat;
 
 import android.os.ConditionVariable;
-import com.google.android.libraries.privacy.ppn.PpnReconnectStatus;
+import androidx.test.core.app.ApplicationProvider;
+import androidx.work.testing.WorkManagerTestInitHelper;
+import com.google.android.libraries.privacy.ppn.PpnSnoozeStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
+import com.google.android.libraries.privacy.ppn.PpnStatus.DetailedErrorCode;
+import com.google.android.libraries.privacy.ppn.internal.ConnectingStatus;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
+import com.google.android.libraries.privacy.ppn.internal.DisconnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.IpSecTransformParams;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo;
+import com.google.android.libraries.privacy.ppn.internal.ReconnectionStatus;
+import com.google.android.libraries.privacy.ppn.internal.ResumeStatus;
+import com.google.android.libraries.privacy.ppn.internal.SnoozeStatus;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
+import com.google.android.libraries.privacy.ppn.internal.http.BoundSocketFactoryFactory;
+import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.Duration;
+import com.google.protobuf.Timestamp;
+import com.google.testing.mockito.Mocks;
 import java.nio.charset.Charset;
-import java.time.Duration;
-import java.util.concurrent.Executor;
+import java.time.Instant;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
+import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
 import org.robolectric.RobolectricTestRunner;
 
 /** Unit tests for JNI notifications from Krypton C++ to KryptonImpl.java. */
 @RunWith(RobolectricTestRunner.class)
 public class NotificationTest {
+  @Rule public Mocks mocks = new Mocks(this);
+  @Mock private BoundSocketFactoryFactory socketFactoryFactory;
 
   private final JniTestNotification notification = new JniTestNotification();
-  private final HttpFetcher httpFetcher = new HttpFetcher(new TestBoundSocketFactoryFactory());
-  private final Executor backgroundExecutor = Executors.newSingleThreadExecutor();
+  private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
+  private final HttpFetcher httpFetcher = new HttpFetcher(socketFactoryFactory);
 
   private static final String IPSEC_4_BYTE_SAMPLE = "abcd";
   private static final String IPSEC_32_BYTE_SAMPLE = "0123456789abcdef0123456789abcdef";
+
+  @Before
+  public void setUp() {
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext());
+  }
+
+  private KryptonImpl createKrypton(KryptonListener listener) {
+    return new KryptonImpl(
+        ApplicationProvider.getApplicationContext(), httpFetcher, listener, backgroundExecutor);
+  }
 
   @Test
   public void connected_callsCallback() throws Exception {
@@ -51,23 +80,24 @@ public class NotificationTest {
     AtomicReference<ConnectionStatus> statusRef = new AtomicReference<>();
     ConditionVariable connected = new ConditionVariable();
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
               public void onKryptonConnected(ConnectionStatus status) {
                 statusRef.set(status);
                 connected.open();
               }
-            },
-            backgroundExecutor);
+            });
 
     try {
       krypton.init();
 
-      notification.connected();
+      ConnectionStatus status =
+          ConnectionStatus.newBuilder().setQuality(ConnectionStatus.ConnectionQuality.GOOD).build();
+      notification.connected(status);
 
       assertThat(connected.block(1000)).isTrue();
+      assertThat(statusRef.get().getQuality()).isEqualTo(ConnectionStatus.ConnectionQuality.GOOD);
     } finally {
       krypton.stop();
     }
@@ -75,25 +105,27 @@ public class NotificationTest {
 
   @Test
   public void connecting_callsCallback() throws Exception {
-    // Set up a condition we can wait on.
-    ConditionVariable connected = new ConditionVariable();
+    // Set up a listener and condition we can wait on.
+    AtomicReference<ConnectingStatus> statusRef = new AtomicReference<>();
+    ConditionVariable connecting = new ConditionVariable();
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
-              public void onKryptonConnecting() {
-                connected.open();
+              public void onKryptonConnecting(ConnectingStatus status) {
+                statusRef.set(status);
+                connecting.open();
               }
-            },
-            backgroundExecutor);
+            });
 
     try {
       krypton.init();
 
-      notification.connecting();
+      ConnectingStatus status = ConnectingStatus.newBuilder().setIsBlockingTraffic(true).build();
+      notification.connecting(status);
 
-      assertThat(connected.block(1000)).isTrue();
+      assertThat(connecting.block(1000)).isTrue();
+      assertThat(statusRef.get().getIsBlockingTraffic()).isTrue();
     } finally {
       krypton.stop();
     }
@@ -104,15 +136,13 @@ public class NotificationTest {
     // Set up a condition we can wait on.
     ConditionVariable connected = new ConditionVariable();
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
               public void onKryptonControlPlaneConnected() {
                 connected.open();
               }
-            },
-            backgroundExecutor);
+            });
 
     try {
       krypton.init();
@@ -131,23 +161,24 @@ public class NotificationTest {
     AtomicReference<ConnectionStatus> statusRef = new AtomicReference<>();
     ConditionVariable statusUpdated = new ConditionVariable();
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
               public void onKryptonStatusUpdated(ConnectionStatus status) {
                 statusRef.set(status);
                 statusUpdated.open();
               }
-            },
-            backgroundExecutor);
+            });
 
     try {
       krypton.init();
 
-      notification.statusUpdated();
+      ConnectionStatus status =
+          ConnectionStatus.newBuilder().setQuality(ConnectionStatus.ConnectionQuality.GOOD).build();
+      notification.statusUpdate(status);
 
       assertThat(statusUpdated.block(1000)).isTrue();
+      assertThat(statusRef.get().getQuality()).isEqualTo(ConnectionStatus.ConnectionQuality.GOOD);
     } finally {
       krypton.stop();
     }
@@ -156,28 +187,33 @@ public class NotificationTest {
   @Test
   public void disconnected_callsCallback() throws Exception {
     // Set up a listener and condition we can wait on.
-    AtomicReference<PpnStatus> statusRef = new AtomicReference<>();
+    AtomicReference<DisconnectionStatus> statusRef = new AtomicReference<>();
     ConditionVariable disconnected = new ConditionVariable();
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
-              public void onKryptonDisconnected(PpnStatus status) {
+              public void onKryptonDisconnected(DisconnectionStatus status) {
                 statusRef.set(status);
                 disconnected.open();
               }
-            },
-            backgroundExecutor);
+            });
 
     try {
       krypton.init();
 
-      notification.disconnected(new PpnStatus(Code.PERMISSION_DENIED, "This is a test."));
+      DisconnectionStatus status =
+          DisconnectionStatus.newBuilder()
+              .setCode(Code.PERMISSION_DENIED.getCode())
+              .setMessage("This is a test.")
+              .setIsBlockingTraffic(true)
+              .build();
+      notification.disconnected(status);
 
       assertThat(disconnected.block(1000)).isTrue();
-      assertThat(statusRef.get().getCode()).isEqualTo(Code.PERMISSION_DENIED);
+      assertThat(statusRef.get().getCode()).isEqualTo(Code.PERMISSION_DENIED.getCode());
       assertThat(statusRef.get().getMessage()).isEqualTo("This is a test.");
+      assertThat(statusRef.get().getIsBlockingTraffic()).isTrue();
 
     } finally {
       krypton.stop();
@@ -190,25 +226,29 @@ public class NotificationTest {
     AtomicReference<PpnStatus> statusRef = new AtomicReference<>();
     ConditionVariable failed = new ConditionVariable();
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
               public void onKryptonPermanentFailure(PpnStatus status) {
                 statusRef.set(status);
                 failed.open();
               }
-            },
-            backgroundExecutor);
+            });
 
     try {
       krypton.init();
 
-      notification.permanentFailure(new PpnStatus(Code.RESOURCE_EXHAUSTED, "Another test."));
+      PpnStatus status =
+          new PpnStatus.Builder(Code.RESOURCE_EXHAUSTED, "Another test.")
+              .setDetailedErrorCode(DetailedErrorCode.DISALLOWED_COUNTRY)
+              .build();
+      notification.permanentFailure(status);
 
       assertThat(failed.block(1000)).isTrue();
       assertThat(statusRef.get().getCode()).isEqualTo(Code.RESOURCE_EXHAUSTED);
       assertThat(statusRef.get().getMessage()).isEqualTo("Another test.");
+      assertThat(statusRef.get().getDetailedErrorCode())
+          .isEqualTo(DetailedErrorCode.DISALLOWED_COUNTRY);
 
     } finally {
       krypton.stop();
@@ -218,27 +258,29 @@ public class NotificationTest {
   @Test
   public void waitingToReconnect_callsCallback() throws Exception {
     // Set up a listener and condition we can wait on.
-    AtomicReference<PpnReconnectStatus> statusRef = new AtomicReference<>();
+    AtomicReference<ReconnectionStatus> statusRef = new AtomicReference<>();
     ConditionVariable waitingToReconnect = new ConditionVariable();
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
-              public void onKryptonWaitingToReconnect(PpnReconnectStatus status) {
+              public void onKryptonWaitingToReconnect(ReconnectionStatus status) {
                 statusRef.set(status);
                 waitingToReconnect.open();
               }
-            },
-            backgroundExecutor);
+            });
 
     try {
       krypton.init();
 
-      notification.waitingToReconnect(new PpnReconnectStatus(Duration.ofSeconds(5)));
+      ReconnectionStatus reconnectionStatus =
+          ReconnectionStatus.newBuilder()
+              .setTimeToReconnect(Duration.newBuilder().setSeconds(5).build())
+              .build();
+      notification.waitingToReconnect(reconnectionStatus);
 
       assertThat(waitingToReconnect.block(1000)).isTrue();
-      assertThat(statusRef.get().getTimeToReconnect()).isEqualTo(Duration.ofSeconds(5));
+      assertThat(statusRef.get().getTimeToReconnect().getSeconds()).isEqualTo(5);
     } finally {
       krypton.stop();
     }
@@ -251,8 +293,7 @@ public class NotificationTest {
     AtomicReference<PpnStatus> statusRef = new AtomicReference<>();
     ConditionVariable networkDisconnected = new ConditionVariable();
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
               public void onKryptonNetworkFailed(PpnStatus status, NetworkInfo network) {
@@ -260,21 +301,75 @@ public class NotificationTest {
                 statusRef.set(status);
                 networkDisconnected.open();
               }
-            },
-            backgroundExecutor);
+            });
 
     try {
       krypton.init();
 
       NetworkInfo network = NetworkInfo.newBuilder().setNetworkId(42).build();
-      PpnStatus status = new PpnStatus(Code.DATA_LOSS, "More tests.");
+      PpnStatus status =
+          new PpnStatus.Builder(Code.DATA_LOSS, "More tests.")
+              .setDetailedErrorCode(DetailedErrorCode.DISALLOWED_COUNTRY)
+              .build();
       notification.networkDisconnected(network, status);
 
       assertThat(networkDisconnected.block(1000)).isTrue();
       assertThat(networkRef.get().getNetworkId()).isEqualTo(42);
       assertThat(statusRef.get().getCode()).isEqualTo(Code.DATA_LOSS);
       assertThat(statusRef.get().getMessage()).isEqualTo("More tests.");
+      assertThat(statusRef.get().getDetailedErrorCode())
+          .isEqualTo(DetailedErrorCode.DISALLOWED_COUNTRY);
 
+    } finally {
+      krypton.stop();
+    }
+  }
+
+  @Test
+  public void snoozePpn_callsCallback() throws Exception {
+    long snoozeDuration = 300L;
+    AtomicReference<PpnSnoozeStatus> snoozeStatusRef = new AtomicReference<>();
+    KryptonImpl krypton =
+        createKrypton(
+            new KryptonAdapter() {
+              @Override
+              public void onKryptonSnoozed(SnoozeStatus status) {
+                snoozeStatusRef.set(PpnSnoozeStatus.fromProto(status));
+              }
+            });
+    try {
+      krypton.init();
+
+      SnoozeStatus snoozeStatus =
+          SnoozeStatus.newBuilder()
+              .setSnoozeEndTime(
+                  Timestamp.newBuilder().setSeconds(snoozeDuration).setNanos(0).build())
+              .build();
+      notification.snoozed(snoozeStatus);
+      assertThat(snoozeStatusRef.get().getSnoozeEndTime())
+          .isEqualTo(Instant.ofEpochSecond(snoozeDuration));
+    } finally {
+      krypton.stop();
+    }
+  }
+
+  @Test
+  public void resumePpn_callsCallback() throws Exception {
+    ConditionVariable resume = new ConditionVariable();
+    KryptonImpl krypton =
+        createKrypton(
+            new KryptonAdapter() {
+              @Override
+              public void onKryptonResumed(ResumeStatus status) {
+                resume.open();
+              }
+            });
+    try {
+      krypton.init();
+
+      ResumeStatus resumeStatus = ResumeStatus.getDefaultInstance();
+      notification.resumed(resumeStatus);
+      assertThat(resume.block(1000)).isTrue();
     } finally {
       krypton.stop();
     }
@@ -285,16 +380,14 @@ public class NotificationTest {
     // Set up a listener and condition we can wait on.
     AtomicReference<TunFdData> tunFdDataRef = new AtomicReference<>();
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
               public int onKryptonNeedsTunFd(TunFdData tunFdData) {
                 tunFdDataRef.set(tunFdData);
                 return 54321;
               }
-            },
-            backgroundExecutor);
+            });
 
     try {
       krypton.init();
@@ -315,16 +408,14 @@ public class NotificationTest {
     // Set up a listener and condition we can wait on.
     AtomicReference<NetworkInfo> networkRef = new AtomicReference<>();
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
               public int onKryptonNeedsNetworkFd(NetworkInfo network) {
                 networkRef.set(network);
                 return 123;
               }
-            },
-            backgroundExecutor);
+            });
 
     try {
       krypton.init();
@@ -344,15 +435,13 @@ public class NotificationTest {
   public void getOauthToken_callsCallback() throws Exception {
     // Set up a listener and condition we can wait on.
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
               public String onKryptonNeedsOAuthToken() {
                 return "hello world";
               }
-            },
-            backgroundExecutor);
+            });
 
     try {
       krypton.init();
@@ -377,15 +466,13 @@ public class NotificationTest {
   public void connectedFd_applyTransformOk() throws Exception {
     ConditionVariable condition = new ConditionVariable();
     KryptonImpl krypton =
-        new KryptonImpl(
-            httpFetcher,
+        createKrypton(
             new KryptonAdapter() {
               @Override
               public void onKryptonNeedsIpSecConfiguration(IpSecTransformParams params) {
                 condition.open();
               }
-            },
-            backgroundExecutor);
+            });
     try {
       krypton.init();
       IpSecTransformParams params =

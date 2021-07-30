@@ -33,10 +33,11 @@ class SessionManagerInterface {
                                 absl::string_view brass_url,
                                 absl::string_view service_type,
                                 int restart_count,
+                                TunnelManagerInterface* tunnel_manager,
                                 absl::optional<NetworkInfo> network_info) = 0;
 
   // Terminates the session.
-  virtual void TerminateSession() = 0;
+  virtual void TerminateSession(bool forceFailOpen) = 0;
 
   // Gets the active session.
   virtual absl::optional<Session*> session() const = 0;

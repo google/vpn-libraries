@@ -20,8 +20,14 @@ import static org.robolectric.Shadows.shadowOf;
 
 import android.os.ConditionVariable;
 import android.os.Looper;
+import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.work.WorkManager;
+import androidx.work.testing.WorkManagerTestInitHelper;
 import com.google.testing.mockito.Mocks;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.junit.Before;
 import org.junit.Rule;
@@ -38,7 +44,14 @@ public final class TimerManagerTest {
 
   @Before
   public void setUp() {
-    timerIdManager = new TimerIdManager(timerExpiryListener);
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext());
+    timerIdManager =
+        new TimerIdManager(
+            timerExpiryListener,
+            (WorkManager)
+                WorkManagerTestInitHelper.getTestDriver(
+                    ApplicationProvider.getApplicationContext()));
   }
 
   @Test
@@ -66,18 +79,54 @@ public final class TimerManagerTest {
   @Test
   public void timerManagerStartAndCancel_expectTrueCancellation() throws Exception {
     assertThat(timerIdManager.startTimer(1, 1000)).isTrue();
+    TimerIdTask task = timerIdManager.getTask(1);
     assertThat(timerIdManager.cancelTimer(1)).isTrue();
+    // Verify that the manager called cancel on the task.
+    assertThat(task.isCancelled()).isTrue();
     // Cancelling second time will result in error.
     assertThat(timerIdManager.cancelTimer(1)).isFalse();
+    shadowOf(Looper.getMainLooper()).idle();
   }
 
   @Test
   public void timerManagerCancelAllTimers_expectAllCancellations() throws Exception {
+    HashMap<Integer, TimerIdTask> tasks = new HashMap<>();
     for (int i = 0; i < 100; i++) {
       assertThat(timerIdManager.startTimer(i, 1000)).isTrue();
+      tasks.put(i, timerIdManager.getTask(i));
     }
     assertThat(timerIdManager.size()).isEqualTo(100);
     timerIdManager.cancelAllTimers();
     assertThat(timerIdManager.size()).isEqualTo(0);
+    for (Map.Entry<Integer, TimerIdTask> entry : tasks.entrySet()) {
+      assertThat(entry.getValue().isCancelled()).isTrue();
+    }
+  }
+
+  @Test
+  public void timerManagerGetInstance_returnsCorrectManager() throws Exception {
+    assertThat(TimerIdManager.getInstance(timerIdManager.getId())).isEqualTo(timerIdManager);
+  }
+
+  @Test
+  public void timerManagerStop_removesManagerFromActiveManagers() throws Exception {
+    UUID managerId = timerIdManager.getId();
+    timerIdManager.stop();
+    assertThat(TimerIdManager.getInstance(managerId)).isNull();
+  }
+
+  @Test
+  public void timerManagerStop_cancelsRunningTimers() throws Exception {
+    HashMap<Integer, TimerIdTask> tasks = new HashMap<>();
+    for (int i = 0; i < 10; i++) {
+      assertThat(timerIdManager.startTimer(i, 1000)).isTrue();
+      tasks.put(i, timerIdManager.getTask(i));
+    }
+    assertThat(timerIdManager.size()).isEqualTo(10);
+    timerIdManager.stop();
+    assertThat(timerIdManager.size()).isEqualTo(0);
+    for (Map.Entry<Integer, TimerIdTask> entry : tasks.entrySet()) {
+      assertThat(entry.getValue().isCancelled()).isTrue();
+    }
   }
 }

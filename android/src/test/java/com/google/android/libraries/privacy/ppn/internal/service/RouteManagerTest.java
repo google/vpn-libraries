@@ -27,11 +27,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.robolectric.RobolectricTestRunner;
-import org.robolectric.annotation.Config;
 
 /** Unit test for {@link RouteManager}. */
 @RunWith(RobolectricTestRunner.class)
-@Config()
 public class RouteManagerTest {
   @Rule public Mocks mocks = new Mocks(this);
 

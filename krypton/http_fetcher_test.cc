@@ -31,15 +31,19 @@
 namespace privacy {
 namespace krypton {
 namespace {
+
 using ::testing::_;
 using ::testing::DoAll;
 using ::testing::Invoke;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
+using testing::status::IsOkAndHolds;
 
 class MockHttpFetcherInterface : public HttpFetcherInterface {
  public:
   MOCK_METHOD(HttpResponse, PostJson, (const HttpRequest&), (override));
+  MOCK_METHOD(absl::StatusOr<std::string>, LookupDns, (const std::string&),
+              (override));
 };
 
 class HttpFetcherTest : public ::testing::Test {
@@ -84,6 +88,14 @@ TEST_F(HttpFetcherTest, CancellationBeforeHttpResponse) {
   fetcher.CancelAsync();
   notification.WaitForNotification();
 }
+
+TEST_F(HttpFetcherTest, TestBasicLookupDns) {
+  HttpFetcher fetcher(&http_interface_, &looper_thread_);
+  EXPECT_CALL(http_interface_, LookupDns("foo")).WillOnce(Return("bar"));
+
+  EXPECT_THAT(fetcher.LookupDns("foo"), IsOkAndHolds("bar"));
+}
+
 }  // namespace
 }  // namespace krypton
 }  // namespace privacy

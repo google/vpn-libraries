@@ -21,12 +21,14 @@
 
 #include "base/logging.h"
 #include "privacy/net/krypton/datapath_interface.h"
+#include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/session.h"
 #include "privacy/net/krypton/session_manager.h"
+#include "privacy/net/krypton/tunnel_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/memory/memory.h"
 #include "third_party/absl/status/status.h"
@@ -53,13 +55,15 @@ void Krypton::Start(const KryptonConfig& config) {
   notification_thread_ =
       std::make_unique<utils::LooperThread>("Krypton Looper");
   session_manager_ = absl::make_unique<SessionManager>(
-      http_fetcher_, timer_manager_, vpn_service_, oauth_, &config_,
-      notification_thread_.get());
-  reconnector_ = absl::make_unique<Reconnector>(timer_manager_, config,
-                                                session_manager_.get(),
-                                                notification_thread_.get());
+      datapath_builder_, http_fetcher_, timer_manager_, vpn_service_, oauth_,
+      &config_, notification_thread_.get());
+  tunnel_manager_ = absl::make_unique<TunnelManager>(
+      vpn_service_, config.safe_disconnect_enabled());
+  clock_ = absl::make_unique<RealClock>();
+  reconnector_ = absl::make_unique<Reconnector>(
+      timer_manager_, config, session_manager_.get(), tunnel_manager_.get(),
+      notification_thread_.get(), clock_.get());
   reconnector_->RegisterNotificationInterface(notification_);
-  safe_disconnect_enabled_ = config.safe_disconnect_enabled();
 
   notification_thread_->Post([this] { Init(); });
 
@@ -78,9 +82,14 @@ Krypton::~Krypton() {
   }
 }
 
-void Krypton::Stop(const absl::Status& /*status*/) {
+void Krypton::Stop(const absl::Status& status) {
+  LOG(INFO) << "Stopping Krypton with status: " << status;
   if (reconnector_ != nullptr) {
     reconnector_->Stop();
+  }
+
+  if (tunnel_manager_ != nullptr) {
+    tunnel_manager_->Stop();
   }
 
   {
@@ -107,6 +116,38 @@ void Krypton::Stop(const absl::Status& /*status*/) {
   }
 }
 
+void Krypton::Snooze(absl::Duration duration) {
+  LOG(INFO) << "Snoozing krypton.";
+
+  auto status = reconnector_->Snooze(duration);
+  if (status.ok()) {
+    LOG(INFO) << "Snoozed krypton for " << duration;
+  } else {
+    LOG(ERROR) << "Failed to snooze krypton: " << status;
+  }
+}
+
+void Krypton::Resume() {
+  LOG(INFO) << "Resuming krypton.";
+  auto status = reconnector_->Resume();
+  if (status.ok()) {
+    LOG(INFO) << "Krypton resumed.";
+  } else {
+    LOG(ERROR) << "Krypton failed to resume: " << status;
+  }
+}
+
+void Krypton::ExtendSnooze(absl::Duration extendDuration) {
+  LOG(INFO) << "Extending snoozing krypton.";
+
+  auto status = reconnector_->ExtendSnooze(extendDuration);
+  if (status.ok()) {
+    LOG(INFO) << "Krypton snoozed for additional " << extendDuration;
+  } else {
+    LOG(ERROR) << "Failed to extend krypton snooze";
+  }
+}
+
 void Krypton::WaitForTermination() {
   absl::MutexLock l(&stopped_lock_);
   while (!stopped_) {
@@ -117,23 +158,17 @@ void Krypton::WaitForTermination() {
 void Krypton::Init() {
   LOG(INFO) << "Started Initialization";
 
+  auto status = tunnel_manager_->Start();
+  if (!status.ok()) {
+    reconnector_->PermanentFailure(status);
+    return;
+  }
   reconnector_->Start();
 
   LOG(INFO) << "Initialization done";
 }
 
 absl::Status Krypton::SetNetwork(const NetworkInfo& network_info) {
-  NetworkType network_type = network_info.network_type();
-
-  LOG(INFO) << "Switching to network with type=" << network_type;
-  if (network_type < 0 || network_type > privacy::krypton::NetworkType_MAX) {
-    return absl::OutOfRangeError(
-        absl::StrCat("Invalid network type ", network_type));
-  }
-  if (network_type == NetworkType::UNKNOWN_TYPE) {
-    return absl::InvalidArgumentError("Unknown network type in setNetwork");
-  }
-
   return reconnector_->SetNetwork(network_info);
 }
 
@@ -141,16 +176,17 @@ absl::Status Krypton::SetNoNetworkAvailable() {
   return reconnector_->SetNetwork(absl::nullopt);
 }
 
-absl::Status Krypton::Pause(absl::Duration duration) {
-  return reconnector_->Pause(duration);
-}
-
 void Krypton::SetSafeDisconnectEnabled(bool enable) {
-  safe_disconnect_enabled_ = enable;
-  // TODO: Send the changed feature state to session_manager.
+  tunnel_manager_->SetSafeDisconnectEnabled(enable);
 }
 
-bool Krypton::IsSafeDisconnectEnabled() { return safe_disconnect_enabled_; }
+bool Krypton::IsSafeDisconnectEnabled() {
+  return tunnel_manager_->IsSafeDisconnectEnabled();
+}
+
+void Krypton::SetSimulatedNetworkFailure(bool simulated_network_failure) {
+  reconnector_->SetSimulatedNetworkFailure(simulated_network_failure);
+}
 
 void Krypton::CollectTelemetry(KryptonTelemetry* telemetry) {
   if (session_manager_ != nullptr) {

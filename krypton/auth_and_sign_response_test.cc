@@ -33,7 +33,7 @@ using ::testing::HasSubstr;
 using ::testing::status::StatusIs;
 
 constexpr char kGoldenZincResponse[] = R"string(
-  {"jwt":"TODO","blinded_token_signature":["token1","token2"],"session_manager_ips":[""]})string";
+  {"jwt":"TODO","blinded_token_signature":["token1","token2"],"session_manager_ips":[""],"copper_controller_hostname":"test.b.g-tun.com","region_token_and_signature":"US123.sig","apn_type":"ppn"})string";
 
 constexpr char kGoldenPublicKeyResponse[] =
     R"string({"pem": "some_pem"}})string";
@@ -45,8 +45,10 @@ TEST(AuthAndSignResponse, TestAuthParameter) {
   proto.mutable_status()->set_message("OK");
   proto.set_json_body(R"string({"jwt": "some_jwt_token"})string");
 
+  KryptonConfig config;
+  config.add_copper_hostname_suffix("g-tun.com");
   AuthAndSignResponse auth_response;
-  ASSERT_OK(auth_response.DecodeFromProto(proto));
+  ASSERT_OK(auth_response.DecodeFromProto(proto, config));
   EXPECT_EQ(auth_response.jwt_token(), "some_jwt_token");
 }
 
@@ -56,11 +58,132 @@ TEST(AuthAndSignResponse, TestAllParametersFromGolden) {
   proto.mutable_status()->set_message("OK");
   proto.set_json_body(kGoldenZincResponse);
 
+  KryptonConfig config{};
+  config.add_copper_hostname_suffix("g-tun.com");
   AuthAndSignResponse auth_response;
-  ASSERT_OK(auth_response.DecodeFromProto(proto));
+  ASSERT_OK(auth_response.DecodeFromProto(proto, config));
   EXPECT_EQ(auth_response.jwt_token(), "TODO");
+  EXPECT_EQ(auth_response.copper_controller_hostname(), "test.b.g-tun.com");
+  EXPECT_EQ(auth_response.region_token_and_signatures(), "US123.sig");
+  EXPECT_EQ(auth_response.apn_type(), "ppn");
   EXPECT_THAT(auth_response.blinded_token_signatures(),
               testing::ElementsAre("token1", "token2"));
+}
+
+TEST(AuthAndSignResponse, TestEmptyHostname) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(R"string({"copper_controller_hostname":""})string");
+
+  KryptonConfig config{};
+  config.add_copper_hostname_suffix("g-tun.com");
+  AuthAndSignResponse auth_response;
+  ASSERT_OK(auth_response.DecodeFromProto(proto, config));
+  EXPECT_EQ(auth_response.copper_controller_hostname(), "");
+}
+
+TEST(AuthAndSignResponse, TestWrongTypeHostname) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(
+      R"string({"copper_controller_hostname":["test.b.g-tun.com"]})string");
+
+  KryptonConfig config{};
+  config.add_copper_hostname_suffix("g-tun.com");
+  AuthAndSignResponse auth_response;
+  EXPECT_THAT(auth_response.DecodeFromProto(proto, config),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       "copper_controller_hostname is not a string"));
+}
+
+TEST(AuthAndSignResponse, TestWrongTypeRegionTokenAndSig) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(
+      R"string({"region_token_and_signature":["US123.sig"]})string");
+
+  KryptonConfig config{};
+  config.add_copper_hostname_suffix("g-tun.com");
+  AuthAndSignResponse auth_response;
+  EXPECT_THAT(auth_response.DecodeFromProto(proto, config),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       "region_token_and_sig is not a string"));
+}
+
+TEST(AuthAndSignResponse, TestWrongTypeAPNType) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(R"string({"apn_type":["ppn"]})string");
+
+  KryptonConfig config{};
+  config.add_copper_hostname_suffix("g-tun.com");
+  AuthAndSignResponse auth_response;
+  EXPECT_THAT(
+      auth_response.DecodeFromProto(proto, config),
+      StatusIs(absl::StatusCode::kInvalidArgument, "apn_type is not a string"));
+}
+
+TEST(AuthAndSignResponse, TestWrongAPNType) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(R"string({"apn_type":"xxx"})string");
+
+  KryptonConfig config{};
+  config.add_copper_hostname_suffix("g-tun.com");
+  AuthAndSignResponse auth_response;
+  EXPECT_THAT(
+      auth_response.DecodeFromProto(proto, config),
+      StatusIs(absl::StatusCode::kInvalidArgument, "unexpected apn_type"));
+}
+
+TEST(AuthAndSignResponse, TestEmptyZincResponse) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(R"string({})string");
+
+  KryptonConfig config{};
+  config.add_copper_hostname_suffix("g-tun.com");
+  AuthAndSignResponse auth_response;
+  ASSERT_OK(auth_response.DecodeFromProto(proto, config));
+  EXPECT_EQ(auth_response.jwt_token(), "");
+  EXPECT_EQ(auth_response.copper_controller_hostname(), "");
+  EXPECT_EQ(auth_response.region_token_and_signatures(), "");
+  EXPECT_EQ(auth_response.apn_type(), "");
+  EXPECT_THAT(auth_response.blinded_token_signatures().size(), testing::Eq(0));
+}
+
+TEST(AuthAndSignResponse, TestEmptySuffixList) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(R"string({"copper_controller_hostname":"xxx"})string");
+
+  KryptonConfig config{};
+  AuthAndSignResponse auth_response;
+  EXPECT_THAT(
+      auth_response.DecodeFromProto(proto, config),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("suffix")));
+}
+
+TEST(AuthAndSignResponse, TestSuffixListMultipleElements) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(
+      R"string({"copper_controller_hostname":"na.ppn-test"})string");
+
+  KryptonConfig config{};
+  config.add_copper_hostname_suffix("g-tun.com");
+  config.add_copper_hostname_suffix("ppn-test");
+  AuthAndSignResponse auth_response;
+  ASSERT_OK(auth_response.DecodeFromProto(proto, config));
+  EXPECT_EQ(auth_response.copper_controller_hostname(), "na.ppn-test");
 }
 
 TEST(PublicKeyResponse, TestSuccessful) {

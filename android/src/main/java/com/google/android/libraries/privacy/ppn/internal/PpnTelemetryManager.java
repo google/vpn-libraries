@@ -23,6 +23,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /** Singleton responsible for tracking telemetry data about how well PPN is running. */
@@ -32,12 +33,17 @@ class PpnTelemetryManager {
   private final UptimeTracker serviceTracker = new UptimeTracker();
   private final UptimeTracker connectionTracker = new UptimeTracker();
   private final UptimeTracker networkTracker = new UptimeTracker();
+  private final UptimeDurationTracker disconnectionDurationTracker = new UptimeDurationTracker();
+  private final AtomicInteger disconnectionCount = new AtomicInteger();
 
   private final ClockProvider clockProvider;
 
   // Track the state to double-check events are consistent.
   AtomicBoolean running = new AtomicBoolean(false);
   AtomicBoolean connected = new AtomicBoolean(false);
+  // !Connected can't be used as disconnected as Connected and Disconnected both will be false
+  // before the first time PPN has connected.
+  AtomicBoolean disconnected = new AtomicBoolean(false);
 
   public PpnTelemetryManager(ClockProvider clockProvider) {
     this.clockProvider = clockProvider;
@@ -65,22 +71,32 @@ class PpnTelemetryManager {
           "PPN was marked as stopped, even though it's still connected. Marking disconnected.");
     }
     running.set(false);
-    serviceTracker.stop(clockProvider.getClock());
+    Clock clock = clockProvider.getClock();
+    disconnectionDurationTracker.stop(clock);
+    serviceTracker.stop(clock);
   }
 
   /** Should be called when PPN connects. */
   public void notifyConnected() {
+    Clock clock = clockProvider.getClock();
     if (!running.get()) {
       Log.e(TAG, "PPN was marked as connected even though the service is not running.");
     }
     connected.set(true);
-    connectionTracker.start(clockProvider.getClock());
+    connectionTracker.start(clock);
+    disconnectionDurationTracker.stop(clock);
+    disconnected.set(false);
   }
 
   /** Should be called when PPN disconnects. */
   public void notifyDisconnected() {
+    if (disconnected.compareAndSet(false, true)) {
+      disconnectionCount.incrementAndGet();
+    }
     connected.set(false);
-    connectionTracker.stop(clockProvider.getClock());
+    Clock clock = clockProvider.getClock();
+    connectionTracker.stop(clock);
+    disconnectionDurationTracker.start(clock);
   }
 
   /** Should be called when any network is available, according to Xenon. */
@@ -88,7 +104,11 @@ class PpnTelemetryManager {
     if (!running.get()) {
       Log.e(TAG, "PPN was marked as network available, but not marked as running.");
     }
-    networkTracker.start(clockProvider.getClock());
+    Clock clock = clockProvider.getClock();
+    if (disconnected.get()) {
+      disconnectionDurationTracker.start(clock);
+    }
+    networkTracker.start(clock);
   }
 
   /** Should be called when no network is available, according to Xenon. */
@@ -96,7 +116,9 @@ class PpnTelemetryManager {
     if (!running.get()) {
       Log.e(TAG, "PPN was marked as network unavailable, but not marked as running.");
     }
-    networkTracker.stop(clockProvider.getClock());
+    Clock clock = clockProvider.getClock();
+    disconnectionDurationTracker.stop(clock);
+    networkTracker.stop(clock);
   }
 
   /**
@@ -113,12 +135,13 @@ class PpnTelemetryManager {
         Log.e(TAG, "Unable to collect telemetry from Krypton.", e);
       }
     }
-
     PpnTelemetryImpl.Builder builder =
         PpnTelemetryImpl.builder()
             .setPpnServiceUptime(serviceTracker.collectDuration(clock))
             .setPpnConnectionUptime(connectionTracker.collectDuration(clock))
-            .setNetworkUptime(networkTracker.collectDuration(clock));
+            .setNetworkUptime(networkTracker.collectDuration(clock))
+            .setDisconnectionDurations(disconnectionDurationTracker.collectDurations(clock))
+            .setDisconnectionCount(disconnectionCount.getAndSet(0));
 
     if (kryptonTelemetry != null) {
       builder =
