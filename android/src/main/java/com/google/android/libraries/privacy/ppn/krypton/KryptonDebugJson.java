@@ -32,6 +32,7 @@ public class KryptonDebugJson {
   public static final String SESSION_RESTART_COUNTER = "sessionRestartCounter";
   public static final String SUCCESSIVE_CONTROL_PLANE_FAILURES = "successiveControlPlaneFailures";
   public static final String SUCCESSIVE_DATA_PLANE_FAILURES = "successiveDataPlaneFailures";
+
   // Auth
   public static final String AUTH_STATE = "authState";
   public static final String AUTH_STATUS = "authStatus";
@@ -48,6 +49,13 @@ public class KryptonDebugJson {
   public static final String SESSION_PREVIOUS_TUN_FD = "sessionPreviousTunFd";
   public static final String SESSION_PREVIOUS_NETWORK_FD = "sessionPreviousNetworkFd";
   public static final String SESSION_PREVIOUS_NETWORK_TYPE = "sessionPreviousNetworkType";
+
+  // Datapath
+  public static final String DATAPATH_UPLINK_PACKETS_READ = "datapathUplinkPacketsRead";
+  public static final String DATAPATH_DOWNLINK_PACKETS_READ = "datapathDownlinkPacketsRead";
+  public static final String DATAPATH_UPLINK_PACKETS_DROPPED = "datapathUplinkPacketsDropped";
+  public static final String DATAPATH_DOWNLINK_PACKETS_DROPPED = "datapathDownlinkPacketsDropped";
+  public static final String DATAPATH_DECRYPTION_ERRORS = "datapathDecryptionErrors";
 
   /** Creates a JSON representation of KryptonDebugInfo, as supplied by the cross-platform proto. */
   public static JSONObject fromProto(KryptonDebugInfo debugInfo) {
@@ -105,6 +113,38 @@ public class KryptonDebugJson {
               json,
               SESSION_PREVIOUS_NETWORK_TYPE,
               debugInfo.getSession().getPreviousNetwork().getNetworkType().name());
+        }
+      }
+      if (debugInfo.getSession().hasDatapath()) {
+        if (debugInfo.getSession().getDatapath().hasUplinkPacketsRead()) {
+          Json.put(
+              json,
+              DATAPATH_UPLINK_PACKETS_READ,
+              debugInfo.getSession().getDatapath().getUplinkPacketsRead());
+        }
+        if (debugInfo.getSession().getDatapath().hasDownlinkPacketsRead()) {
+          Json.put(
+              json,
+              DATAPATH_DOWNLINK_PACKETS_READ,
+              debugInfo.getSession().getDatapath().getDownlinkPacketsRead());
+        }
+        if (debugInfo.getSession().getDatapath().hasUplinkPacketsDropped()) {
+          Json.put(
+              json,
+              DATAPATH_UPLINK_PACKETS_DROPPED,
+              debugInfo.getSession().getDatapath().getUplinkPacketsDropped());
+        }
+        if (debugInfo.getSession().getDatapath().hasDownlinkPacketsDropped()) {
+          Json.put(
+              json,
+              DATAPATH_DOWNLINK_PACKETS_DROPPED,
+              debugInfo.getSession().getDatapath().getDownlinkPacketsDropped());
+        }
+        if (debugInfo.getSession().getDatapath().hasDecryptionErrors()) {
+          Json.put(
+              json,
+              DATAPATH_DECRYPTION_ERRORS,
+              debugInfo.getSession().getDatapath().getDecryptionErrors());
         }
       }
     }

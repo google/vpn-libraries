@@ -14,17 +14,14 @@
 
 package com.google.android.libraries.privacy.ppn.internal;
 
-import static android.os.Looper.getMainLooper;
 import static com.google.common.truth.Truth.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.when;
 import static org.robolectric.Shadows.shadowOf;
 
 import android.accounts.Account;
@@ -38,13 +35,13 @@ import com.google.android.gms.auth.GoogleAuthUtil;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.libraries.privacy.ppn.PpnAccountManager;
-import com.google.android.libraries.privacy.ppn.PpnAccountRefresher;
 import com.google.android.libraries.privacy.ppn.PpnConnectionStatus;
 import com.google.android.libraries.privacy.ppn.PpnDisconnectionStatus;
 import com.google.android.libraries.privacy.ppn.PpnListener;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
+import com.google.android.libraries.privacy.ppn.internal.KryptonConfig.DatapathProtocol;
 import com.google.android.libraries.privacy.ppn.internal.service.PpnServiceDebugJson;
 import com.google.android.libraries.privacy.ppn.internal.service.VpnManager;
 import com.google.android.libraries.privacy.ppn.krypton.Krypton;
@@ -79,7 +76,6 @@ public class PpnImplTest {
   @Rule public Mocks mocks = new Mocks(this);
 
   @Mock private PpnAccountManager mockAccountManager;
-  @Mock private PpnAccountRefresher mockAccountRefresher;
   @Mock private Krypton mockKrypton;
   @Mock private Xenon mockXenon;
   @Mock private PpnListener mockPpnListener;
@@ -95,9 +91,6 @@ public class PpnImplTest {
     service = Robolectric.setupService(VpnService.class);
     ShadowGoogleAuthUtil.setAvailableGoogleAccounts(TEST_ACCOUNT_NAME);
     PpnLibrary.clear();
-
-    when(mockAccountManager.createAccountRefresher(any(), any(), anyString(), anyString()))
-        .thenReturn(mockAccountRefresher);
 
     WorkManagerTestInitHelper.initializeTestWorkManager(
         ApplicationProvider.getApplicationContext());
@@ -131,10 +124,10 @@ public class PpnImplTest {
     // Set up krypton
     TaskCompletionSource<Void> ppnStarted = new TaskCompletionSource<>();
     doAnswer(
-        invocation -> {
-          ppnStarted.trySetResult(null);
-          return null;
-        })
+            invocation -> {
+              ppnStarted.trySetResult(null);
+              return null;
+            })
         .when(mockKrypton)
         .start(any());
     // Start the service, then wait for Krypton to get called.
@@ -241,8 +234,7 @@ public class PpnImplTest {
     String expectedZincPublicSigningUrl = "ZINC_PSK_URL";
     String expectedBrassUrl = "BRASS_URL";
     String expectedServiceType = "g1";
-    boolean expectedIpsecDatapath = true;
-    boolean expectedBridgeOverPpn = true;
+    DatapathProtocol expectedDatapathProtocol = DatapathProtocol.IPSEC;
     int expectedCipherSuiteKeyLength = 256;
 
     PpnOptions options =
@@ -250,8 +242,7 @@ public class PpnImplTest {
             .setZincUrl(expectedZincUrl)
             .setZincPublicSigningKeyUrl(expectedZincPublicSigningUrl)
             .setBrassUrl(expectedBrassUrl)
-            .setIpSecEnabled(expectedIpsecDatapath)
-            .setBridgeOnPpnEnabled(expectedBridgeOverPpn)
+            .setDatapathProtocol(PpnOptions.DatapathProtocol.IPSEC)
             .setBridgeKeyLength(expectedCipherSuiteKeyLength)
             .setAccountManager(mockAccountManager)
             .build();
@@ -282,8 +273,8 @@ public class PpnImplTest {
     assertThat(config.getZincPublicSigningKeyUrl()).isEqualTo(expectedZincPublicSigningUrl);
     assertThat(config.getBrassUrl()).isEqualTo(expectedBrassUrl);
     assertThat(config.getServiceType()).isEqualTo(expectedServiceType);
-    assertThat(config.getIpsecDatapath()).isEqualTo(expectedIpsecDatapath);
-    assertThat(config.getBridgeOverPpn()).isEqualTo(expectedBridgeOverPpn);
+    assertThat(config.hasDatapathProtocol()).isTrue();
+    assertThat(config.getDatapathProtocol()).isEqualTo(expectedDatapathProtocol);
     assertThat(config.getCipherSuiteKeyLength()).isEqualTo(expectedCipherSuiteKeyLength);
 
     // Stop Krypton.
@@ -296,38 +287,13 @@ public class PpnImplTest {
   }
 
   @Test
-  public void onStartService_startsAccountRefresher() throws Exception {
-    PpnOptions options = new PpnOptions.Builder().setAccountManager(mockAccountManager).build();
-    PpnImpl ppn = createPpn(options);
-
-    // Call start to set the account.
-    ppn.start(account);
-
-    // Start the service.
-    await(ppn.onStartService(service));
-    verify(mockAccountRefresher).start();
-
-    // Stop PPN.
-    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
-    ppn.onStopService();
-    shadowOf(getMainLooper()).idle();
-
-    // Verify that AccountRefresher is stopped when PPN is stopped.
-    verify(mockAccountRefresher).stop();
-    shadowOf(getMainLooper()).idle();
-  }
-
-  @Test
   public void stop_stopsKrypton() throws Exception {
     String expectedZincUrl = "ZINC_URL";
     String expectedBrassUrl = "BRASS_URL";
     String expectedServiceType = "g1";
 
     PpnOptions options =
-        new PpnOptions.Builder()
-            .setZincUrl(expectedZincUrl)
-            .setBrassUrl(expectedBrassUrl)
-            .build();
+        new PpnOptions.Builder().setZincUrl(expectedZincUrl).setBrassUrl(expectedBrassUrl).build();
     PpnImpl ppn = createPpn(options);
 
     // Call start to set the account.
@@ -533,10 +499,7 @@ public class PpnImplTest {
     doThrow(new KryptonException("Test")).when(mockKrypton).stop();
 
     PpnOptions options =
-        new PpnOptions.Builder()
-            .setZincUrl(expectedZincUrl)
-            .setBrassUrl(expectedBrassUrl)
-            .build();
+        new PpnOptions.Builder().setZincUrl(expectedZincUrl).setBrassUrl(expectedBrassUrl).build();
     PpnImpl ppn = createPpn(options);
 
     // Call start to set the account.
@@ -636,16 +599,20 @@ public class PpnImplTest {
             .setZincOAuthScopes("c")
             .setZincServiceType("d")
             .setBridgeKeyLength(128)
-            .setBridgeOnPpnEnabled(true)
+            .setDatapathProtocol(PpnOptions.DatapathProtocol.BRIDGE)
             .setBlindSigningEnabled(true)
             .setShouldInstallKryptonCrashSignalHandler(true)
             .setCopperControllerAddress("e")
+            .setCopperHostnameOverride("g")
             .setCopperHostnameSuffix(Arrays.asList("f"))
-            .setIpSecEnabled(true)
             .setRekeyDuration(Duration.ofMillis(1005))
             .setReconnectorInitialTimeToReconnect(Duration.ofMillis(2))
             .setReconnectorSessionConnectionDeadline(Duration.ofMillis(4))
             .setSafeDisconnectEnabled(true)
+            .setIPv6Enabled(false)
+            .setIntegrityAttestationEnabled(true)
+            .setApiKey("apiKey")
+            .setAttachOauthTokenAsHeaderEnabled(true)
             .build();
 
     KryptonConfig config = PpnImpl.createKryptonConfigBuilder(options).build();
@@ -655,19 +622,23 @@ public class PpnImplTest {
     assertThat(config.getBrassUrl()).isEqualTo("b");
     assertThat(config.getServiceType()).isEqualTo("d");
     assertThat(config.getCipherSuiteKeyLength()).isEqualTo(128);
-    assertThat(config.getBridgeOverPpn()).isTrue();
     assertThat(config.getEnableBlindSigning()).isTrue();
-    assertThat(config.getInstallCrashSignalHandler()).isTrue();
     assertThat(config.getCopperControllerAddress()).isEqualTo("e");
+    assertThat(config.getCopperHostnameOverride()).isEqualTo("g");
     assertThat(config.getCopperHostnameSuffixCount()).isEqualTo(1);
     assertThat(config.getCopperHostnameSuffix(0)).isEqualTo("f");
-    assertThat(config.getIpsecDatapath()).isTrue();
+    assertThat(config.hasDatapathProtocol()).isTrue();
+    assertThat(config.getDatapathProtocol()).isEqualTo(DatapathProtocol.BRIDGE);
     assertThat(config.getRekeyDuration().getSeconds()).isEqualTo(1);
     assertThat(config.getRekeyDuration().getNanos()).isEqualTo(5000000);
     assertThat(config.hasReconnectorConfig()).isTrue();
     assertThat(config.getReconnectorConfig().getInitialTimeToReconnectMsec()).isEqualTo(2);
     assertThat(config.getReconnectorConfig().getSessionConnectionDeadlineMsec()).isEqualTo(4);
     assertThat(config.getSafeDisconnectEnabled()).isTrue();
+    assertThat(config.getIpv6Enabled()).isFalse();
+    assertThat(config.getIntegrityAttestationEnabled()).isTrue();
+    assertThat(config.getApiKey()).isEqualTo("apiKey");
+    assertThat(config.getAttachOauthTokenAsHeader()).isTrue();
   }
 
   @Test
@@ -680,18 +651,43 @@ public class PpnImplTest {
     assertThat(config.getBrassUrl()).isNotEmpty();
     assertThat(config.getServiceType()).isNotEmpty();
     assertThat(config.hasCipherSuiteKeyLength()).isFalse();
-    assertThat(config.hasBridgeOverPpn()).isFalse();
     assertThat(config.hasEnableBlindSigning()).isFalse();
-    assertThat(config.hasInstallCrashSignalHandler()).isFalse();
     assertThat(config.hasCopperControllerAddress()).isFalse();
+    assertThat(config.hasCopperHostnameOverride()).isFalse();
     assertThat(config.getCopperHostnameSuffixCount()).isEqualTo(1);
     assertThat(config.getCopperHostnameSuffix(0)).isNotEmpty();
-    assertThat(config.hasIpsecDatapath()).isFalse();
+    assertThat(config.hasDatapathProtocol()).isFalse();
     assertThat(config.hasRekeyDuration()).isFalse();
     assertThat(config.hasReconnectorConfig()).isTrue();
     assertThat(config.getReconnectorConfig().hasInitialTimeToReconnectMsec()).isFalse();
     assertThat(config.getReconnectorConfig().hasSessionConnectionDeadlineMsec()).isFalse();
     assertThat(config.getSafeDisconnectEnabled()).isFalse();
+    assertThat(config.getIpv6Enabled()).isTrue();
+    assertThat(config.getIntegrityAttestationEnabled()).isFalse();
+    assertThat(config.getApiKey()).isEmpty();
+    assertThat(config.getAttachOauthTokenAsHeader()).isFalse();
+  }
+
+  @Test
+  public void ipsecProtocolInPpnOptions_setsIpsecProtocolInKryptonConfig() {
+    PpnOptions options =
+        new PpnOptions.Builder().setDatapathProtocol(PpnOptions.DatapathProtocol.IPSEC).build();
+
+    KryptonConfig config = PpnImpl.createKryptonConfigBuilder(options).build();
+
+    assertThat(config.hasDatapathProtocol()).isTrue();
+    assertThat(config.getDatapathProtocol()).isEqualTo(DatapathProtocol.IPSEC);
+  }
+
+  @Test
+  public void bridgeProtocolInPpnOptions_setsBridgeProtocolInKryptonConfig() {
+    PpnOptions options =
+        new PpnOptions.Builder().setDatapathProtocol(PpnOptions.DatapathProtocol.BRIDGE).build();
+
+    KryptonConfig config = PpnImpl.createKryptonConfigBuilder(options).build();
+
+    assertThat(config.hasDatapathProtocol()).isTrue();
+    assertThat(config.getDatapathProtocol()).isEqualTo(DatapathProtocol.BRIDGE);
   }
 
   @Test

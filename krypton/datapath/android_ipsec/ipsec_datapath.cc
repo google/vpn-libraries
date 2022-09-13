@@ -1,6 +1,6 @@
 // Copyright 2021 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the "LICENSE");
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -38,9 +38,8 @@ namespace krypton {
 namespace datapath {
 namespace android {
 
-absl::Status IpSecDatapath::Start(
-    std::shared_ptr<AddEgressResponse> /*egress_response*/,
-    const TransformParams& params) {
+absl::Status IpSecDatapath::Start(const AddEgressResponse& /*egress_response*/,
+                                  const TransformParams& params) {
   DCHECK(notification_ != nullptr)
       << "Notification needs to be set before calling |Start|";
   if (!params.has_ipsec()) {
@@ -61,18 +60,19 @@ void IpSecDatapath::Stop() {
 
 absl::Status IpSecDatapath::SwitchNetwork(
     uint32_t session_id, const Endpoint& endpoint,
-    absl::optional<NetworkInfo> network_info, PacketPipe* tunnel,
-    int /*counter*/) {
+    std::optional<NetworkInfo> network_info, int /*counter*/) {
   absl::MutexLock l(&mutex_);
 
   if (!network_info) {
     LOG(ERROR) << "network_info is unset";
     return absl::InvalidArgumentError("network_info is unset");
   }
+  auto tunnel = vpn_service_->GetTunnel();
   if (tunnel == nullptr) {
     LOG(ERROR) << "tunnel is null";
     return absl::InvalidArgumentError("tunnel is null");
   }
+  LOG(INFO) << "SwitchNetwork using Tunnel: " << tunnel->DebugString();
 
   // TODO: There may still be error notifications in the
   // LooperThread that will be processed after the packet forwarder has been
@@ -86,12 +86,20 @@ absl::Status IpSecDatapath::SwitchNetwork(
   }
   key_material_->set_uplink_spi(session_id);
 
-  PPN_ASSIGN_OR_RETURN(
-      network_pipe_, vpn_service_->CreateNetworkPipe(*network_info, endpoint));
-  if (network_pipe_ == nullptr) {
+  auto network_pipe = vpn_service_->CreateNetworkPipe(*network_info, endpoint);
+  if (!network_pipe.ok()) {
+    auto status = network_pipe.status();
+    auto* notification = notification_;
+    LOG(ERROR) << "Unable to create network pipe: " << status;
+    notification_thread_->Post(
+        [notification, status]() { notification->DatapathFailed(status); });
+    return absl::OkStatus();
+  }
+
+  if (*network_pipe == nullptr) {
     return absl::InternalError("got a null network socket");
   }
-  PPN_ASSIGN_OR_RETURN(int network_fd, network_pipe_->GetFd());
+  PPN_ASSIGN_OR_RETURN(int network_fd, (*network_pipe)->GetFd());
 
   key_material_->set_network_id(network_info->network_id());
   key_material_->set_network_fd(network_fd);
@@ -104,7 +112,7 @@ absl::Status IpSecDatapath::SwitchNetwork(
   } else {
     return absl::InternalError("unsupported address family for endpoint");
   }
-  LOG(INFO) << "Configuring IpsecManager with fd=" << network_fd
+  LOG(INFO) << "Configuring IpSecManager with fd=" << network_fd
             << " network=" << network_info->network_id()
             << " uplink_spi=" << key_material_->uplink_spi()
             << " downlink_spi=" << key_material_->downlink_spi()
@@ -114,7 +122,9 @@ absl::Status IpSecDatapath::SwitchNetwork(
 
   LOG(INFO) << "Done configuring IpSecManager.";
 
-  forwarder_ = absl::make_unique<PacketForwarder>(
+  network_pipe_ = *std::move(network_pipe);
+
+  forwarder_ = std::make_unique<PacketForwarder>(
       /*encryptor = */ nullptr,
       /*decryptor = */ nullptr, tunnel, network_pipe_.get(),
       notification_thread_, this);
@@ -179,6 +189,13 @@ void IpSecDatapath::PacketForwarderConnected() {
   auto* notification = notification_;
   notification_thread_->Post(
       [notification]() { notification->DatapathEstablished(); });
+}
+
+void IpSecDatapath::GetDebugInfo(DatapathDebugInfo* debug_info) {
+  absl::MutexLock l(&mutex_);
+  if (forwarder_ != nullptr) {
+    forwarder_->GetDebugInfo(debug_info);
+  }
 }
 
 }  // namespace android

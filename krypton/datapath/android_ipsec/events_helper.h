@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -16,6 +16,8 @@
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_EVENTS_HELPER_H_
 
 #include <sys/epoll.h>
+
+#include <string>
 
 #include "third_party/absl/status/status.h"
 
@@ -32,7 +34,10 @@ class EventsHelper {
   using Event = epoll_event;
 
   EventsHelper();
-  virtual ~EventsHelper();
+  ~EventsHelper();
+
+  EventsHelper(const EventsHelper&) = delete;
+  EventsHelper(EventsHelper&&) = delete;
 
   // Registers interest in the given FD.
   // Bit mask composed by ORing together events that are interested
@@ -46,8 +51,8 @@ class EventsHelper {
   // If timeout, num_events is 0
   // If timeout_ms is 0, the call is non-blocking.
   // If timeout_ms is -1, there is no timeout.
-  virtual absl::Status Wait(Event events[], int max_events, int timeout_ms,
-                            int* num_events);
+  absl::Status Wait(Event events[], int max_events, int timeout_ms,
+                    int* num_events);
 
   // Static methods that helps in events.
 

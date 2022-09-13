@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -38,7 +38,7 @@
 
 namespace privacy {
 namespace krypton {
-using ::testing::_;
+
 using ::testing::Eq;
 using ::testing::EqualsProto;
 using ::testing::InvokeWithoutArgs;
@@ -56,44 +56,48 @@ class EgressManagerTest : public ::testing::Test {
  public:
   MockEgressManagerNotification mock_notification_;
   KryptonConfig config_;
-  crypto::SessionCrypto crypto_{&config_};
+  crypto::SessionCrypto crypto_{config_};
 
-  std::shared_ptr<AuthAndSignResponse> BuildFakeAuthResponse() {
-    auto fake_auth_response = std::make_shared<AuthAndSignResponse>();
+  void SetUp() override {
+    config_.set_brass_url("http://www.example.com/addegress");
+    config_.add_copper_hostname_suffix("g-tun.com");
+  }
 
+  absl::StatusOr<AuthAndSignResponse> BuildFakeAuthResponse() {
     // Preconstruct some basic auth response parameters and construct json_body.
     HttpResponse response;
     response.mutable_status()->set_code(200);
     response.mutable_status()->set_message("OK");
-    response.set_json_body(R"json({"jwt": "some_jwt_token"})json");
+    response.set_json_body(R"json({"blinded_token_signature": [""]})json");
 
-    KryptonConfig config;
-    config.add_copper_hostname_suffix("g-tun.com");
-    EXPECT_OK(fake_auth_response->DecodeFromProto(response, config));
-    return fake_auth_response;
+    return AuthAndSignResponse::FromProto(response, config_);
   }
 
-  HttpRequest buildAddEgressRequestPpnIpSec(absl::string_view url,
+  HttpRequest BuildAddEgressRequestPpnIpSec(absl::string_view url,
                                             uint32_t spi) {
     Json::FastWriter writer;
     HttpRequest request;
     request.set_url(url);
     request.set_json_body(
-        writer.write(buildJsonBodyForAddEgressRequestPpnIpSec(spi)));
+        writer.write(BuildJsonBodyForAddEgressRequestPpnIpSec(spi)));
     return request;
   }
 
   // Request from AddEgress.
-  Json::Value buildJsonBodyForAddEgressRequestPpnIpSec(uint32_t spi) {
+  Json::Value BuildJsonBodyForAddEgressRequestPpnIpSec(uint32_t spi) {
     Json::Value expected;
     Json::Reader reader;
+
     reader.parse(R"string({
       "ppn" : {
       },
-      "unblinded_token" : "some_jwt_token",
+      "is_unblinded_token": true,
+      "unblinded_token" : "",
+      "unblinded_token_signature": "",
       "region_token_and_signature" : "",
-   })string",
+    })string",
                  expected);
+
     auto keys = crypto_.GetMyKeyMaterial();
     expected[JsonKeys::kPpn][JsonKeys::kClientNonce] = keys.nonce;
     expected[JsonKeys::kPpn][JsonKeys::kClientPublicValue] = keys.public_value;
@@ -109,16 +113,8 @@ class EgressManagerTest : public ::testing::Test {
     return expected;
   }
 
-  // Add Egress response that doesn't contain any data path.
-  HttpResponse buildAddEgressResponseWithNoDataPath() {
-    HttpResponse response;
-    response.mutable_status()->set_code(200);
-    response.mutable_status()->set_message("OK");
-    return response;
-  }
-
-  HttpResponse buildAddEgressResponseForPpnIpSec() {
-    crypto::SessionCrypto server_crypto(&config_);
+  HttpResponse BuildAddEgressResponseForPpnIpSec() {
+    crypto::SessionCrypto server_crypto(config_);
     auto keys = crypto_.GetMyKeyMaterial();
     Json::Reader reader;
     Json::Value json_body;
@@ -152,82 +148,19 @@ class EgressManagerTest : public ::testing::Test {
   utils::LooperThread looper_thread_{"EgressManager Test"};
 };
 
-TEST_F(EgressManagerTest, SuccessfulEgress) {
-  MockHttpFetcher http_fetcher;
-
-  EgressManager egress_manager("http://www.example.com/addegress",
-                               &http_fetcher, &looper_thread_);
-  egress_manager.RegisterNotificationHandler(&mock_notification_);
-
-  auto fake_auth_response = BuildFakeAuthResponse();
-  absl::Notification http_fetcher_done;
-
-  EXPECT_CALL(http_fetcher, PostJson(EqualsProto(R"pb(
-                url: "http://www.example.com/addegress"
-                json_body: "{\"unblinded_token\":\"some_jwt_token\"}\n"
-              )pb")))
-      .WillOnce(Return(buildAddEgressResponseForPpnIpSec()));
-
-  EXPECT_CALL(mock_notification_, EgressAvailable)
-      .WillOnce(
-          InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
-
-  EXPECT_OK(egress_manager.GetEgressNodeForBridge(fake_auth_response));
-
-  http_fetcher_done.WaitForNotification();
-
-  EXPECT_THAT(egress_manager.GetState(),
-              Eq(EgressManager::State::kEgressSessionCreated));
-
-  EgressDebugInfo debug_info;
-  egress_manager.GetDebugInfo(&debug_info);
-  EXPECT_EQ(debug_info.latency().size(), 1);
-  EXPECT_GT(debug_info.latency(0).nanos(), 0);
-  egress_manager.Stop();
-}
-
-TEST_F(EgressManagerTest, TestNoDataPath) {
-  MockHttpFetcher http_fetcher;
-  EgressManager egress_manager("http://www.example.com/addegress",
-                               &http_fetcher, &looper_thread_);
-  egress_manager.RegisterNotificationHandler(&mock_notification_);
-  auto fake_auth_response = BuildFakeAuthResponse();
-  absl::Notification http_fetcher_done;
-
-  EXPECT_CALL(http_fetcher, PostJson(EqualsProto(R"pb(
-                url: "http://www.example.com/addegress",
-                json_body: "{\"unblinded_token\":\"some_jwt_token\"}\n"
-              )pb")))
-      .WillOnce(Return(buildAddEgressResponseWithNoDataPath()));
-
-  EXPECT_CALL(mock_notification_, EgressUnavailable(_))
-      .WillOnce(
-          InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
-
-  EXPECT_OK(egress_manager.GetEgressNodeForBridge(fake_auth_response));
-
-  http_fetcher_done.WaitForNotification();
-
-  EXPECT_THAT(egress_manager.GetState(),
-              Eq(EgressManager::State::kEgressSessionError));
-
-  egress_manager.Stop();
-}
-
 TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
   MockHttpFetcher http_fetcher;
 
-  EgressManager egress_manager("http://www.example.com/addegress",
-                               &http_fetcher, &looper_thread_);
+  EgressManager egress_manager(config_, &http_fetcher, &looper_thread_);
   egress_manager.RegisterNotificationHandler(&mock_notification_);
 
-  auto fake_auth_response = BuildFakeAuthResponse();
+  ASSERT_OK_AND_ASSIGN(auto fake_auth_response, BuildFakeAuthResponse());
   absl::Notification http_fetcher_done;
 
   EXPECT_CALL(http_fetcher,
-              PostJson(EqualsProto(buildAddEgressRequestPpnIpSec(
+              PostJson(EqualsProto(BuildAddEgressRequestPpnIpSec(
                   "http://www.example.com/addegress", crypto_.downlink_spi()))))
-      .WillOnce(Return(buildAddEgressResponseForPpnIpSec()));
+      .WillOnce(Return(BuildAddEgressResponseForPpnIpSec()));
 
   EXPECT_CALL(mock_notification_, EgressAvailable)
       .WillOnce(

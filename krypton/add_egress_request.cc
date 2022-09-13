@@ -1,22 +1,18 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 #include "privacy/net/krypton/add_egress_request.h"
-
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <netinet/in.h>
 
 #include <memory>
 #include <optional>
@@ -39,29 +35,12 @@
 namespace privacy {
 namespace krypton {
 namespace {
+
 constexpr int kCopperPort = 1849;
 
-void AddJwtTokenAsUnblindedToken(
-    Json::Value& json_body,
-    std::shared_ptr<AuthAndSignResponse> auth_response) {
-  if (auth_response->blinded_token_signatures().empty()) {
-    LOG(INFO) << "Using JWT token as there are no blinded tokens";
-    json_body[JsonKeys::kUnblindedToken] = auth_response->jwt_token();
-    return;
-  }
-}
 }  // namespace
 
-// Returns the corresponding headers and json_body separately.
-absl::optional<HttpRequest> AddEgressRequest::EncodeToProtoForBridge(
-    std::shared_ptr<AuthAndSignResponse> auth_response) {
-  HttpRequest request;
-  Json::FastWriter writer;
-  request.set_json_body(writer.write(BuildBodyJson(std::move(auth_response))));
-  return request;
-}
-
-absl::optional<HttpRequest> AddEgressRequest::EncodeToProtoForPpn(
+std::optional<HttpRequest> AddEgressRequest::EncodeToProtoForPpn(
     const PpnDataplaneRequestParams& params) {
   HttpRequest request;
   Json::FastWriter writer;
@@ -70,30 +49,15 @@ absl::optional<HttpRequest> AddEgressRequest::EncodeToProtoForPpn(
 }
 
 Json::Value AddEgressRequest::BuildBodyJson(
-    std::shared_ptr<AuthAndSignResponse> auth_response) {
-  Json::Value json_body;
-  AddJwtTokenAsUnblindedToken(json_body, auth_response);
-
-  Json::Value bridge;
-  bridge[JsonKeys::kOperation] = "SESSION_START";
-
-  return json_body;
-}
-
-Json::Value AddEgressRequest::BuildBodyJson(
     const PpnDataplaneRequestParams& params) {
   Json::Value json_body;
   Json::Value ppn;
 
   // Add blind stuff.
-  if (!params.blind_token_enabled) {
-    AddJwtTokenAsUnblindedToken(json_body, params.auth_response);
-  } else {
-    json_body[JsonKeys::kIsUnblindedToken] = true;
-    json_body[JsonKeys::kUnblindedToken] = params.blind_message;
-    json_body[JsonKeys::kUnblindedTokenSignature] =
-        params.unblinded_token_signature;
-  }
+  json_body[JsonKeys::kIsUnblindedToken] = true;
+  json_body[JsonKeys::kUnblindedToken] = params.blind_message;
+  json_body[JsonKeys::kUnblindedTokenSignature] =
+      params.unblinded_token_signature;
 
   json_body[JsonKeys::kRegionTokenAndSignature] =
       params.region_token_and_signature;

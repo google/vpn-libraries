@@ -1,6 +1,6 @@
 // Copyright 2021 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the "LICENSE");
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
@@ -84,6 +85,14 @@ TEST_F(PacketTest, TestNewData) {
   memcpy(data, "foo", 3);
   // If we don't free the packet here, the heapchecker will fail the test.
   Packet packet(data, 3, IPProtocol::kIPv4, [data]() { delete[] data; });
+}
+
+TEST_F(PacketTest, CleansUpOldDataOnAssignment) {
+  bool cleaned_up = false;
+  Packet old_packet(nullptr, 0, IPProtocol::kUnknown,
+                    [&cleaned_up]() { cleaned_up = true; });
+  old_packet = Packet();
+  ASSERT_TRUE(cleaned_up);
 }
 
 }  // namespace

@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -16,8 +16,11 @@
 #define PRIVACY_NET_KRYPTON_UTILS_LOOPER_H_
 
 #include <deque>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
+#include <thread>  //NOLINT
 
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/synchronization/mutex.h"
@@ -30,7 +33,7 @@ namespace utils {
 // is stopped and joined.
 class LooperThread {
  public:
-  explicit LooperThread(const std::string& name);
+  explicit LooperThread(absl::string_view name);
 
   ~LooperThread();
 
@@ -60,10 +63,10 @@ class LooperThread {
 
   // Returns the next closure on the queue. Will block until one is available.
   // Returns nullopt if the queue is empty and lame_duck_ is true.
-  absl::optional<std::function<void()>> Dequeue();
+  std::optional<std::function<void()>> Dequeue();
 
   // Returns the next cleanup handler on the queue. Returns nullopt if none.
-  absl::optional<std::function<void()>> DequeueCleanupHandler();
+  std::optional<std::function<void()>> DequeueCleanupHandler();
 
   // Runs all of the cleanup handler closures that have been added.
   void RunAllCleanupHandlers();

@@ -15,7 +15,9 @@
 package com.google.android.libraries.privacy.ppn;
 
 import android.content.Context;
+import com.google.android.libraries.privacy.ppn.PpnOptions.DatapathProtocol;
 import com.google.android.libraries.privacy.ppn.internal.PpnImpl;
+import com.google.android.libraries.privacy.ppn.neon.IkePpnImpl;
 
 /** PpnFactory creates instances of Ppn. */
 public class PpnFactory {
@@ -23,6 +25,10 @@ public class PpnFactory {
 
   /** Returns a new instance of the Ppn library. */
   public static Ppn create(Context context, PpnOptions options) {
+    if (options.getDatapathProtocol().isPresent()
+        && options.getDatapathProtocol().get() == DatapathProtocol.IKE) {
+      return new IkePpnImpl(context, options);
+    }
     return new PpnImpl(context, options);
   }
 }

@@ -50,7 +50,6 @@ import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkCallback;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener.NetworkUnavailableReason;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkManager;
-import com.google.testing.mockito.Mocks;
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.time.Duration;
@@ -58,6 +57,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Rule;
@@ -65,6 +65,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowConnectivityManager;
@@ -81,7 +83,7 @@ public final class PpnNetworkManagerImplTest {
 
   private static final String CONNECTIVITY_CHECK_URL = "http://gstatic_internet_check_url";
 
-  @Rule public final Mocks mocks = new Mocks(this);
+  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
   @Mock private PpnNetworkListener mockListener;
   @Mock private WifiInfo mockWifiInfo;
   @Mock private NetworkInfo wifiNetworkInfo;
@@ -875,6 +877,41 @@ public final class PpnNetworkManagerImplTest {
     JSONObject debugInfo = ppnNetworkManager.getDebugJson();
 
     assertThat(debugInfo.optJSONArray(XenonDebugJson.AVAILABLE_NETWORKS).length()).isEqualTo(2);
+    assertThat(debugInfo.optJSONArray(XenonDebugJson.PENDING_NETWORKS)).isNull();
+    assertThat(
+            debugInfo.optJSONObject(XenonDebugJson.ACTIVE_NETWORK).opt(XenonDebugJson.NETWORK_NAME))
+        .isEqualTo(wifiAndroidNetwork.toString());
+    assertThat(
+            debugInfo.optJSONObject(XenonDebugJson.ACTIVE_NETWORK).opt(XenonDebugJson.NETWORK_TYPE))
+        .isEqualTo(NetworkType.WIFI.name());
+  }
+
+  @Test
+  public void getDebugInfo_pendingNetworkIsPopulated() throws JSONException {
+    await(
+        ppnNetworkManager.handleNetworkAvailable(
+            new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR)));
+    await(
+        ppnNetworkManager.handleNetworkAvailable(
+            new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI)));
+    shadowOf(Looper.getMainLooper()).idle();
+
+    JSONObject debugInfo = ppnNetworkManager.getDebugJson();
+
+    assertThat(debugInfo.optJSONArray(XenonDebugJson.AVAILABLE_NETWORKS).length()).isEqualTo(1);
+    assertThat(debugInfo.optJSONArray(XenonDebugJson.PENDING_NETWORKS).length()).isEqualTo(1);
+    assertThat(
+            debugInfo
+                .optJSONArray(XenonDebugJson.PENDING_NETWORKS)
+                .getJSONObject(0)
+                .opt(XenonDebugJson.NETWORK_NAME))
+        .isEqualTo(cellAndroidNetwork.toString());
+    assertThat(
+            debugInfo
+                .optJSONArray(XenonDebugJson.PENDING_NETWORKS)
+                .getJSONObject(0)
+                .opt(XenonDebugJson.NETWORK_TYPE))
+        .isEqualTo(NetworkType.CELLULAR.name());
     assertThat(
             debugInfo.optJSONObject(XenonDebugJson.ACTIVE_NETWORK).opt(XenonDebugJson.NETWORK_NAME))
         .isEqualTo(wifiAndroidNetwork.toString());

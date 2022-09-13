@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -40,9 +40,8 @@ message ReconnectorConfig {
   optional uint32 datapath_watchdog_timer_msec = 5 [default = 2000];  // 2 secs.
 }
 
-// NextId:15;
 message KryptonConfig {
-  reserved 13;
+  reserved 5, 7, 10, 13, 24;
 
   optional string zinc_url = 1;
   optional string zinc_public_signing_key_url = 11;
@@ -50,13 +49,6 @@ message KryptonConfig {
   optional string service_type = 3;
 
   optional ReconnectorConfig reconnector_config = 4;
-
-  // Only one of ipsec_datapath or bridge_over_ppn be specified.
-  // Deprecate this and use datapath variable.
-  // Use IpSec datapath.
-  optional bool ipsec_datapath = 5 [deprecated = true, default = true];
-  // Running bridge over PPN.
-  optional bool bridge_over_ppn = 7 [deprecated = true, default = false];
 
   // Could be DNS address or v4/v6 address of the copper controller.
   optional string copper_controller_address = 6;
@@ -73,9 +65,6 @@ message KryptonConfig {
   // Duration between Rekeys. Defaulted to 1 day = 24 * 3600
   optional google.protobuf.Duration rekey_duration = 9;
 
-  // Whether Krypton should install a signal handler to intercept crashes and
-  // notify listeners before crashing.
-  optional bool install_crash_signal_handler = 10 [default = false];
   optional bool enable_blind_signing = 12 [default = true];
 
   // Whether Krypton should enable Safe Disconnect on startup.
@@ -85,6 +74,32 @@ message KryptonConfig {
     DEFAULT = 0;
     IPSEC = 1;
     BRIDGE = 2;
+    IKE = 3;
   }
   optional DatapathProtocol datapath_protocol = 15 [default = IPSEC];
+
+  // Whether or not periodic health check is enabled.
+  optional bool periodic_health_check_enabled = 18;
+  // Duration between periodic health check. Defaulted to 1 hour.
+  optional google.protobuf.Duration periodic_health_check_duration = 19;
+
+  // Whether or not to allow PPN to use IPv6 to connect to copper. If this is
+  // false, then PPN will always use IPv4.
+  optional bool ipv6_enabled = 20 [default = true];
+
+  // In iOS, whether to use the datapath implemented in Objective-C++, rather
+  // than the cross-platform C++ datapath.
+  optional bool use_objc_datapath = 21 [default = true];
+  // In iOS, whether to run the uplink path in parallel, as opposed to serially.
+  optional bool ios_uplink_parallelism_enabled = 22 [default = true];
+
+  // Whether or not to attest during auth and rekey step.
+  optional bool integrity_attestation_enabled = 23 [default = false];
+
+  // Google Cloud API key used to differentiate client types
+  optional string api_key = 25;
+
+  // If true, attaches the OAuth token as the "Authorization" header.
+  // If false, OAuth token is passed in the json body.
+  optional bool attach_oauth_token_as_header = 26 [default = false];
 }

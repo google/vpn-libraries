@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -68,13 +68,14 @@ std::string StateString(EgressManager::State state) {
 }
 }  // namespace
 
-EgressManager::EgressManager(absl::string_view brass_url,
+EgressManager::EgressManager(const KryptonConfig& config,
                              HttpFetcherInterface* http_fetcher,
                              utils::LooperThread* notification_thread)
-    : http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
+    : config_(config),
+      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
                     ABSL_DIE_IF_NULL(notification_thread)),
       notification_thread_(notification_thread),
-      brass_url_(brass_url),
+      brass_url_(config.brass_url()),
       state_(State::kInitialized) {}
 
 EgressManager::~EgressManager() {
@@ -91,13 +92,13 @@ void EgressManager::Stop() {
   http_fetcher_.CancelAsync();
 }
 
-absl::StatusOr<std::shared_ptr<AddEgressResponse>>
-EgressManager::GetEgressSessionDetails() const {
+absl::StatusOr<AddEgressResponse> EgressManager::GetEgressSessionDetails()
+    const {
   absl::MutexLock lock(&mutex_);
-  if (egress_node_response_ == nullptr) {
+  if (egress_node_response_ == std::nullopt) {
     return absl::NotFoundError("No Egress response found");
   }
-  return egress_node_response_;
+  return *egress_node_response_;
 }
 
 // TODO: Refactor egress_manager error status handling to work the same
@@ -125,24 +126,27 @@ void EgressManager::SetState(State state) {
 }
 
 absl::Status EgressManager::SaveEgressDetails(
-    std::shared_ptr<AddEgressResponse> egress_response) {
+    const AddEgressResponse& egress_response) {
+  // If this is an IKE response, we don't need to save the keys here.
+  if (config_.datapath_protocol() == KryptonConfig::IKE) {
+    return absl::OkStatus();
+  }
+
   // Store the key parameters for the response.
-
   PPN_ASSIGN_OR_RETURN(auto ppn_data_plane_response,
-                       egress_response->ppn_dataplane_response());
+                       egress_response.ppn_dataplane_response());
 
-  if (ppn_data_plane_response->uplink_spi() == 0) {
+  if (ppn_data_plane_response.uplink_spi() == 0) {
     return absl::InvalidArgumentError(
         "PPN dataplane response missing uplink SPI.");
   }
-  uplink_spi_ = ppn_data_plane_response->uplink_spi();
+  uplink_spi_ = ppn_data_plane_response.uplink_spi();
 
-  if (ppn_data_plane_response->egress_point_sock_addr_size() == 0) {
+  if (ppn_data_plane_response.egress_point_sock_addr_size() == 0) {
     return absl::InvalidArgumentError(
         "PPN dataplane response missing uplink SPI.");
   }
-  auto* egress_nodes =
-      ppn_data_plane_response->mutable_egress_point_sock_addr();
+  auto* egress_nodes = ppn_data_plane_response.mutable_egress_point_sock_addr();
   egress_node_sock_addresses_.clear();
   std::copy(egress_nodes->begin(), egress_nodes->end(),
             std::back_inserter(egress_node_sock_addresses_));
@@ -173,33 +177,32 @@ void EgressManager::DecodeAddEgressResponse(bool is_rekey,
     return;
   }
 
-  auto add_egress_response = std::make_shared<AddEgressResponse>();
-
   if (http_response.status().code() != 200) {
-    latest_status_ = absl::Status(
-        utils::GetStatusCodeForHttpStatus(http_response.status().code()),
+    latest_status_ = utils::GetStatusForHttpStatus(
+        http_response.status().code(),
         absl::StrCat("AddEgressRequest failed with code ",
                      http_response.status().code(), ": Content obfuscated"));
     SetState(State::kEgressSessionError);
     return;
   }
 
-  latest_status_ = add_egress_response->DecodeFromProto(http_response);
+  auto add_egress_response = AddEgressResponse::FromProto(http_response);
+
+  latest_status_ = add_egress_response.status();
   if (!latest_status_.ok()) {
     SetState(State::kEgressSessionError);
     LOG(ERROR) << "Error decoding AddEgressResponse";
     return;
   }
-  if (egress_node_response_ != nullptr) {
+  if (egress_node_response_ != std::nullopt) {
     LOG(INFO) << "Overwriting AddEgressResponse";
-    egress_node_response_.reset();
   }
-  egress_node_response_ = std::move(add_egress_response);
+  egress_node_response_ = *add_egress_response;
 
   SetState(State::kEgressSessionCreated);
   // Save the parameters only if it's not Rekey.
   if (!is_rekey) {
-    auto save_status = SaveEgressDetails(egress_node_response_);
+    auto save_status = SaveEgressDetails(*egress_node_response_);
     if (!save_status.ok()) {
       LOG(ERROR) << "Saving egress details failed with status " << save_status;
     }
@@ -207,29 +210,6 @@ void EgressManager::DecodeAddEgressResponse(bool is_rekey,
   NotificationInterface* notification = notification_;
   notification_thread_->Post(
       [notification, is_rekey] { notification->EgressAvailable(is_rekey); });
-}
-
-// Gets an egress node based on the auth response parameter.
-absl::Status EgressManager::GetEgressNodeForBridge(
-    std::shared_ptr<AuthAndSignResponse> auth_response) {
-  DCHECK(notification_);
-  absl::MutexLock l(&mutex_);
-  request_time_ = absl::Now();
-  AddEgressRequest add_egress_request;
-
-  auto add_egress_http_request =
-      add_egress_request.EncodeToProtoForBridge(std::move(auth_response));
-  if (!add_egress_http_request) {
-    LOG(ERROR) << "Cannot build AddEgressRequest";
-    return absl::FailedPreconditionError("Cannot build AddEgressRequest");
-  }
-
-  add_egress_http_request->set_url(brass_url_);
-  http_fetcher_.PostJsonAsync(
-      add_egress_http_request.value(),
-      absl::bind_front(&EgressManager::DecodeAddEgressResponse, this, false));
-
-  return absl::OkStatus();
 }
 
 absl::Status EgressManager::GetEgressNodeForPpnIpSec(

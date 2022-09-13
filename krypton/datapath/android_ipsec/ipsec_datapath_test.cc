@@ -1,6 +1,6 @@
 // Copyright 2021 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the "LICENSE");
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -15,6 +15,7 @@
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
 
 #include <memory>
+#include <utility>
 
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/datapath_interface.h"
@@ -46,6 +47,26 @@ class MockNotification : public DatapathInterface::NotificationInterface {
   MOCK_METHOD(void, DoRekey, (), (override));
 };
 
+class MockIpSecVpnService : public IpSecDatapath::IpSecVpnServiceInterface {
+ public:
+  MOCK_METHOD(DatapathInterface *, BuildDatapath,
+              (const KryptonConfig &, utils::LooperThread *,
+               TimerManager *timer_manager),
+              (override));
+
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<PacketPipe>>, CreateNetworkPipe,
+              (const NetworkInfo &, const Endpoint &), (override));
+
+  MOCK_METHOD(absl::Status, CreateTunnel, (const TunFdData &), (override));
+
+  MOCK_METHOD(PacketPipe *, GetTunnel, (), (override));
+
+  MOCK_METHOD(void, CloseTunnel, (), (override));
+
+  MOCK_METHOD(absl::Status, ConfigureIpSec, (const IpSecTransformParams &),
+              (override));
+};
+
 class IpSecDatapathTest : public ::testing::Test {
  public:
   IpSecDatapathTest() { datapath_.RegisterNotificationHandler(&notification_); }
@@ -62,7 +83,6 @@ class IpSecDatapathTest : public ::testing::Test {
   }
 
   void SetUp() override {
-    fake_add_egress_response_ = std::make_shared<AddEgressResponse>();
     HttpResponse fake_add_egress_http_response;
     fake_add_egress_http_response.mutable_status()->set_code(200);
     fake_add_egress_http_response.mutable_status()->set_message("OK");
@@ -79,8 +99,11 @@ class IpSecDatapathTest : public ::testing::Test {
         "expiry": "2020-08-07T01:06:13+00:00"
       }
     })string");
-    ASSERT_OK(fake_add_egress_response_->DecodeFromProto(
-        fake_add_egress_http_response));
+
+    auto fake_add_egress_response =
+        AddEgressResponse::FromProto(fake_add_egress_http_response);
+    ASSERT_OK(fake_add_egress_response);
+    fake_add_egress_response_ = *fake_add_egress_response;
 
     // Set the default network_info.
     network_info_.set_network_id(100);
@@ -97,8 +120,6 @@ class IpSecDatapathTest : public ::testing::Test {
     params->set_downlink_key("downlink_key_bytes");
   }
 
-  void TearDown() override { fake_add_egress_response_.reset(); }
-
   void WaitForNotifications() {
     absl::Mutex lock;
     absl::CondVar condition;
@@ -110,11 +131,11 @@ class IpSecDatapathTest : public ::testing::Test {
     condition.Wait(&lock);
   }
 
-  std::shared_ptr<AddEgressResponse> fake_add_egress_response_;
+  AddEgressResponse fake_add_egress_response_;
   utils::LooperThread looper_{"Krypton Looper"};
   IpSecDatapath datapath_{&looper_, &vpn_service_};
   NetworkInfo network_info_;
-  MockVpnService vpn_service_;
+  MockIpSecVpnService vpn_service_;
   MockNotification notification_;
   TestPacketPipe tunnel_{1002};
   TransformParams params_;
@@ -122,25 +143,25 @@ class IpSecDatapathTest : public ::testing::Test {
 };
 
 TEST_F(IpSecDatapathTest, SwitchNetworkFailureNoNetworkSocket) {
-  EXPECT_THAT(
-      datapath_.SwitchNetwork(1234, endpoint_, absl::nullopt, nullptr, 1),
-      StatusIs(util::error::INVALID_ARGUMENT,
-               testing::HasSubstr("network_info")));
+  EXPECT_THAT(datapath_.SwitchNetwork(1234, endpoint_, std::nullopt, 1),
+              StatusIs(util::error::INVALID_ARGUMENT,
+                       testing::HasSubstr("network_info")));
 }
 
 TEST_F(IpSecDatapathTest, SwitchNetworkFailureNoTunnelSocket) {
-  EXPECT_THAT(
-      datapath_.SwitchNetwork(1234, endpoint_, network_info_, nullptr, 1),
-      StatusIs(util::error::INVALID_ARGUMENT,
-               testing::HasSubstr("tunnel is null")));
+  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(nullptr));
+  EXPECT_THAT(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1),
+              StatusIs(util::error::INVALID_ARGUMENT,
+                       testing::HasSubstr("tunnel is null")));
 }
 
 TEST_F(IpSecDatapathTest, SwitchNetworkAndNoKeyMaterial) {
+  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel_));
+
   //  Set KeyMaterial but not of type Ipsec.
-  EXPECT_THAT(
-      datapath_.SwitchNetwork(1234, endpoint_, network_info_, &tunnel_, 1),
-      StatusIs(util::error::FAILED_PRECONDITION,
-               testing::HasSubstr("Key Material")));
+  EXPECT_THAT(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1),
+              StatusIs(util::error::FAILED_PRECONDITION,
+                       testing::HasSubstr("Key Material")));
 }
 
 TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
@@ -159,17 +180,18 @@ TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
               ConfigureIpSec(testing::EqualsProto(params_.ipsec())));
 
   EXPECT_OK(datapath_.Start(fake_add_egress_response_, params_));
-  EXPECT_OK(
-      datapath_.SwitchNetwork(1234, endpoint_, network_info_, &tunnel_, 1));
+  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel_));
+  EXPECT_OK(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1));
 
   // Simulate some network traffic, so that we know everything is running.
   EXPECT_CALL(notification_, DatapathEstablished);
   Packet packet("foo", 3, IPProtocol::kIPv4, [] {});
+  std::vector<Packet> packets;
+  packets.emplace_back(std::move(packet));
   ASSERT_OK_AND_ASSIGN(auto handler, pipe->GetReadHandler());
-  EXPECT_TRUE(handler(absl::OkStatus(), std::move(packet)));
+  EXPECT_TRUE(handler(absl::OkStatus(), std::move(packets)));
   WaitForNotifications();
 
-  pipe = nullptr;
   datapath_.Stop();
 }
 

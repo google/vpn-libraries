@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -18,7 +18,6 @@
 #include <atomic>
 #include <memory>
 #include <string>
-#include <thread>  //NOLINT
 
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
@@ -32,7 +31,6 @@
 #include "privacy/net/krypton/proto/network_type.proto.h"
 #include "privacy/net/krypton/reconnector.h"
 #include "privacy/net/krypton/session_manager.h"
-#include "privacy/net/krypton/signal_handler.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/call_once.h"
@@ -51,12 +49,11 @@ namespace krypton {
 // As PPN is the library, Krypton provides the equivalent of the |main| method.
 class Krypton {
  public:
-  Krypton(DatapathBuilder* datapath_builder, HttpFetcherInterface* http_fetcher,
+  Krypton(HttpFetcherInterface* http_fetcher,
           KryptonNotificationInterface* notification,
           VpnServiceInterface* vpn_service, OAuthInterface* oauth,
           TimerManager* timer_manager)
-      : datapath_builder_(datapath_builder),
-        http_fetcher_(http_fetcher),
+      : http_fetcher_(http_fetcher),
         notification_(notification),
         vpn_service_(vpn_service),
         oauth_(oauth),
@@ -110,7 +107,6 @@ class Krypton {
 
   void Stop(const absl::Status& status) ABSL_LOCKS_EXCLUDED(stopped_lock_);
 
-  DatapathBuilder* datapath_builder_;           // Not owned.
   HttpFetcherInterface* http_fetcher_;          // Not owned.
   KryptonNotificationInterface* notification_;  // Not owned.
   VpnServiceInterface* vpn_service_;            // Not owned.

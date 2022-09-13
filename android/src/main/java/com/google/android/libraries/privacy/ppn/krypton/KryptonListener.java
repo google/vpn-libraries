@@ -91,7 +91,4 @@ public interface KryptonListener {
    * @param network the network the fd should be bound to.
    */
   int onKryptonNeedsNetworkFd(NetworkInfo network) throws PpnException;
-
-  /** Called by Krypton whenever it needs a new oauth token for Zinc. */
-  String onKryptonNeedsOAuthToken() throws PpnException;
 }

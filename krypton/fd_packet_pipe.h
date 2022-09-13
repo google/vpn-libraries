@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -16,14 +16,22 @@
 #define PRIVACY_NET_KRYPTON_FD_PACKET_PIPE_H_
 
 #include <atomic>
-#include <thread>  //NOLINT
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "privacy/net/krypton/datapath/android_ipsec/event_fd.h"
 #include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
-#include "privacy/net/krypton/pal/vpn_service_interface.h"
+#include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/pal/packet_pipe.h"
 #include "privacy/net/krypton/utils/looper.h"
-#include "privacy/net/krypton/utils/status.h"
-#include "third_party/absl/strings/substitute.h"
+#include "third_party/absl/base/thread_annotations.h"
+#include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
 namespace krypton {
@@ -36,9 +44,10 @@ class FdPacketPipe : public PacketPipe {
 
   ~FdPacketPipe() override;
 
-  absl::Status WritePacket(const Packet& packet) override;
+  absl::Status WritePackets(std::vector<Packet> packets) override;
 
-  void ReadPackets(std::function<bool(absl::Status, Packet)> handler) override
+  void ReadPackets(
+      std::function<bool(absl::Status, std::vector<Packet>)> handler) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::StatusOr<int> GetFd() const override { return fd_; }
@@ -51,6 +60,10 @@ class FdPacketPipe : public PacketPipe {
 
   bool SocketListeningTestOnly() const { return started_listening_; }
 
+  // Connects the underlying socket fd to the given endpoint.
+  // This should be called before calling WritePackets.
+  absl::Status Connect(const Endpoint& endpoint);
+
  private:
   // Start of the thread.
   absl::Status SetupReading() ABSL_LOCKS_EXCLUDED(mutex_);
@@ -58,18 +71,18 @@ class FdPacketPipe : public PacketPipe {
   absl::Status RunInternal();
   void PostDatapathFailure(const absl::Status& status)
       ABSL_LOCKS_EXCLUDED(mutex_);
-  void PostDatapathEstablished();
 
   int fd_;
 
   absl::Mutex mutex_;
   bool reading_ ABSL_GUARDED_BY(mutex_) = false;
   absl::CondVar reading_stopped_ ABSL_GUARDED_BY(mutex_);
-  std::function<bool(absl::Status, Packet)> handler_;
+  std::function<bool(absl::Status, std::vector<Packet>)> handler_;
 
   utils::LooperThread thread_;
   datapath::android::EventsHelper events_helper_;
-  datapath::android::EventFd shutdown_event_;
+  std::unique_ptr<datapath::android::EventFd> shutdown_event_
+      ABSL_GUARDED_BY(mutex_);
 
   std::atomic_bool permanent_failure_notification_raised_ = false;
   std::atomic_bool started_listening_ = false;

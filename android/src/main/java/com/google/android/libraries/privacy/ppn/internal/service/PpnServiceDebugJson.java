@@ -15,6 +15,7 @@
 package com.google.android.libraries.privacy.ppn.internal.service;
 
 import com.google.android.libraries.privacy.ppn.internal.json.Json;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import org.json.JSONObject;
 
 /** Debug info about the PPN VPN Service. */
@@ -27,6 +28,7 @@ public class PpnServiceDebugJson {
   public static class Builder {
     private final JSONObject json = new JSONObject();
 
+    @CanIgnoreReturnValue
     public Builder setRunning(boolean running) {
       Json.put(json, RUNNING, running);
       return this;

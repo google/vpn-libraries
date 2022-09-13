@@ -20,7 +20,6 @@ import android.net.IpSecManager;
 import android.net.IpSecManager.ResourceUnavailableException;
 import android.net.IpSecManager.SecurityParameterIndex;
 import android.net.IpSecManager.SpiUnavailableException;
-import android.net.IpSecManager.UdpEncapsulationSocket;
 import android.net.IpSecTransform;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
@@ -35,7 +34,6 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
-import java.util.Optional;
 
 /** Implementation of KryptonIpSecHelper. */
 public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
@@ -49,6 +47,7 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
   @Nullable private SecurityParameterIndex downlinkSpi = null;
   @Nullable private IpSecTransform inTransform = null;
   @Nullable private IpSecTransform outTransform = null;
+  @Nullable private IpSecManager.UdpEncapsulationSocket encapsulationSocket = null;
 
   // A lock guarding all of the mutable state of this class.
   private final Object lock = new Object();
@@ -64,15 +63,27 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
     synchronized (lock) {
       if (uplinkSpi != null) {
         uplinkSpi.close();
+        uplinkSpi = null;
       }
       if (downlinkSpi != null) {
         downlinkSpi.close();
+        downlinkSpi = null;
       }
       if (inTransform != null) {
         inTransform.close();
+        inTransform = null;
       }
       if (outTransform != null) {
         outTransform.close();
+        outTransform = null;
+      }
+      if (encapsulationSocket != null) {
+        try {
+          encapsulationSocket.close();
+          encapsulationSocket = null;
+        } catch (IOException e) {
+          Log.w(TAG, "Exception while closing encapsulation socket.", e);
+        }
       }
     }
   }
@@ -123,9 +134,8 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
         downlinkSpi =
             ipSecManager.allocateSecurityParameterIndex(localAddress, params.getDownlinkSpi());
 
-        Optional<UdpEncapsulationSocket> encapSocket = Optional.empty();
         if (params.getDestinationAddressFamily() == AddressFamily.V4) {
-          encapSocket = Optional.of(ipSecManager.openUdpEncapsulationSocket());
+          encapsulationSocket = ipSecManager.openUdpEncapsulationSocket();
         }
 
         outTransform =
@@ -133,7 +143,6 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
                 localAddress,
                 uplinkSpi,
                 getKeyingMaterial(params.getUplinkKey(), params.getUplinkSalt()),
-                encapSocket,
                 params.getDestinationPort());
 
         inTransform =
@@ -141,7 +150,6 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
                 destinationAddress,
                 downlinkSpi,
                 getKeyingMaterial(params.getDownlinkKey(), params.getDownlinkSalt()),
-                encapSocket,
                 params.getDestinationPort());
 
         ipSecManager.applyTransportModeTransform(
@@ -196,7 +204,6 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
       InetAddress address,
       SecurityParameterIndex spi,
       byte[] keyMaterial,
-      Optional<UdpEncapsulationSocket> encapSocket,
       int remotePort)
       throws ResourceUnavailableException, SpiUnavailableException, IOException {
     IpSecAlgorithm algorithm =
@@ -204,8 +211,8 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
     IpSecTransform.Builder builder =
         new IpSecTransform.Builder(context).setAuthenticatedEncryption(algorithm);
 
-    if (encapSocket.isPresent()) {
-      builder = builder.setIpv4Encapsulation(encapSocket.get(), remotePort);
+    if (encapsulationSocket != null) {
+      builder = builder.setIpv4Encapsulation(encapsulationSocket, remotePort);
     }
 
     return builder.buildTransportModeTransform(address, spi);

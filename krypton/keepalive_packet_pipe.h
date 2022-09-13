@@ -1,6 +1,6 @@
 // Copyright 2021 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the "LICENSE");
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -15,7 +15,10 @@
 #ifndef PRIVACY_NET_KRYPTON_KEEPALIVE_PACKET_PIPE_H_
 #define PRIVACY_NET_KRYPTON_KEEPALIVE_PACKET_PIPE_H_
 
+#include <functional>
+#include <string>
 #include <thread>  // NOLINT
+#include <utility>
 
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "third_party/absl/status/status.h"
@@ -32,12 +35,13 @@ class KeepAlivePacketPipe : public PacketPipe {
                                const absl::Duration timeout)
       : packet_pipe_(packet_pipe), timeout_(timeout) {}
 
-  absl::Status WritePacket(const Packet& packet) override {
-    return packet_pipe_->WritePacket(packet);
+  absl::Status WritePackets(std::vector<Packet> packets) override {
+    return packet_pipe_->WritePackets(std::move(packets));
   }
 
   void ReadPackets(
-      std::function<bool(absl::Status status, Packet packet)> handler) override;
+      std::function<bool(absl::Status status, std::vector<Packet> packets)>
+          handler) override;
 
   /// Stops reading packets from the client side tunnel.
   ///

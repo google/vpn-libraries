@@ -14,21 +14,39 @@
 
 package com.google.android.libraries.privacy.ppn.krypton;
 
+import com.google.common.collect.ImmutableList;
 import com.squareup.okhttp.mockwebserver.MockResponse;
 import com.squareup.okhttp.mockwebserver.MockWebServer;
 import com.squareup.okhttp.mockwebserver.RecordedRequest;
 import java.io.IOException;
+import java.util.Optional;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 /** Wrapper around MockWebServer with Zinc-specific mocking helpers. */
 public class MockZinc {
+  // A hard-coded key just for tests.
+  private static final String PEM =
+      "-----BEGIN PUBLIC KEY-----\n"
+          + "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv90Xf/NN1lRGBofJQzJf\n"
+          + "lHvo6GAf25GGQGaMmD9T1ZP71CCbJ69lGIS/6akFBg6ECEHGM2EZ4WFLCdr5byUq\n"
+          + "GCf4mY4WuOn+AcwzwAoDz9ASIFcQOoPclO7JYdfo2SOaumumdb5S/7FkKJ70TGYW\n"
+          + "j9aTOYWsCcaojbjGDY/JEXz3BSRIngcgOvXBmV1JokcJ/LsrJD263WE9iUknZDhB\n"
+          + "K7y4ChjHNqL8yJcw/D8xLNiJtIyuxiZ00p/lOVUInr8C/a2C1UGCgEGuXZAEGAdO\n"
+          + "NVez52n5TLvQP3hRd4MTi7YvfhezRcA4aXyIDOv+TYi4p+OVTYQ+FMbkgoWBm5bq\n"
+          + "wQIDAQAB\n"
+          + "-----END PUBLIC KEY-----\n";
+
   private final MockWebServer mockWebServer;
 
-  private static JSONObject buildJsonResponse() {
+  private static JSONObject buildJsonPublicKeyResponse(Optional<String> nonce) {
     JSONObject jsonContent = new JSONObject();
     try {
-      jsonContent.put("jwt_token", "some_token");
+      jsonContent.put("pem", PEM);
+      if (nonce.isPresent()) {
+        jsonContent.put("attestation_nonce", nonce.get());
+      }
     } catch (JSONException impossible) {
       // It's not actually possible for putting a string in a JSONObject to throw this.
       throw new AssertionError(impossible);
@@ -37,10 +55,32 @@ public class MockZinc {
   }
 
   /** Returns a MockResponse that simulates Zinc successfully approving authentication. */
-  private static MockResponse buildPositiveResponse() {
+  private static MockResponse buildPositivePublicKeyResponse(Optional<String> nonce) {
     // mock a simple response with the JSON Content
     MockResponse response = new MockResponse();
-    JSONObject jsonContent = buildJsonResponse();
+    JSONObject jsonContent = buildJsonPublicKeyResponse(nonce);
+    response.setBody(jsonContent.toString());
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    return response;
+  }
+
+  private static JSONObject buildJsonAuthResponse() {
+    JSONObject jsonContent = new JSONObject();
+    try {
+      // "foobarbaz" can be verified with the PEM above.
+      jsonContent.put("blinded_token_signature", new JSONArray(ImmutableList.of("foobarbaz")));
+    } catch (JSONException impossible) {
+      // It's not actually possible for putting a string in a JSONObject to throw this.
+      throw new AssertionError(impossible);
+    }
+    return jsonContent;
+  }
+
+  /** Returns a MockResponse that simulates Zinc successfully approving authentication. */
+  private static MockResponse buildPositiveAuthResponse() {
+    // mock a simple response with the JSON Content
+    MockResponse response = new MockResponse();
+    JSONObject jsonContent = buildJsonAuthResponse();
     response.setBody(jsonContent.toString());
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     return response;
@@ -54,8 +94,16 @@ public class MockZinc {
     mockWebServer.start();
   }
 
-  public void enqueuePositiveResponse() {
-    mockWebServer.enqueue(buildPositiveResponse());
+  public void enqueuePositivePublicKeyResponse() {
+    enqueuePositivePublicKeyResponse(Optional.empty());
+  }
+
+  public void enqueuePositivePublicKeyResponse(Optional<String> nonce) {
+    mockWebServer.enqueue(buildPositivePublicKeyResponse(nonce));
+  }
+
+  public void enqueuePositiveAuthResponse() {
+    mockWebServer.enqueue(buildPositiveAuthResponse());
   }
 
   public void enqueueNegativeResponseWithCode(int code, String body) {

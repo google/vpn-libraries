@@ -24,32 +24,33 @@ import android.net.Network;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.internal.http.Dns;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
-import com.google.testing.mockito.Mocks;
 import java.net.InetAddress;
 import java.util.Arrays;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.robolectric.RobolectricTestRunner;
 
 @RunWith(RobolectricTestRunner.class)
 public final class VpnBypassDnsTest {
-  @Rule public Mocks mocks = new Mocks(this);
+  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
 
   @Mock private VpnManager mockVpnManager;
   @Mock private Dns mockSystemDns;
   @Mock private Network mockNetwork;
-  @Mock private InetAddress mockAddress;
+  private final InetAddress address = InetAddress.getLoopbackAddress();
 
   @Test
   public void lookup_usesFallbackWhenNoNetworkSet() throws Exception {
     String hostname = "foo.bar.baz";
     doReturn(null).when(mockVpnManager).getNetwork();
-    doReturn(Arrays.asList(mockAddress)).when(mockSystemDns).lookup(hostname);
+    doReturn(Arrays.asList(address)).when(mockSystemDns).lookup(hostname);
 
     VpnBypassDns dns = new VpnBypassDns(mockVpnManager, mockSystemDns);
-    assertThat(dns.lookup(hostname)).contains(mockAddress);
+    assertThat(dns.lookup(hostname)).contains(address);
 
     verify(mockVpnManager).getNetwork();
     verifyNoMoreInteractions(mockVpnManager);
@@ -61,10 +62,10 @@ public final class VpnBypassDnsTest {
     String hostname = "foo.bar.baz";
     PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.UNKNOWN_TYPE);
     doReturn(ppnNetwork).when(mockVpnManager).getNetwork();
-    doReturn(new InetAddress[] {mockAddress}).when(mockNetwork).getAllByName(hostname);
+    doReturn(new InetAddress[] {address}).when(mockNetwork).getAllByName(hostname);
 
     VpnBypassDns dns = new VpnBypassDns(mockVpnManager, mockSystemDns);
-    assertThat(dns.lookup(hostname)).containsExactly(mockAddress);
+    assertThat(dns.lookup(hostname)).containsExactly(address);
 
     verify(mockVpnManager).getNetwork();
     verify(mockNetwork).getAllByName(hostname);

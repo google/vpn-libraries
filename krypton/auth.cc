@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -16,16 +16,19 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "base/logging.h"
+#include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/krypton/auth_and_sign_request.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/http_fetcher.h"
+#include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
@@ -42,6 +45,8 @@
 #include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
+#include "third_party/jsoncpp/reader.h"
+#include "third_party/jsoncpp/value.h"
 
 namespace privacy {
 namespace krypton {
@@ -59,14 +64,15 @@ std::string StateString(Auth::State state) {
 }
 
 }  // namespace
-Auth::Auth(KryptonConfig* config, HttpFetcherInterface* http_fetcher_native,
+Auth::Auth(const KryptonConfig& config,
+           HttpFetcherInterface* http_fetcher_native,
            OAuthInterface* oath_native, utils::LooperThread* looper_thread)
     : state_(State::kUnauthenticated),
       http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher_native),
                     ABSL_DIE_IF_NULL(looper_thread)),
+      config_(config),
       oauth_(ABSL_DIE_IF_NULL(oath_native)),
-      looper_thread_(looper_thread),
-      config_(ABSL_DIE_IF_NULL(config)) {}
+      looper_thread_(looper_thread) {}
 
 Auth::~Auth() {
   absl::MutexLock l(&mutex_);
@@ -94,24 +100,21 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
 
   if (http_response.status().code() != 200) {
     SetState(State::kUnauthenticated);
-    RaiseAuthFailureNotification(absl::Status(
-        utils::GetStatusCodeForHttpStatus(http_response.status().code()),
-        http_response.status().message()));
+    RaiseAuthFailureNotification(utils::GetStatusForHttpStatus(
+        http_response.status().code(), http_response.status().message()));
     return;
   }
 
-  auto auth_and_sign_response = std::make_shared<AuthAndSignResponse>();
+  auto auth_and_sign_response =
+      AuthAndSignResponse::FromProto(http_response, config_);
 
-  auto decode_status =
-      auth_and_sign_response->DecodeFromProto(http_response, *config_);
-  auth_and_sign_response_ = std::move(auth_and_sign_response);
-
-  if (!decode_status.ok()) {
+  if (!auth_and_sign_response.ok()) {
     SetState(State::kUnauthenticated);
-    RaiseAuthFailureNotification(decode_status);
+    RaiseAuthFailureNotification(auth_and_sign_response.status());
     LOG(ERROR) << "Error decoding AuthResponse";
     return;
   }
+  auth_and_sign_response_ = *auth_and_sign_response;
 
   SetState(State::kAuthenticated);
   auto* notification = notification_;
@@ -120,13 +123,14 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
   LOG(INFO) << "Exiting authentication response";
 }
 
-std::shared_ptr<AuthAndSignResponse> Auth::auth_response() const {
+AuthAndSignResponse Auth::auth_response() const {
   absl::MutexLock l(&mutex_);
   return auth_and_sign_response_;
 }
 
 void Auth::HandlePublicKeyResponse(bool is_rekey,
                                    const HttpResponse& http_response) {
+  std::optional<std::string> nonce = std::nullopt;
   {
     absl::MutexLock l(&mutex_);
     google::protobuf::Duration latency;
@@ -151,9 +155,8 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
     if (http_response.status().code() < 200 ||
         http_response.status().code() >= 300) {
       SetState(State::kUnauthenticated);
-      RaiseAuthFailureNotification(absl::Status(
-          utils::GetStatusCodeForHttpStatus(http_response.status().code()),
-          http_response.status().message()));
+      RaiseAuthFailureNotification(utils::GetStatusForHttpStatus(
+          http_response.status().code(), http_response.status().message()));
       LOG(ERROR) << "PublicKeyResponse failed: "
                  << http_response.status().code();
       return;
@@ -170,12 +173,14 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
     DCHECK_NE(key_material_, nullptr);
     auto blinding_status = key_material_->SetBlindingPublicKey(response.pem());
     if (!blinding_status.ok()) {
+      LOG(ERROR) << "Error setting blinding public key";
       SetState(State::kUnauthenticated);
       RaiseAuthFailureNotification(blinding_status);
       return;
     }
+    nonce = response.nonce();
   }
-  Authenticate(is_rekey);
+  Authenticate(is_rekey, nonce);
   LOG(INFO) << "Exiting PublicKeyResponse";
 }
 
@@ -188,21 +193,25 @@ absl::StatusOr<std::string> Auth::signer_public_key() const {
 }
 
 void Auth::Start(bool is_rekey) {
-  if (config_->enable_blind_signing()) {
+  if (config_.enable_blind_signing()) {
     LOG(INFO) << "Starting authentication with blind signing. Rekey:"
               << (is_rekey ? "true" : "false");
     RequestKeyForBlindSigning(is_rekey);
   } else {
     LOG(INFO) << "Starting authentication without blind signing. Rekey:"
               << (is_rekey ? "true" : "false");
-    Authenticate(is_rekey);
+    Authenticate(is_rekey, /*nonce=*/std::nullopt);
   }
 }
 
 void Auth::RequestKeyForBlindSigning(bool is_rekey) {
   absl::MutexLock l(&mutex_);
   request_time_ = absl::Now();
-  PublicKeyRequest request;
+  auto api_key = config_.has_api_key()
+                     ? std::optional<std::string>(config_.api_key())
+                     : std::nullopt;
+  PublicKeyRequest request(
+      /*request_nonce*/ config_.integrity_attestation_enabled(), api_key);
   auto public_key_proto = request.EncodeToProto();
   if (!public_key_proto) {
     LOG(ERROR) << "Cannot build PublicKeyRequest";
@@ -212,15 +221,27 @@ void Auth::RequestKeyForBlindSigning(bool is_rekey) {
     return;
   }
 
-  public_key_proto->set_url(config_->zinc_public_signing_key_url());
+  public_key_proto->set_url(config_.zinc_public_signing_key_url());
 
   http_fetcher_.PostJsonAsync(
       public_key_proto.value(),
       absl::bind_front(&Auth::HandlePublicKeyResponse, this, is_rekey));
 }
 
-void Auth::Authenticate(bool is_rekey) {
+void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
   absl::MutexLock l(&mutex_);
+  std::optional<privacy::ppn::AttestationData> attestation_data;
+  if (nonce.has_value()) {
+    auto data = oauth_->GetAttestationData(*nonce);
+    if (!data.ok()) {
+      LOG(ERROR) << "Error fetching attestation data";
+      SetState(State::kUnauthenticated);
+      RaiseAuthFailureNotification(
+          absl::InternalError("Error fetching attestation data"));
+      return;
+    }
+    attestation_data = data.value();
+  }
   request_time_ = absl::Now();
   auto auth_token = oauth_->GetOAuthToken();
   if (!auth_token.ok()) {
@@ -232,12 +253,13 @@ void Auth::Authenticate(bool is_rekey) {
   }
   RecordLatency(request_time_, &oauth_latencies_, "oauth");
   AuthAndSignRequest sign_request(
-      *auth_token, config_->service_type(), std::string(),
-      config_->enable_blind_signing() ? key_material_->GetZincBlindToken()
-                                      : absl::nullopt,
-      config_->enable_blind_signing()
+      *auth_token, config_.service_type(), std::string(),
+      config_.enable_blind_signing() ? key_material_->GetZincBlindToken()
+                                     : std::nullopt,
+      config_.enable_blind_signing()
           ? key_material_->blind_signing_public_key_hash()
-          : absl::nullopt);
+          : std::nullopt,
+      attestation_data, config_.attach_oauth_token_as_header());
 
   auto auth_http_request = sign_request.EncodeToProto();
   if (!auth_http_request) {
@@ -248,17 +270,17 @@ void Auth::Authenticate(bool is_rekey) {
     return;
   }
 
-  auth_http_request->set_url(config_->zinc_url());
+  auth_http_request->set_url(config_.zinc_url());
   zinc_call_time_ = absl::Now();
   http_fetcher_.PostJsonAsync(
       auth_http_request.value(),
       absl::bind_front(&Auth::HandleAuthAndSignResponse, this, is_rekey));
 }
 
-void Auth::RaiseAuthFailureNotification(absl::Status status) const {
+void Auth::RaiseAuthFailureNotification(absl::Status status) {
   auto* notification = notification_;
   // Make a copy of the status to show in the debug info.
-  auto latest_status_ = status;
+  latest_status_ = status;
   looper_thread_->Post(
       [notification, status] { notification->AuthFailure(status); });
 }

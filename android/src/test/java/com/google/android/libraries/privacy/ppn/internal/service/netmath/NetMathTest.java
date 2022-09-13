@@ -16,7 +16,6 @@ package com.google.android.libraries.privacy.ppn.internal.service.netmath;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
 
 import java.math.BigInteger;
 import java.net.Inet4Address;
@@ -24,6 +23,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.List;
+import org.hamcrest.MatcherAssert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -139,7 +139,7 @@ public class NetMathTest {
       List<Cidr> want = Arrays.asList((Cidr[]) test[2]);
 
       List<Cidr> got = NetMath.invert(outer, exclude);
-      assertThat(got, is(want));
+      MatcherAssert.assertThat(got, is(want));
     }
   }
 
@@ -181,7 +181,7 @@ public class NetMathTest {
       List<Cidr> want = Arrays.asList((Cidr[]) test[1]);
 
       List<Cidr> got = NetMath.toCidrs(input);
-      assertThat(got, is(want));
+      MatcherAssert.assertThat(got, is(want));
     }
   }
 

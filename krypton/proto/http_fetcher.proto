@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -22,10 +22,16 @@ option java_package = "com.google.android.libraries.privacy.ppn.internal";
 option java_api_version = 2;
 option java_multiple_files = true;
 
+// An http request to be used by the http fetcher.
 message HttpRequest {
   optional string url = 1;
   map<string, string> headers = 2;
+
+  // If set, a string in JSON to use for the request body.
   optional string json_body = 3;
+
+  // If set, a binary serialized protobuf to use as the request body.
+  optional bytes proto_body = 4;
 }
 
 message HttpStatus {
@@ -35,5 +41,12 @@ message HttpStatus {
 
 message HttpResponse {
   optional HttpStatus status = 1;
+
+  // If the response was not a different type, this field contains the JSON
+  // encoded text that was the body of the response.
   optional string json_body = 2;
+
+  // If the response was application/x-protobuf, this field is binary response
+  // body, which should be a serialized protobuf.
+  optional bytes proto_body = 3;
 }

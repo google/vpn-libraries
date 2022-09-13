@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -25,6 +25,10 @@ namespace utils {
 namespace {
 
 using absl::StatusCode;
+
+StatusCode GetStatusCodeForHttpStatus(int code) {
+  return GetStatusForHttpStatus(code, "").code();
+}
 
 class StatusTest : public ::testing::Test {};
 
@@ -48,18 +52,18 @@ TEST_F(StatusTest, GetStatusCodeForHttpStatus) {
 }
 
 TEST_F(StatusTest, TestPermanentFailures) {
-  EXPECT_TRUE(IsPermanentError(absl::StatusCode::kPermissionDenied));
-  EXPECT_FALSE(IsPermanentError(absl::StatusCode::kInvalidArgument));
-  EXPECT_FALSE(IsPermanentError(absl::StatusCode::kUnauthenticated));
-  EXPECT_FALSE(IsPermanentError(absl::StatusCode::kNotFound));
-  EXPECT_FALSE(IsPermanentError(absl::StatusCode::kAborted));
-  EXPECT_FALSE(IsPermanentError(absl::StatusCode::kFailedPrecondition));
-  EXPECT_FALSE(IsPermanentError(absl::StatusCode::kResourceExhausted));
-  EXPECT_FALSE(IsPermanentError(absl::StatusCode::kCancelled));
-  EXPECT_FALSE(IsPermanentError(absl::StatusCode::kInternal));
-  EXPECT_FALSE(IsPermanentError(absl::StatusCode::kUnimplemented));
-  EXPECT_FALSE(IsPermanentError(absl::StatusCode::kUnavailable));
-  EXPECT_FALSE(IsPermanentError(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_TRUE(IsPermanentError(absl::PermissionDeniedError("")));
+  EXPECT_FALSE(IsPermanentError(absl::InvalidArgumentError("")));
+  EXPECT_FALSE(IsPermanentError(absl::UnauthenticatedError("")));
+  EXPECT_FALSE(IsPermanentError(absl::NotFoundError("")));
+  EXPECT_FALSE(IsPermanentError(absl::AbortedError("")));
+  EXPECT_FALSE(IsPermanentError(absl::FailedPreconditionError("")));
+  EXPECT_FALSE(IsPermanentError(absl::ResourceExhaustedError("")));
+  EXPECT_FALSE(IsPermanentError(absl::CancelledError("")));
+  EXPECT_FALSE(IsPermanentError(absl::InternalError("")));
+  EXPECT_FALSE(IsPermanentError(absl::UnimplementedError("")));
+  EXPECT_FALSE(IsPermanentError(absl::UnavailableError("")));
+  EXPECT_FALSE(IsPermanentError(absl::DeadlineExceededError("")));
 }
 
 TEST_F(StatusTest, TestPpnStatusDetailsDefault) {
@@ -78,6 +82,18 @@ TEST_F(StatusTest, TestPpnStatusDetails) {
   PpnStatusDetails details = GetPpnStatusDetails(status);
   EXPECT_EQ(PpnStatusDetails::DISALLOWED_COUNTRY,
             details.detailed_error_code());
+}
+
+TEST_F(StatusTest, TestHttpStatus412) {
+  absl::Status status = GetStatusForHttpStatus(412, "disallowed country");
+  EXPECT_EQ(absl::StatusCode::kFailedPrecondition, status.code());
+  EXPECT_EQ("disallowed country", status.message());
+
+  PpnStatusDetails details = GetPpnStatusDetails(status);
+  EXPECT_EQ(PpnStatusDetails::DISALLOWED_COUNTRY,
+            details.detailed_error_code());
+
+  EXPECT_TRUE(IsPermanentError(status));
 }
 
 }  // anonymous namespace

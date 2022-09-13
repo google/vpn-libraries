@@ -19,8 +19,8 @@ import android.app.Service;
 import android.content.Context;
 import android.os.Build;
 import android.os.Build.VERSION;
-import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
+import androidx.core.app.NotificationManagerCompat;
 import javax.annotation.Nullable;
 
 /**

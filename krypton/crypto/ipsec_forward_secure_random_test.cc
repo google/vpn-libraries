@@ -1,6 +1,6 @@
 // Copyright 2021 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the "LICENSE");
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -16,6 +16,7 @@
 
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/container/btree_set.h"
 
 namespace privacy {
 namespace krypton {
@@ -28,7 +29,7 @@ TEST_F(IpSecForwardSecureRandomTest, TestRandString) {
   auto result = CreateSecureRandomString(8);
   EXPECT_EQ(result.size(), 8);
 
-  std::set<char> chars;
+  absl::btree_set<char> chars;
   for (char it : result) {
     chars.insert(it);
   }

@@ -1,19 +1,21 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 #include <jni.h>
 #include <jni_md.h>
+
+#include <string>
 
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/jni/jni_utils.h"
@@ -41,9 +43,7 @@ using privacy::krypton::jni::ConvertJavaByteArrayToString;
 using privacy::krypton::jni::ConvertJavaStringToUTF8;
 using privacy::krypton::jni::JniCache;
 using privacy::krypton::jni::KryptonNotification;
-using privacy::krypton::jni::OAuth;
 using privacy::krypton::jni::VpnService;
-using privacy::krypton::utils::GetPpnStatusDetails;
 using privacy::krypton::utils::SetPpnStatusDetails;
 
 // Implementations of native methods from JniTestNotification.java.
@@ -52,9 +52,9 @@ extern "C" {
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_connectedNative(
-    JNIEnv* env, jobject /*instance*/,
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
     jbyteArray connection_status_byte_array) {
-  KryptonNotification notification;
+  KryptonNotification notification(krypton_instance);
 
   std::string connection_status_bytes =
       ConvertJavaByteArrayToString(env, connection_status_byte_array);
@@ -69,9 +69,9 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_connec
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_connectingNative(
-    JNIEnv* env, jobject /*instance*/,
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
     jbyteArray connecting_status_byte_array) {
-  KryptonNotification notification;
+  KryptonNotification notification(krypton_instance);
 
   std::string connecting_status_bytes =
       ConvertJavaByteArrayToString(env, connecting_status_byte_array);
@@ -86,16 +86,16 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_connec
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_controlPlaneConnected(
-    JNIEnv*  /*env*/, jobject  /*instance*/) {
-  KryptonNotification notification;
+    JNIEnv* /*env*/, jobject /*instance*/, jobject krypton_instance) {
+  KryptonNotification notification(krypton_instance);
   notification.ControlPlaneConnected();
 }
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_statusUpdatedNative(
-    JNIEnv* env, jobject /*instance*/,
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
     jbyteArray connection_status_byte_array) {
-  KryptonNotification notification;
+  KryptonNotification notification(krypton_instance);
 
   std::string connection_status_bytes =
       ConvertJavaByteArrayToString(env, connection_status_byte_array);
@@ -110,8 +110,9 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_status
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_disconnectedNative(
-    JNIEnv* env, jobject /*instance*/, jbyteArray status_byte_array) {
-  KryptonNotification notification;
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
+    jbyteArray status_byte_array) {
+  KryptonNotification notification(krypton_instance);
 
   std::string status_bytes =
       ConvertJavaByteArrayToString(env, status_byte_array);
@@ -126,9 +127,9 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_discon
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_permanentFailureNative(
-    JNIEnv* env, jobject /*instance*/, jint code, jstring message,
-    jbyteArray details_byte_array) {
-  KryptonNotification notification;
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance, jint code,
+    jstring message, jbyteArray details_byte_array) {
+  KryptonNotification notification(krypton_instance);
 
   std::string details_bytes =
       ConvertJavaByteArrayToString(env, details_byte_array);
@@ -146,9 +147,10 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_perman
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_networkDisconnectedNative(
-    JNIEnv* env, jobject /*instance*/, jbyteArray network_info_byte_array,
-    jint code, jstring message, jbyteArray details_byte_array) {
-  KryptonNotification notification;
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
+    jbyteArray network_info_byte_array, jint code, jstring message,
+    jbyteArray details_byte_array) {
+  KryptonNotification notification(krypton_instance);
 
   std::string details_bytes =
       ConvertJavaByteArrayToString(env, details_byte_array);
@@ -174,9 +176,9 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_networ
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_waitingToReconnectNative(
-    JNIEnv* env, jobject /*instance*/,
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
     jbyteArray reconnection_status_byte_array) {
-  KryptonNotification notification;
+  KryptonNotification notification(krypton_instance);
 
   std::string reconnection_status_bytes =
       ConvertJavaByteArrayToString(env, reconnection_status_byte_array);
@@ -191,8 +193,9 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_waitin
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_snoozedNative(
-    JNIEnv* env, jobject /*instance*/, jbyteArray snooze_status_byte_array) {
-  KryptonNotification notification;
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
+    jbyteArray snooze_status_byte_array) {
+  KryptonNotification notification(krypton_instance);
   std::string snooze_status_bytes =
       ConvertJavaByteArrayToString(env, snooze_status_byte_array);
   SnoozeStatus status;
@@ -204,8 +207,9 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_snooze
 
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_resumedNative(
-    JNIEnv* env, jobject /*instance*/, jbyteArray resume_status_byte_array) {
-  KryptonNotification notification;
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
+    jbyteArray resume_status_byte_array) {
+  KryptonNotification notification(krypton_instance);
   std::string resume_status_bytes =
       ConvertJavaByteArrayToString(env, resume_status_byte_array);
   ResumeStatus status;
@@ -217,8 +221,9 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_resume
 
 JNIEXPORT jint JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_createTunFdNative(
-    JNIEnv* env, jobject  /*instance*/, jbyteArray tun_fd_data_byte_array) {
-  VpnService service;
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
+    jbyteArray tun_fd_data_byte_array) {
+  VpnService service(krypton_instance);
   std::string tun_fd_data_bytes =
       ConvertJavaByteArrayToString(env, tun_fd_data_byte_array);
   TunFdData tun_fd_data;
@@ -226,24 +231,25 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
     JniCache::Get()->ThrowKryptonException("invalid TunFdData bytes");
     return -1;
   }
-  auto tunnel = service.CreateTunnel(tun_fd_data);
-  if (!tunnel.ok()) {
-    JniCache::Get()->ThrowKryptonException(tunnel.status().ToString());
+  auto status = service.CreateTunnel(tun_fd_data);
+  if (!status.ok()) {
+    JniCache::Get()->ThrowKryptonException(status.ToString());
     return -1;
   }
-  auto fd = (*tunnel)->GetFd();
+  auto fd = service.GetTunnelFd();
   if (!fd.ok()) {
     JniCache::Get()->ThrowKryptonException(fd.status().ToString());
     return -1;
   }
-  (*tunnel)->Close();
+  service.CloseTunnel();
   return *fd;
 }
 
 JNIEXPORT jint JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_createNetworkFdNative(
-    JNIEnv* env, jobject  /*instance*/, jbyteArray network_info_byte_array) {
-  VpnService service;
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
+    jbyteArray network_info_byte_array) {
+  VpnService service(krypton_instance);
   std::string network_info_bytes =
       ConvertJavaByteArrayToString(env, network_info_byte_array);
   NetworkInfo network_info;
@@ -259,25 +265,11 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
   return *fd;
 }
 
-JNIEXPORT jstring JNICALL
-Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_getOAuthToken(
-    JNIEnv* env, jobject  /*instance*/) {
-  OAuth oauth;
-  auto token = oauth.GetOAuthToken();
-  if (!token.ok()) {
-    JniCache::Get()->ThrowKryptonException(token.status().ToString());
-    return env->NewStringUTF("");
-  }
-  // We can't use JavaString here, because we need to return the local
-  // reference.
-  return env->NewStringUTF(token->c_str());
-}
-
 JNIEXPORT jboolean JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_configureIpSecNative(
-    JNIEnv* env, jobject  /*instance*/,
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
     jbyteArray ipsec_transform_params_byte_array) {
-  VpnService service;
+  VpnService service(krypton_instance);
   std::string ipsec_transform_params_bytes =
       ConvertJavaByteArrayToString(env, ipsec_transform_params_byte_array);
   IpSecTransformParams params;

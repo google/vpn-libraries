@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -18,10 +18,13 @@
 #include <cstdio>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "base/logging.h"
+#include "privacy/net/krypton/crypto/openssl_error.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/base/log_severity.h"
 #include "third_party/absl/cleanup/cleanup.h"
@@ -231,7 +234,7 @@ absl::StatusOr<std::string> RsaFdhBlindSigner::Sign(
                    /*max_out*/ mod_size,
                    reinterpret_cast<const uint8_t*>(blinded_data.data()),
                    blinded_data.size(), RSA_NO_PADDING) != kBsslSuccess) {
-    return absl::InternalError("RSA_sign_raw failed.");
+    return GetOpenSSLError("RSA_sign_raw failed");
   }
   if (out_len != mod_size) {
     return absl::InternalError(
@@ -272,7 +275,7 @@ absl::Status RsaFdhVerifier::Verify(const absl::string_view message,
                      /*max_out = */ mod_size,
                      reinterpret_cast<const unsigned char*>(signature.data()),
                      signature.size(), RSA_NO_PADDING) != kBsslSuccess) {
-    return absl::InternalError("Error during signature verification");
+    return GetOpenSSLError("Error during signature verification");
   }
   if (out_len != mod_size) {
     return absl::InternalError(

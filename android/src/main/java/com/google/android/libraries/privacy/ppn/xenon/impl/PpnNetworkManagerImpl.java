@@ -407,6 +407,9 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
       if (activeNetwork != null) {
         builder.setActiveNetwork(activeNetwork);
       }
+      for (PpnNetwork network : pendingNetworks) {
+        builder.addPendingNetwork(network);
+      }
       builder.setConnectionQuality(connectionQuality);
 
       return builder.build();

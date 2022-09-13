@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 
@@ -37,7 +38,6 @@
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/network_type.proto.h"
-#include "privacy/net/krypton/test_packet_pipe.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
@@ -56,18 +56,14 @@ namespace privacy {
 namespace krypton {
 namespace {
 
-constexpr int kValidTunFd = 0xbeef;
-constexpr int kInvalidFd = -1;
-constexpr int kValidNetworkFd = 0xbeef + 1;
-
 using ::testing::_;
 using ::testing::DoAll;
 using ::testing::Eq;
 using ::testing::EqualsProto;
 using ::testing::Invoke;
 using ::testing::InvokeWithoutArgs;
-using ::testing::Optional;
 using ::testing::Return;
+using ::testing::SetArgPointee;
 using ::testing::status::IsOk;
 using ::testing::status::StatusIs;
 
@@ -88,18 +84,15 @@ class MockAuth : public Auth {
  public:
   using Auth::Auth;
   MOCK_METHOD(void, Start, (bool), (override));
-  MOCK_METHOD(std::shared_ptr<AuthAndSignResponse>, auth_response, (),
-              (const, override));
+  MOCK_METHOD(AuthAndSignResponse, auth_response, (), (const, override));
 };
 
 // Mock the Egress Management.
 class MockEgressManager : public EgressManager {
  public:
   using EgressManager::EgressManager;
-  MOCK_METHOD(absl::Status, GetEgressNodeForBridge,
-              (std::shared_ptr<AuthAndSignResponse>), (override));
-  MOCK_METHOD(absl::StatusOr<std::shared_ptr<AddEgressResponse>>,
-              GetEgressSessionDetails, (), (const, override));
+  MOCK_METHOD(absl::StatusOr<AddEgressResponse>, GetEgressSessionDetails, (),
+              (const, override));
   MOCK_METHOD(absl::Status, GetEgressNodeForPpnIpSec,
               (const AddEgressRequest::PpnDataplaneRequestParams&), (override));
 };
@@ -119,19 +112,18 @@ class MockSessionNotification : public Session::NotificationInterface {
 class MockDatapath : public DatapathInterface {
  public:
   MOCK_METHOD(absl::Status, Start,
-              (std::shared_ptr<AddEgressResponse>,
-               const TransformParams& params),
+              (const AddEgressResponse&, const TransformParams& params),
               (override));
   MOCK_METHOD(void, Stop, (), (override));
   MOCK_METHOD(void, RegisterNotificationHandler,
               (DatapathInterface::NotificationInterface * notification),
               (override));
   MOCK_METHOD(absl::Status, SwitchNetwork,
-              (uint32_t, const Endpoint&, absl::optional<NetworkInfo>,
-               PacketPipe*, int),
+              (uint32_t, const Endpoint&, std::optional<NetworkInfo>, int),
               (override));
   MOCK_METHOD(absl::Status, SetKeyMaterials, (const TransformParams&),
               (override));
+  MOCK_METHOD(void, GetDebugInfo, (DatapathDebugInfo*), (override));
 };
 
 class MockTunnelManager : public TunnelManagerInterface {
@@ -141,7 +133,7 @@ class MockTunnelManager : public TunnelManagerInterface {
   MOCK_METHOD(void, SetSafeDisconnectEnabled, (bool), (override));
   MOCK_METHOD(bool, IsSafeDisconnectEnabled, (), (override));
   MOCK_METHOD(void, StartSession, (), (override));
-  MOCK_METHOD(absl::StatusOr<PacketPipe*>, GetTunnel, (TunFdData), (override));
+  MOCK_METHOD(absl::Status, EnsureTunnelIsUp, (TunFdData), (override));
   MOCK_METHOD(absl::Status, RecreateTunnelIfNeeded, (), (override));
   MOCK_METHOD(void, TerminateSession, (bool), (override));
   MOCK_METHOD(bool, IsTunnelActive, (), (override));
@@ -155,8 +147,6 @@ class SessionTest : public ::testing::Test {
             Invoke([&](DatapathInterface::NotificationInterface* notification) {
               datapath_notification_ = notification;
             }));
-    fake_auth_and_sign_response_ = std::make_shared<AuthAndSignResponse>();
-    fake_add_egress_response_ = std::make_shared<AddEgressResponse>();
 
     HttpResponse fake_add_egress_http_response;
     fake_add_egress_http_response.mutable_status()->set_code(200);
@@ -174,12 +164,15 @@ class SessionTest : public ::testing::Test {
         "expiry": "2020-08-07T01:06:13+00:00"
       }
     })string");
-    ASSERT_OK(fake_add_egress_response_->DecodeFromProto(
-        fake_add_egress_http_response));
 
-    session_ = absl::make_unique<Session>(
-        &auth_, &egress_manager_, &datapath_, &vpn_service_, &timer_manager_,
-        &http_fetcher_, &tunnel_manager_, absl::nullopt, &config_,
+    auto fake_add_egress_response =
+        AddEgressResponse::FromProto(fake_add_egress_http_response);
+    ASSERT_OK(fake_add_egress_response);
+    fake_add_egress_response_ = *fake_add_egress_response;
+
+    session_ = std::make_unique<Session>(
+        config_, &auth_, &egress_manager_, &datapath_, &vpn_service_,
+        &timer_manager_, &http_fetcher_, &tunnel_manager_, std::nullopt,
         &notification_thread_);
     session_->RegisterNotificationHandler(&notification_);
   }
@@ -188,19 +181,6 @@ class SessionTest : public ::testing::Test {
     auth_.Stop();
     egress_manager_.Stop();
     tunnel_manager_.Stop();
-    for (auto& pipe : packet_pipes_) {
-      pipe->Close();
-    }
-    packet_pipes_.clear();
-  }
-
-  PacketPipe* CreateTestPipeOnHeap(int id) {
-    // Create a packet pipe on the heap.
-    auto packet_pipe = std::make_unique<TestPacketPipe>(id);
-    // Transfer ownership of the pipe to the test class.
-    packet_pipes_.emplace_back(std::move(packet_pipe));
-    // Return a pointer to the new pipe on the heap.
-    return packet_pipes_.back().get();
   }
 
   void ExpectSuccessfulAuth() {
@@ -208,8 +188,9 @@ class SessionTest : public ::testing::Test {
       notification_thread_.Post(
           [this] { session_->AuthSuccessful(is_rekey_); });
     }));
+    AuthAndSignResponse fake_auth_and_sign_response;
     EXPECT_CALL(auth_, auth_response)
-        .WillRepeatedly(Return(fake_auth_and_sign_response_));
+        .WillRepeatedly(Return(fake_auth_and_sign_response));
   }
 
   void WaitInitial() {
@@ -229,20 +210,19 @@ class SessionTest : public ::testing::Test {
 
   KryptonConfig config_{proto2::contrib::parse_proto::ParseTextProtoOrDie(
       R"pb(zinc_url: "http://www.example.com/auth"
+           brass_url: "http://www.example.com/addegress"
            service_type: "service_type"
            datapath_protocol: BRIDGE
            copper_hostname_suffix: [ 'g-tun.com' ]
            enable_blind_signing: false)pb")};
 
-  int tun_fd_counter_ = kValidTunFd;  // Starting value of tun fd.
-  int network_fd_counter_ = kValidTunFd + 1000;
   MockSessionNotification notification_;
   MockHttpFetcher http_fetcher_;
   MockOAuth oauth_;
   utils::LooperThread notification_thread_{"Session Test"};
-  MockAuth auth_{&config_, &http_fetcher_, &oauth_, &notification_thread_};
-  MockEgressManager egress_manager_{"http://www.example.com/addegress",
-                                    &http_fetcher_, &notification_thread_};
+  MockAuth auth_{config_, &http_fetcher_, &oauth_, &notification_thread_};
+  MockEgressManager egress_manager_{config_, &http_fetcher_,
+                                    &notification_thread_};
 
   MockDatapath datapath_;
   MockTimerInterface timer_interface_;
@@ -250,10 +230,8 @@ class SessionTest : public ::testing::Test {
 
   MockVpnService vpn_service_;
   MockTunnelManager tunnel_manager_;
-  std::vector<std::unique_ptr<PacketPipe>> packet_pipes_;
   std::unique_ptr<Session> session_;
-  std::shared_ptr<AuthAndSignResponse> fake_auth_and_sign_response_;
-  std::shared_ptr<AddEgressResponse> fake_add_egress_response_;
+  AddEgressResponse fake_add_egress_response_;
   DatapathInterface::NotificationInterface* datapath_notification_;
   bool is_rekey_ = false;
   absl::Notification done_;
@@ -263,14 +241,12 @@ class SessionTest : public ::testing::Test {
 class BridgeOnPpnSession : public SessionTest {
  public:
   void SetUp() override {
-    config_.set_bridge_over_ppn(true);
+    config_.set_datapath_protocol(KryptonConfig::BRIDGE);
     EXPECT_CALL(datapath_, RegisterNotificationHandler)
         .WillOnce(
             Invoke([&](DatapathInterface::NotificationInterface* notification) {
               datapath_notification_ = notification;
             }));
-    fake_auth_and_sign_response_ = std::make_shared<AuthAndSignResponse>();
-    fake_add_egress_response_ = std::make_shared<AddEgressResponse>();
 
     HttpResponse fake_add_egress_http_response;
     fake_add_egress_http_response.mutable_status()->set_code(200);
@@ -288,13 +264,17 @@ class BridgeOnPpnSession : public SessionTest {
         "expiry": "2020-08-07T01:06:13+00:00"
       }
     })string");
-    ASSERT_OK(fake_add_egress_response_->DecodeFromProto(
-        fake_add_egress_http_response));
-    session_ = absl::make_unique<Session>(
-        &auth_, &egress_manager_, &datapath_, &vpn_service_, &timer_manager_,
-        &http_fetcher_, &tunnel_manager_, absl::nullopt, &config_,
+
+    auto fake_add_egress_response =
+        AddEgressResponse::FromProto(fake_add_egress_http_response);
+    ASSERT_OK(fake_add_egress_response);
+    fake_add_egress_response_ = *fake_add_egress_response;
+
+    session_ = std::make_unique<Session>(
+        config_, &auth_, &egress_manager_, &datapath_, &vpn_service_,
+        &timer_manager_, &http_fetcher_, &tunnel_manager_, std::nullopt,
         &notification_thread_);
-    crypto::SessionCrypto remote(&config_);
+    crypto::SessionCrypto remote(config_);
     auto remote_key = remote.GetMyKeyMaterial();
     EXPECT_OK(session_->MutableCryptoTestOnly()->SetRemoteKeyMaterial(
         remote_key.public_value, remote_key.nonce));
@@ -326,7 +306,7 @@ class BridgeOnPpnSession : public SessionTest {
 
     EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
 
-    EXPECT_CALL(datapath_, Start(fake_add_egress_response_, _))
+    EXPECT_CALL(datapath_, Start(_, _))
         .WillOnce(::testing::DoAll(
             InvokeWithoutArgs(&done_, &absl::Notification::Notify),
             Return(absl::OkStatus())));
@@ -339,49 +319,48 @@ class BridgeOnPpnSession : public SessionTest {
 
     session_->Start();
     WaitInitial();
-    network_fd_counter_ += 1;
     EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
         .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
-    EXPECT_CALL(tunnel_manager_,
-                GetTunnel(EqualsProto(R"pb(tunnel_ip_addresses {
-                                             ip_family: IPV4
-                                             ip_range: "10.2.2.123"
-                                             prefix: 32
-                                           }
-                                           tunnel_ip_addresses {
-                                             ip_family: IPV6
-                                             ip_range: "fec2:0001::3"
-                                             prefix: 64
-                                           }
-                                           tunnel_dns_addresses {
-                                             ip_family: IPV4
-                                             ip_range: "8.8.8.8"
-                                             prefix: 32
-                                           }
-                                           tunnel_dns_addresses {
-                                             ip_family: IPV4
-                                             ip_range: "8.8.8.4"
-                                             prefix: 32
-                                           }
-                                           tunnel_dns_addresses {
-                                             ip_family: IPV6
-                                             ip_range: "2001:4860:4860::8888"
-                                             prefix: 128
-                                           }
-                                           tunnel_dns_addresses {
-                                             ip_family: IPV6
-                                             ip_range: "2001:4860:4860::8844"
-                                             prefix: 128
-                                           }
-                                           is_metered: false)pb")))
-        .WillOnce(Return(CreateTestPipeOnHeap(++tun_fd_counter_)));
+    EXPECT_CALL(
+        tunnel_manager_,
+        EnsureTunnelIsUp(EqualsProto(R"pb(tunnel_ip_addresses {
+                                            ip_family: IPV4
+                                            ip_range: "10.2.2.123"
+                                            prefix: 32
+                                          }
+                                          tunnel_ip_addresses {
+                                            ip_family: IPV6
+                                            ip_range: "fec2:0001::3"
+                                            prefix: 64
+                                          }
+                                          tunnel_dns_addresses {
+                                            ip_family: IPV4
+                                            ip_range: "8.8.8.8"
+                                            prefix: 32
+                                          }
+                                          tunnel_dns_addresses {
+                                            ip_family: IPV4
+                                            ip_range: "8.8.4.4"
+                                            prefix: 32
+                                          }
+                                          tunnel_dns_addresses {
+                                            ip_family: IPV6
+                                            ip_range: "2001:4860:4860::8888"
+                                            prefix: 128
+                                          }
+                                          tunnel_dns_addresses {
+                                            ip_family: IPV6
+                                            ip_range: "2001:4860:4860::8844"
+                                            prefix: 128
+                                          }
+                                          is_metered: false)pb")));
 
     NetworkInfo expected_network_info;
     expected_network_info.set_network_id(1234);
     expected_network_info.set_network_type(NetworkType::CELLULAR);
-    EXPECT_CALL(datapath_,
-                SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info),
-                              PacketPipeHasFd(tun_fd_counter_), _))
+    EXPECT_CALL(
+        datapath_,
+        SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info), _))
         .WillOnce(Return(absl::OkStatus()));
 
     NetworkInfo network_info;
@@ -394,7 +373,6 @@ class BridgeOnPpnSession : public SessionTest {
     session_->DatapathEstablished();
     EXPECT_THAT(session_->active_network_info(),
                 NetworkInfoEquals(expected_network_info));
-    EXPECT_THAT(session_->active_tun_fd_test_only(), Optional(tun_fd_counter_));
   }
 
   void BringDatapathToConnected() {
@@ -411,45 +389,45 @@ class BridgeOnPpnSession : public SessionTest {
 
     EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
         .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
-    EXPECT_CALL(tunnel_manager_,
-                GetTunnel(EqualsProto(R"pb(tunnel_ip_addresses {
-                                             ip_family: IPV4
-                                             ip_range: "10.2.2.123"
-                                             prefix: 32
-                                           }
-                                           tunnel_ip_addresses {
-                                             ip_family: IPV6
-                                             ip_range: "fec2:0001::3"
-                                             prefix: 64
-                                           }
-                                           tunnel_dns_addresses {
-                                             ip_family: IPV4
-                                             ip_range: "8.8.8.8"
-                                             prefix: 32
-                                           }
-                                           tunnel_dns_addresses {
-                                             ip_family: IPV4
-                                             ip_range: "8.8.8.4"
-                                             prefix: 32
-                                           }
-                                           tunnel_dns_addresses {
-                                             ip_family: IPV6
-                                             ip_range: "2001:4860:4860::8888"
-                                             prefix: 128
-                                           }
-                                           tunnel_dns_addresses {
-                                             ip_family: IPV6
-                                             ip_range: "2001:4860:4860::8844"
-                                             prefix: 128
-                                           }
-                                           is_metered: false)pb")))
-        .WillOnce(Return(CreateTestPipeOnHeap(++tun_fd_counter_)));
+    EXPECT_CALL(
+        tunnel_manager_,
+        EnsureTunnelIsUp(EqualsProto(R"pb(tunnel_ip_addresses {
+                                            ip_family: IPV4
+                                            ip_range: "10.2.2.123"
+                                            prefix: 32
+                                          }
+                                          tunnel_ip_addresses {
+                                            ip_family: IPV6
+                                            ip_range: "fec2:0001::3"
+                                            prefix: 64
+                                          }
+                                          tunnel_dns_addresses {
+                                            ip_family: IPV4
+                                            ip_range: "8.8.8.8"
+                                            prefix: 32
+                                          }
+                                          tunnel_dns_addresses {
+                                            ip_family: IPV4
+                                            ip_range: "8.8.4.4"
+                                            prefix: 32
+                                          }
+                                          tunnel_dns_addresses {
+                                            ip_family: IPV6
+                                            ip_range: "2001:4860:4860::8888"
+                                            prefix: 128
+                                          }
+                                          tunnel_dns_addresses {
+                                            ip_family: IPV6
+                                            ip_range: "2001:4860:4860::8844"
+                                            prefix: 128
+                                          }
+                                          is_metered: false)pb")));
 
     NetworkInfo expected_network_info;
     expected_network_info.set_network_type(NetworkType::CELLULAR);
-    EXPECT_CALL(datapath_,
-                SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info),
-                              PacketPipeHasFd(tun_fd_counter_), _))
+    EXPECT_CALL(
+        datapath_,
+        SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info), _))
         .WillOnce(Return(absl::OkStatus()));
 
     NetworkInfo network_info;
@@ -501,7 +479,7 @@ TEST_F(BridgeOnPpnSession, DatapathInitFailure) {
       .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
 
   EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
-  EXPECT_CALL(datapath_, Start(fake_add_egress_response_, _))
+  EXPECT_CALL(datapath_, Start(_, _))
       .WillOnce(::testing::DoAll(
           InvokeWithoutArgs(&done, &absl::Notification::Notify),
           Return(absl::InvalidArgumentError("Initialization error"))));
@@ -518,8 +496,6 @@ TEST_F(BridgeOnPpnSession, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
   ExpectSuccessfulAuth();
   ExpectSuccessfulAddEgress();
   ExpectSuccessfulDatapathInit();
-  TestPacketPipe packet_pipe(++tun_fd_counter_);
-  auto close_pipe = absl::MakeCleanup([&packet_pipe] { packet_pipe.Close(); });
 
   session_->Start();
 
@@ -530,45 +506,45 @@ TEST_F(BridgeOnPpnSession, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
             fake_add_egress_response_));
         return fake_add_egress_response_;
       }));
-  EXPECT_CALL(tunnel_manager_,
-              GetTunnel(EqualsProto(R"pb(tunnel_ip_addresses {
-                                           ip_family: IPV4
-                                           ip_range: "10.2.2.123"
-                                           prefix: 32
-                                         }
-                                         tunnel_ip_addresses {
-                                           ip_family: IPV6
-                                           ip_range: "fec2:0001::3"
-                                           prefix: 64
-                                         }
-                                         tunnel_dns_addresses {
-                                           ip_family: IPV4
-                                           ip_range: "8.8.8.8"
-                                           prefix: 32
-                                         }
-                                         tunnel_dns_addresses {
-                                           ip_family: IPV4
-                                           ip_range: "8.8.8.4"
-                                           prefix: 32
-                                         }
-                                         tunnel_dns_addresses {
-                                           ip_family: IPV6
-                                           ip_range: "2001:4860:4860::8888"
-                                           prefix: 128
-                                         }
-                                         tunnel_dns_addresses {
-                                           ip_family: IPV6
-                                           ip_range: "2001:4860:4860::8844"
-                                           prefix: 128
-                                         }
-                                         is_metered: false)pb")))
-      .WillOnce(Return(&packet_pipe));
+  EXPECT_CALL(
+      tunnel_manager_,
+      EnsureTunnelIsUp(EqualsProto(R"pb(tunnel_ip_addresses {
+                                          ip_family: IPV4
+                                          ip_range: "10.2.2.123"
+                                          prefix: 32
+                                        }
+                                        tunnel_ip_addresses {
+                                          ip_family: IPV6
+                                          ip_range: "fec2:0001::3"
+                                          prefix: 64
+                                        }
+                                        tunnel_dns_addresses {
+                                          ip_family: IPV4
+                                          ip_range: "8.8.8.8"
+                                          prefix: 32
+                                        }
+                                        tunnel_dns_addresses {
+                                          ip_family: IPV4
+                                          ip_range: "8.8.4.4"
+                                          prefix: 32
+                                        }
+                                        tunnel_dns_addresses {
+                                          ip_family: IPV6
+                                          ip_range: "2001:4860:4860::8888"
+                                          prefix: 128
+                                        }
+                                        tunnel_dns_addresses {
+                                          ip_family: IPV6
+                                          ip_range: "2001:4860:4860::8844"
+                                          prefix: 128
+                                        }
+                                        is_metered: false)pb")));
 
   NetworkInfo expected_network_info;
   expected_network_info.set_network_type(NetworkType::CELLULAR);
-  EXPECT_CALL(datapath_,
-              SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info),
-                            PacketPipeHasFd(tun_fd_counter_), _))
+  EXPECT_CALL(
+      datapath_,
+      SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info), _))
       .WillOnce(Return(absl::OkStatus()));
 
   NetworkInfo network_info;
@@ -580,31 +556,27 @@ TEST_F(BridgeOnPpnSession, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
   session_->DatapathEstablished();
 
   // No Network available.
-  EXPECT_CALL(datapath_, SwitchNetwork(123, _, Eq(absl::nullopt),
-                                       PacketPipeHasFd(tun_fd_counter_), _))
+  EXPECT_CALL(datapath_, SwitchNetwork(123, _, Eq(std::nullopt), _))
       .WillOnce(Return(absl::OkStatus()));
-  EXPECT_OK(session_->SetNetwork(absl::nullopt));
+  EXPECT_OK(session_->SetNetwork(std::nullopt));
 }
 
 TEST_F(BridgeOnPpnSession, SwitchNetworkToSameNetworkType) {
   StartSessionAndConnectDatapathOnCellular();
 
   // Switch network to same type.
-  network_fd_counter_ += 1;
   NetworkInfo new_network_info;
   new_network_info.set_network_type(NetworkType::CELLULAR);
 
   // Expect no tunnel fd change.
   EXPECT_CALL(datapath_,
-              SwitchNetwork(123, _, NetworkInfoEquals(new_network_info),
-                            PacketPipeHasFd(tun_fd_counter_), _))
+              SwitchNetwork(123, _, NetworkInfoEquals(new_network_info), _))
       .WillOnce(Return(absl::OkStatus()));
 
   EXPECT_OK(session_->SetNetwork(new_network_info));
   // Check all the parameters are correct in the session.
   EXPECT_THAT(session_->active_network_info(),
               NetworkInfoEquals(new_network_info));
-  EXPECT_THAT(session_->active_tun_fd_test_only(), Optional(tun_fd_counter_));
 }
 
 TEST_F(BridgeOnPpnSession, DatapathReattemptFailure) {
@@ -629,16 +601,14 @@ TEST_F(BridgeOnPpnSession, DatapathReattemptFailure) {
                       123,
                       Endpoint("[2604:ca00:f001:4::5]:2153",
                                "2604:ca00:f001:4::5", 2153, IPProtocol::kIPv6),
-                      NetworkInfoEquals(expected_network_info),
-                      PacketPipeHasFd(tun_fd_counter_), _))
+                      NetworkInfoEquals(expected_network_info), _))
           .WillOnce(Return(absl::OkStatus()));
     } else {
       EXPECT_CALL(datapath_,
                   SwitchNetwork(123,
                                 Endpoint("64.9.240.165:2153", "64.9.240.165",
                                          2153, IPProtocol::kIPv4),
-                                NetworkInfoEquals(expected_network_info),
-                                PacketPipeHasFd(tun_fd_counter_), _))
+                                NetworkInfoEquals(expected_network_info), _))
           .WillOnce(Return(absl::OkStatus()));
     }
 
@@ -670,20 +640,17 @@ TEST_F(BridgeOnPpnSession, SwitchNetworkToDifferentNetworkType) {
   StartSessionAndConnectDatapathOnCellular();
 
   // Switch network to different type.
-  network_fd_counter_ += 1;
   NetworkInfo new_network_info;
   new_network_info.set_network_type(NetworkType::WIFI);
 
   EXPECT_CALL(datapath_,
-              SwitchNetwork(123, _, NetworkInfoEquals(new_network_info),
-                            PacketPipeHasFd(tun_fd_counter_), _))
+              SwitchNetwork(123, _, NetworkInfoEquals(new_network_info), _))
       .WillOnce(Return(absl::OkStatus()));
 
   EXPECT_OK(session_->SetNetwork(new_network_info));
   // Check all the parameters are correct in the session.
   EXPECT_THAT(session_->active_network_info(),
               NetworkInfoEquals(new_network_info));
-  EXPECT_THAT(session_->active_tun_fd_test_only(), Optional(tun_fd_counter_));
 }
 
 TEST_F(BridgeOnPpnSession, TestEndpointChangeBeforeEstablishingSession) {
@@ -699,30 +666,29 @@ TEST_F(BridgeOnPpnSession, TestEndpointChangeBeforeEstablishingSession) {
 
     notification_thread_.Post([this]() { session_->AuthSuccessful(false); });
   }));
+  AuthAndSignResponse fake_auth_and_sign_response;
   EXPECT_CALL(auth_, auth_response)
-      .WillRepeatedly(Return(fake_auth_and_sign_response_));
+      .WillRepeatedly(Return(fake_auth_and_sign_response));
 
   EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
 
   ExpectSuccessfulAddEgress();
-  TestPacketPipe packet_pipe(++tun_fd_counter_);
-  auto close_pipe = absl::MakeCleanup([&packet_pipe] { packet_pipe.Close(); });
-  EXPECT_CALL(tunnel_manager_, GetTunnel(_)).WillOnce(Return(&packet_pipe));
+  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_));
   EXPECT_CALL(notification_, ControlPlaneConnected());
 
   EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
       .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
 
-  EXPECT_CALL(datapath_, Start(fake_add_egress_response_, _))
+  EXPECT_CALL(datapath_, Start(_, _))
       .WillOnce(::testing::DoAll(
           InvokeWithoutArgs(&done, &absl::Notification::Notify),
           Return(absl::OkStatus())));
 
   NetworkInfo expected_network_info;
   expected_network_info.set_network_type(NetworkType::CELLULAR);
-  EXPECT_CALL(datapath_,
-              SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info),
-                            PacketPipeHasFd(tun_fd_counter_), _))
+  EXPECT_CALL(
+      datapath_,
+      SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info), _))
       .WillOnce(Return(absl::OkStatus()));
 
   session_->Start();
@@ -734,6 +700,14 @@ TEST_F(BridgeOnPpnSession, TestEndpointChangeBeforeEstablishingSession) {
 TEST_F(SessionTest, PopulatesDebugInfo) {
   session_->Start();
 
+  DatapathDebugInfo datapath_debug_info;
+  datapath_debug_info.set_uplink_packets_read(1);
+  datapath_debug_info.set_downlink_packets_read(2);
+  datapath_debug_info.set_decryption_errors(3);
+
+  EXPECT_CALL(datapath_, GetDebugInfo(_))
+      .WillRepeatedly(SetArgPointee<0>(datapath_debug_info));
+
   SessionDebugInfo debug_info;
   session_->GetDebugInfo(&debug_info);
 
@@ -742,6 +716,11 @@ TEST_F(SessionTest, PopulatesDebugInfo) {
                 status: "OK"
                 successful_rekeys: 0
                 network_switches: 1
+                datapath: <
+                  uplink_packets_read: 1
+                  downlink_packets_read: 2
+                  decryption_errors: 3
+                >
               )pb"));
 }
 
@@ -784,10 +763,9 @@ TEST_F(SessionTest, TestAuthResponseCopperControllerHostname) {
   proto.mutable_status()->set_message("OK");
   proto.set_json_body(
       R"string({"copper_controller_hostname":"eu.b.g-tun.com"})string");
-  auto decode_status =
-      fake_auth_and_sign_response_->DecodeFromProto(proto, config_);
-  ASSERT_OK(decode_status);
-  EXPECT_EQ(fake_auth_and_sign_response_->copper_controller_hostname(),
+  ASSERT_OK_AND_ASSIGN(auto fake_auth_and_sign_response,
+                       AuthAndSignResponse::FromProto(proto, config_));
+  EXPECT_EQ(fake_auth_and_sign_response.copper_controller_hostname(),
             "eu.b.g-tun.com");
   absl::Notification auth_done;
   EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
@@ -797,7 +775,7 @@ TEST_F(SessionTest, TestAuthResponseCopperControllerHostname) {
     });
   }));
   EXPECT_CALL(auth_, auth_response)
-      .WillRepeatedly(Return(fake_auth_and_sign_response_));
+      .WillRepeatedly(Return(fake_auth_and_sign_response));
 
   EXPECT_CALL(http_fetcher_, LookupDns("eu.b.g-tun.com"));
   session_->Start();
@@ -810,10 +788,9 @@ TEST_F(SessionTest, TestEmptyAuthResponseCopperControllerHostname) {
   proto.mutable_status()->set_code(200);
   proto.mutable_status()->set_message("OK");
   proto.set_json_body(R"string({"copper_controller_hostname":""})string");
-  auto decode_status =
-      fake_auth_and_sign_response_->DecodeFromProto(proto, config_);
-  ASSERT_OK(decode_status);
-  EXPECT_EQ(fake_auth_and_sign_response_->copper_controller_hostname(), "");
+  ASSERT_OK_AND_ASSIGN(auto fake_auth_and_sign_response,
+                       AuthAndSignResponse::FromProto(proto, config_));
+  EXPECT_EQ(fake_auth_and_sign_response.copper_controller_hostname(), "");
   absl::Notification auth_done;
   EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
     notification_thread_.Post([this, &auth_done] {
@@ -822,7 +799,7 @@ TEST_F(SessionTest, TestEmptyAuthResponseCopperControllerHostname) {
     });
   }));
   EXPECT_CALL(auth_, auth_response)
-      .WillRepeatedly(Return(fake_auth_and_sign_response_));
+      .WillRepeatedly(Return(fake_auth_and_sign_response));
 
   EXPECT_CALL(http_fetcher_, LookupDns("na.b.g-tun.com"));
   session_->Start();

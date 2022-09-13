@@ -38,71 +38,79 @@ public class JniTestNotification {
 
   // Methods defined in jni_test_notification.cc.
   // LINT.IfChange
-  public native void connectedNative(byte[] connectionStatusBytes) throws KryptonException;
-
-  public native void connectingNative(byte[] connectingStatusBytes) throws KryptonException;
-
-  public native void controlPlaneConnected() throws KryptonException;
-
-  public native void statusUpdatedNative(byte[] connectionStatusBytes) throws KryptonException;
-
-  private native void disconnectedNative(byte[] disconnectionStatusBytes) throws KryptonException;
-
-  private native void permanentFailureNative(int code, String message, byte[] detailBytes)
+  public native void connectedNative(Krypton krypton, byte[] connectionStatusBytes)
       throws KryptonException;
 
-  private native void waitingToReconnectNative(byte[] reconnectionStatusBytes)
+  public native void connectingNative(Krypton krypton, byte[] connectingStatusBytes)
+      throws KryptonException;
+
+  public native void controlPlaneConnected(Krypton krypton) throws KryptonException;
+
+  public native void statusUpdatedNative(Krypton krypton, byte[] connectionStatusBytes)
+      throws KryptonException;
+
+  private native void disconnectedNative(Krypton krypton, byte[] disconnectionStatusBytes)
+      throws KryptonException;
+
+  private native void permanentFailureNative(
+      Krypton krypton, int code, String message, byte[] detailBytes) throws KryptonException;
+
+  private native void waitingToReconnectNative(Krypton krypton, byte[] reconnectionStatusBytes)
       throws KryptonException;
 
   private native void networkDisconnectedNative(
-      byte[] networkInfoBytes, int code, String message, byte[] detailBytes)
+      Krypton krypton, byte[] networkInfoBytes, int code, String message, byte[] detailBytes)
       throws KryptonException;
 
-  public native void snoozedNative(byte[] snoozeStatusBytes) throws KryptonException;
-
-  public native void resumedNative(byte[] resumeStatusBytes) throws KryptonException;
-
-  private native int createTunFdNative(byte[] tunFdBytes) throws KryptonException;
-
-  private native int createNetworkFdNative(byte[] networkInfoBytes) throws KryptonException;
-
-  private native boolean configureIpSecNative(byte[] ipSecTransformParamsBytes)
+  public native void snoozedNative(Krypton krypton, byte[] snoozeStatusBytes)
       throws KryptonException;
 
-  public native String getOAuthToken() throws KryptonException;
+  public native void resumedNative(Krypton krypton, byte[] resumeStatusBytes)
+      throws KryptonException;
+
+  private native int createTunFdNative(Krypton krypton, byte[] tunFdBytes) throws KryptonException;
+
+  private native int createNetworkFdNative(Krypton krypton, byte[] networkInfoBytes)
+      throws KryptonException;
+
+  private native boolean configureIpSecNative(Krypton krypton, byte[] ipSecTransformParamsBytes)
+      throws KryptonException;
+
   // LINT.ThenChange(//depot/google3/privacy/net/krypton/jni/jni_test_notification.cc)
 
-  public void connected(ConnectionStatus status) throws KryptonException {
-    connectedNative(status.toByteArray());
+  public void connected(Krypton krypton, ConnectionStatus status) throws KryptonException {
+    connectedNative(krypton, status.toByteArray());
   }
 
-  public void connecting(ConnectingStatus status) throws KryptonException {
-    connectingNative(status.toByteArray());
+  public void connecting(Krypton krypton, ConnectingStatus status) throws KryptonException {
+    connectingNative(krypton, status.toByteArray());
   }
 
-  public void statusUpdate(ConnectionStatus status) throws KryptonException {
-    statusUpdatedNative(status.toByteArray());
+  public void statusUpdate(Krypton krypton, ConnectionStatus status) throws KryptonException {
+    statusUpdatedNative(krypton, status.toByteArray());
   }
 
-  public void disconnected(DisconnectionStatus status) throws KryptonException {
-    disconnectedNative(status.toByteArray());
+  public void disconnected(Krypton krypton, DisconnectionStatus status) throws KryptonException {
+    disconnectedNative(krypton, status.toByteArray());
   }
 
-  public void permanentFailure(PpnStatus status) throws KryptonException {
+  public void permanentFailure(Krypton krypton, PpnStatus status) throws KryptonException {
     PpnStatusDetails details =
         PpnStatusDetails.newBuilder()
             .setDetailedErrorCode(
                 PpnStatusDetails.DetailedErrorCode.forNumber(
                     status.getDetailedErrorCode().getCode()))
             .build();
-    permanentFailureNative(status.getCode().getCode(), status.getMessage(), details.toByteArray());
+    permanentFailureNative(
+        krypton, status.getCode().getCode(), status.getMessage(), details.toByteArray());
   }
 
-  public void waitingToReconnect(ReconnectionStatus status) throws KryptonException {
-    waitingToReconnectNative(status.toByteArray());
+  public void waitingToReconnect(Krypton krypton, ReconnectionStatus status)
+      throws KryptonException {
+    waitingToReconnectNative(krypton, status.toByteArray());
   }
 
-  public void networkDisconnected(NetworkInfo networkInfo, PpnStatus status)
+  public void networkDisconnected(Krypton krypton, NetworkInfo networkInfo, PpnStatus status)
       throws KryptonException {
     PpnStatusDetails details =
         PpnStatusDetails.newBuilder()
@@ -111,29 +119,31 @@ public class JniTestNotification {
                     status.getDetailedErrorCode().getCode()))
             .build();
     networkDisconnectedNative(
+        krypton,
         networkInfo.toByteArray(),
         status.getCode().getCode(),
         status.getMessage(),
         details.toByteArray());
   }
 
-  public void snoozed(SnoozeStatus status) throws KryptonException {
-    snoozedNative(status.toByteArray());
+  public void snoozed(Krypton krypton, SnoozeStatus status) throws KryptonException {
+    snoozedNative(krypton, status.toByteArray());
   }
 
-  public void resumed(ResumeStatus status) throws KryptonException {
-    resumedNative(status.toByteArray());
+  public void resumed(Krypton krypton, ResumeStatus status) throws KryptonException {
+    resumedNative(krypton, status.toByteArray());
   }
 
-  public int createTunFd(TunFdData tunFdData) throws KryptonException {
-    return createTunFdNative(tunFdData.toByteArray());
+  public int createTunFd(Krypton krypton, TunFdData tunFdData) throws KryptonException {
+    return createTunFdNative(krypton, tunFdData.toByteArray());
   }
 
-  public int createNetworkFd(NetworkInfo networkInfo) throws KryptonException {
-    return createNetworkFdNative(networkInfo.toByteArray());
+  public int createNetworkFd(Krypton krypton, NetworkInfo networkInfo) throws KryptonException {
+    return createNetworkFdNative(krypton, networkInfo.toByteArray());
   }
 
-  public boolean configureIpSec(IpSecTransformParams params) throws KryptonException {
-    return configureIpSecNative(params.toByteArray());
+  public boolean configureIpSec(Krypton krypton, IpSecTransformParams params)
+      throws KryptonException {
+    return configureIpSecNative(krypton, params.toByteArray());
   }
 }

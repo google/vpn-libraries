@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -17,7 +17,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <tuple>
+#include <utility>
 
 #include "base/logging.h"
 #include "privacy/net/krypton/crypto/rsa_fdh_blinder.h"
@@ -80,7 +82,7 @@ absl::StatusOr<std::string> SerializePublicKeyset(
   std::stringbuf string_buf;
   PPN_ASSIGN_OR_RETURN(auto keyset_writer_result,
                        ::crypto::tink::BinaryKeysetWriter::New(
-                           absl::make_unique<std::ostream>(&string_buf)));
+                           std::make_unique<std::ostream>(&string_buf)));
 
   // We only seriaze the public value of the keyset.
   PPN_ASSIGN_OR_RETURN(auto public_key, keyset_handle.GetPublicKeysetHandle());
@@ -101,7 +103,7 @@ std::string RandomUTF8String(size_t len, absl::string_view alphabet) {
 
 }  // namespace
 
-SessionCrypto::SessionCrypto(const KryptonConfig *config)
+SessionCrypto::SessionCrypto(const KryptonConfig &config)
     : bn_ctx_(BN_CTX_new()), config_(config) {
   DCHECK_NE(bn_ctx_.get(), nullptr);
   uint8_t private_key[X25519_PRIVATE_KEY_LEN];
@@ -197,7 +199,7 @@ absl::StatusOr<std::string> SessionCrypto::SharedKeyBase64TestOnly() const {
 }
 
 absl::Status SessionCrypto::SetRemoteKeyMaterial(
-    const std::string &remote_public_value, const std::string &remote_nonce) {
+    absl::string_view remote_public_value, absl::string_view remote_nonce) {
   LOG(INFO) << "Remote key material received";
 
   std::string remote_public;
@@ -274,7 +276,7 @@ absl::StatusOr<TransformParams> SessionCrypto::ComputeBridgeKeyMaterial() {
   int key_length = 0;
   // Length of the hkdf length.
   int hkdf_length = 0;
-  switch (config_->cipher_suite_key_length()) {
+  switch (config_.cipher_suite_key_length()) {
     case kAes128KeySize * 8:
       key_length = kAes128KeySize;
       hkdf_length = key_length * 2;
@@ -285,7 +287,7 @@ absl::StatusOr<TransformParams> SessionCrypto::ComputeBridgeKeyMaterial() {
       break;
     default:
       return absl::InvalidArgumentError(absl::StrCat(
-          "Unspecified key length:", config_->cipher_suite_key_length()));
+          "Unspecified key length:", config_.cipher_suite_key_length()));
   }
 
   PPN_ASSIGN_OR_RETURN(auto shared_key, SharedKey());
@@ -314,7 +316,7 @@ absl::StatusOr<TransformParams> SessionCrypto::ComputeBridgeKeyMaterial() {
 }
 
 absl::StatusOr<TransformParams> SessionCrypto::GetTransformParams() {
-  switch (config_->datapath_protocol()) {
+  switch (config_.datapath_protocol()) {
     case KryptonConfig::BRIDGE: {
       return ComputeBridgeKeyMaterial();
     } break;
@@ -375,28 +377,30 @@ absl::Status SessionCrypto::SetBlindingPublicKey(absl::string_view rsa_public) {
   return absl::OkStatus();
 }
 
-absl::optional<std::string> SessionCrypto::GetZincBlindToken() const {
+std::optional<std::string> SessionCrypto::GetZincBlindToken() const {
   if (blinder_ == nullptr) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return absl::Base64Escape(blinder_->blind());
 }
 
-absl::optional<std::string> SessionCrypto::GetBrassUnblindedToken(
+std::optional<std::string> SessionCrypto::GetBrassUnblindedToken(
     absl::string_view zinc_blind_signature) const {
   if (blinder_ == nullptr) {
-    return absl::nullopt;
+    LOG(ERROR) << "blinder_ is null";
+    return std::nullopt;
   }
   auto unblind_signature =
       blinder_->Unblind(zinc_blind_signature, bn_ctx_.get());
   if (!unblind_signature.ok()) {
-    return absl::nullopt;
+    LOG(ERROR) << "Unblinding failed: " << unblind_signature.status();
+    return std::nullopt;
   }
   ::absl::Status verify_result =
       verifier_->Verify(original_message_, *unblind_signature, bn_ctx_.get());
   if (!verify_result.ok()) {
     LOG(ERROR) << "Verify of original_message_ failed: " << verify_result;
-    return absl::nullopt;
+    return std::nullopt;
   }
   return absl::Base64Escape(*unblind_signature);
 }

@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "google/protobuf/duration.proto.h"
@@ -64,22 +65,17 @@ class EgressManager {
     kEgressSessionError,
   };
 
-  EgressManager(absl::string_view brass_url, HttpFetcherInterface* http_fetcher,
+  EgressManager(const KryptonConfig& config, HttpFetcherInterface* http_fetcher,
                 utils::LooperThread* notification_thread);
   virtual ~EgressManager();
-
-  // Gets an egress node based on the auth response parameter.
-  virtual absl::Status GetEgressNodeForBridge(
-      std::shared_ptr<AuthAndSignResponse> auth_response)
-      ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Gets the egress node details for PPN using IPSec
   virtual absl::Status GetEgressNodeForPpnIpSec(
       const AddEgressRequest::PpnDataplaneRequestParams& params)
       ABSL_LOCKS_EXCLUDED(mutex_);
   // Egress node details.
-  virtual absl::StatusOr<std::shared_ptr<AddEgressResponse>>
-  GetEgressSessionDetails() const ABSL_LOCKS_EXCLUDED(mutex_);
+  virtual absl::StatusOr<AddEgressResponse> GetEgressSessionDetails() const
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Stop the processing of the Egress response for any inflight requests.
   void Stop() ABSL_LOCKS_EXCLUDED(mutex_);
@@ -112,25 +108,27 @@ class EgressManager {
   }
 
   absl::Status SaveEgressDetailsTestOnly(
-      std::shared_ptr<AddEgressResponse> egress_response) {
+      const AddEgressResponse& egress_response) {
     absl::MutexLock l(&mutex_);
-    return SaveEgressDetails(std::move(egress_response));
+    return SaveEgressDetails(egress_response);
   }
 
  private:
   void DecodeAddEgressResponse(bool is_rekey, const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
   void SetState(State state) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  absl::Status SaveEgressDetails(
-      std::shared_ptr<AddEgressResponse> egress_response)
+  absl::Status SaveEgressDetails(const AddEgressResponse& egress_response)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;
-  std::shared_ptr<AddEgressResponse> egress_node_response_
+  std::optional<AddEgressResponse> egress_node_response_
       ABSL_GUARDED_BY(mutex_);
+
+  KryptonConfig config_;
   HttpFetcher http_fetcher_;
   NotificationInterface* notification_;       // Not owned.
   utils::LooperThread* notification_thread_;  // Not owned.
+
   std::atomic_bool stopped_ ABSL_GUARDED_BY(mutex_) = false;
   const std::string brass_url_ ABSL_GUARDED_BY(mutex_);
   State state_ ABSL_GUARDED_BY(mutex_);

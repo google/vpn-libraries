@@ -36,7 +36,7 @@ public class Cidr {
   private static final Pattern CIDR_REGEX = Pattern.compile("(.+?)/(\\d+)");
 
   private final BigInteger ipBits;
-  private final @NumBits int ipLength;
+  @NumBits private final int ipLength;
   private final int prefixBits;
 
   Cidr(BigInteger ipBits, @NumBits int ipLength, int prefixBits) {

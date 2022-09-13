@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -21,7 +21,6 @@
 #include <string>
 
 #include "base/logging.h"
-#include "privacy/net/krypton/jni/datapath_builder.h"
 #include "privacy/net/krypton/jni/http_fetcher.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/jni/jni_timer_interface_impl.h"
@@ -47,7 +46,6 @@ using privacy::krypton::KryptonTelemetry;
 using privacy::krypton::NetworkInfo;
 using privacy::krypton::TimerManager;
 using privacy::krypton::jni::ConvertJavaByteArrayToString;
-using privacy::krypton::jni::DatapathBuilderImpl;
 using privacy::krypton::jni::HttpFetcher;
 using privacy::krypton::jni::JniCache;
 using privacy::krypton::jni::JniTimerInterfaceImpl;
@@ -136,15 +134,16 @@ namespace {
 // running at any given time.
 struct KryptonCache {
  public:
-  KryptonCache() {
-    http_fetcher = absl::make_unique<HttpFetcher>();
-    notification = absl::make_unique<KryptonNotification>();
-    vpn_service = absl::make_unique<VpnService>();
-    oauth = absl::make_unique<OAuth>();
-    jni_timer_interface = absl::make_unique<JniTimerInterfaceImpl>();
-    timer_manager = absl::make_unique<TimerManager>(jni_timer_interface.get());
-    datapath_builder =
-        absl::make_unique<DatapathBuilderImpl>(vpn_service.get());
+  KryptonCache(jobject krypton_instance, jobject http_fetcher_instance,
+               jobject oauth_token_provider_instance,
+               jobject timer_manager_id_instance) {
+    http_fetcher = std::make_unique<HttpFetcher>(http_fetcher_instance);
+    notification = std::make_unique<KryptonNotification>(krypton_instance);
+    vpn_service = std::make_unique<VpnService>(krypton_instance);
+    oauth = std::make_unique<OAuth>(oauth_token_provider_instance);
+    jni_timer_interface =
+        std::make_unique<JniTimerInterfaceImpl>(timer_manager_id_instance);
+    timer_manager = std::make_unique<TimerManager>(jni_timer_interface.get());
   }
 
   ~KryptonCache() {
@@ -167,7 +166,6 @@ struct KryptonCache {
   std::unique_ptr<KryptonNotification> notification;
   std::unique_ptr<VpnService> vpn_service;
   std::unique_ptr<OAuth> oauth;
-  std::unique_ptr<DatapathBuilderImpl> datapath_builder;
 };
 
 std::unique_ptr<KryptonCache> krypton_cache;
@@ -182,7 +180,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_init(
     JNIEnv* env, jobject krypton_instance) {
   // Fetch the VM and store the krypton java object
   auto jni_ppn = privacy::krypton::jni::JniCache::Get();
-  jni_ppn->Init(env, krypton_instance);
+  jni_ppn->Init(env);
 
   // Initialize the Krypton library.
   LOG(INFO) << "Initializing the Krypton native library";
@@ -192,12 +190,37 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_init(
     krypton_cache.reset();
   }
 
+  LOG(INFO) << "Getting HttpFetcher instance.";
+  jobject http_fetcher_instance = static_cast<jobject>(env->CallObjectMethod(
+      krypton_instance, jni_ppn->GetKryptonGetHttpFetcherMethod()));
+  if (http_fetcher_instance == nullptr) {
+    LOG(FATAL) << "Unable to load HttpFetcher instance.";
+  }
+
+  LOG(INFO) << "Getting OAuthTokenProvider instance.";
+  jobject oauth_token_provider_instance =
+      static_cast<jobject>(env->CallObjectMethod(
+          krypton_instance, jni_ppn->GetKryptonGetOAuthTokenProviderMethod()));
+  if (oauth_token_provider_instance == nullptr) {
+    LOG(FATAL) << "Unable to load OAuthTokenProvider instance.";
+  }
+
+  LOG(INFO) << "Getting TimerIdManager instance.";
+  jobject timer_id_manager_instance =
+      static_cast<jobject>(env->CallObjectMethod(
+          krypton_instance, jni_ppn->GetKryptonGetTimerIdManagerMethod()));
+  if (timer_id_manager_instance == nullptr) {
+    LOG(FATAL) << "Unable to load TimerIdManager instance.";
+  }
+
   // Create the new Krypton object and make it the singleton.
-  krypton_cache = absl::make_unique<KryptonCache>();
-  krypton_cache->krypton = absl::make_unique<privacy::krypton::Krypton>(
-      krypton_cache->datapath_builder.get(), krypton_cache->http_fetcher.get(),
-      krypton_cache->notification.get(), krypton_cache->vpn_service.get(),
-      krypton_cache->oauth.get(), krypton_cache->timer_manager.get());
+  krypton_cache = std::make_unique<KryptonCache>(
+      krypton_instance, http_fetcher_instance, oauth_token_provider_instance,
+      timer_id_manager_instance);
+  krypton_cache->krypton = std::make_unique<privacy::krypton::Krypton>(
+      krypton_cache->http_fetcher.get(), krypton_cache->notification.get(),
+      krypton_cache->vpn_service.get(), krypton_cache->oauth.get(),
+      krypton_cache->timer_manager.get());
 }
 
 JNIEXPORT void JNICALL
@@ -218,15 +241,6 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_startNative(
     return;
   }
 
-  // TODO: Minor bookkeeping of proto and should be remove it once
-  // the API is migrated.
-  if (!config.has_datapath_protocol()) {
-    if (config.ipsec_datapath()) {
-      config.set_datapath_protocol(KryptonConfig::IPSEC);
-    } else if (config.bridge_over_ppn()) {
-      config.set_datapath_protocol(KryptonConfig::BRIDGE);
-    }
-  }
   krypton_cache->krypton->Start(config);
 }
 

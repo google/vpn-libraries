@@ -19,11 +19,16 @@ package privacy.ppn;
 import "google/protobuf/timestamp.proto";
 
 
+option java_outer_classname = "BrassProto";
+option java_package = "com.google.android.libraries.privacy.ppn.proto";
+option java_api_version = 2;
+option java_multiple_files = true;
+
 // Both V6 and V6 fields are ranges (e.g. ending in /<foo>.)
 message IpRange {
   oneof ip {
-    string ipv4_range = 1;
-    string ipv6_range = 2;
+    string ipv4_range = 1 ;
+    string ipv6_range = 2 ;
   }
 }
 
@@ -34,6 +39,7 @@ message PpnDataplaneRequest {
     UNSPECIFIED_DATAPLANE_PROTOCOL = 0;
     IPSEC = 1;
     BRIDGE = 2;
+    IKE = 3;
   }
 
   enum CryptoSuite {
@@ -79,7 +85,7 @@ message PpnDataplaneRequest {
   // Applicable only for BRIDGE dataplane_protocol in the previous field.
   CryptoSuite suite = 9;
 
-  string region_code = 10;
+  string region_code = 10 ;
 
   // The APN type bridge-proxy use to deside which APN to use for connecting.
   string apn_type = 11;
@@ -91,7 +97,8 @@ message PpnDataplaneResponse {
   // The source ip address of the packets coming from the client.
   // Repeated for v4/v6 versions, or non-contiguous ranges. This is empty in
   // rekey responses.
-  repeated IpRange user_private_ip = 1;
+  repeated IpRange user_private_ip = 1
+      ;
 
   // The dataplane address the client's encapsulated ipsec packets should be
   // sent to. Repeated for v4/v6. This is empty for rekey responses.
@@ -111,6 +118,17 @@ message PpnDataplaneResponse {
   // rekey before this time. Any packets destined for this session after this
   // time will be dropped.
   google.protobuf.Timestamp expiry = 6;
+}
+
+message PpnIkeResponse {
+  // The ID to be used in IKEv2.
+  bytes client_id = 1;
+
+  // The shared secret to be used in IKE_AUTH.
+  bytes shared_secret = 2;
+
+  // The server hostname to put in the IKE profile.
+  string server_address = 3;
 }
 
 message AddEgressRequest {
@@ -136,6 +154,7 @@ message AddEgressResponse {
 
   oneof dataplane {
     PpnDataplaneResponse ppn_dataplane = 1;
+    PpnIkeResponse ike = 3;
   }
 }
 

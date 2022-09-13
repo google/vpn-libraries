@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -16,14 +16,9 @@
 
 namespace privacy {
 namespace krypton {
-// const char JsonKeys::kJsonBodyKey[] = "json_body";
+
 const char JsonKeys::kAuthTokenKey[] = "oauth_token";
 const char JsonKeys::kServiceTypeKey[] = "service_type";
-const char JsonKeys::kJwtTokenKey[] = "jwt";
-// const char JsonKeys::kStatusKey[] = "status";
-// const char JsonKeys::kStatusCodeKey[] = "code";
-// const char JsonKeys::kMessageKey[] = "message";
-// const char JsonKeys::kHeadersKey[] = "headers";
 const char JsonKeys::kBlindedTokensKey[] = "blinded_token";
 
 // Egress
@@ -40,7 +35,6 @@ const char JsonKeys::kIpRanges[] = "ip_ranges";
 const char JsonKeys::kDataplaneSockAddr[] = "data_plane_sock_addrs";
 const char JsonKeys::kError[] = "error";
 const char JsonKeys::kApnType[] = "apn_type";
-
 
 // PPN
 const char JsonKeys::kPpn[] = "ppn";
@@ -68,5 +62,17 @@ const char JsonKeys::kRegionTokenAndSignature[] = "region_token_and_signature";
 const char JsonKeys::kIsUnblindedToken[] = "is_unblinded_token";
 const char JsonKeys::kUnblindedTokenSignature[] = "unblinded_token_signature";
 const char JsonKeys::kPublicKeyHash[] = "public_key_hash";
+
+// IKE
+const char JsonKeys::kIkeDataplane[] = "ike";
+const char JsonKeys::kClientId[] = "client_id";
+const char JsonKeys::kSharedSecret[] = "shared_secret";
+const char JsonKeys::kServerAddress[] = "server_address";
+
+// Attestation
+const char JsonKeys::kAttestationNonce[] = "attestation_nonce";
+const char JsonKeys::kAttestation[] = "attestation";
+const char JsonKeys::kAttestationData[] = "attestation_data";
+
 }  // namespace krypton
 }  // namespace privacy

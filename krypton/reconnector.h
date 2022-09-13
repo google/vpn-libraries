@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/krypton_clock.h"
@@ -82,7 +83,8 @@ class Reconnector : public Session::NotificationInterface {
   void Stop() ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Register the notification interface.
-  void RegisterNotificationInterface(KryptonNotificationInterface* interface);
+  void RegisterNotificationInterface(
+      KryptonNotificationInterface* notification_interface);
 
   // Snooze
   absl::Status Snooze(absl::Duration duration) ABSL_LOCKS_EXCLUDED(mutex_);
@@ -120,14 +122,10 @@ class Reconnector : public Session::NotificationInterface {
     return state_;
   }
 
-  void TestOnlySessionConnectionTimerExpired() ABSL_LOCKS_EXCLUDED(mutex_) {
-    SessionConnectionTimerExpired();
-  }
-
   // Set network. This could happen when the session is connecting
   // or connected or this is used to wake up the connection.
   // nullopt indicates that are no existing network to send tunnel data.
-  absl::Status SetNetwork(absl::optional<NetworkInfo> network_info)
+  absl::Status SetNetwork(std::optional<NetworkInfo> network_info)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void SetSimulatedNetworkFailure(bool simulated_network_failure);
@@ -207,7 +205,7 @@ class Reconnector : public Session::NotificationInterface {
   int connection_deadline_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int datapath_watchdog_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int snooze_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
-  absl::optional<NetworkInfo> active_network_info_ ABSL_GUARDED_BY(mutex_);
+  std::optional<NetworkInfo> active_network_info_ ABSL_GUARDED_BY(mutex_);
   // Represents the successive datapath failures after control plane is
   // connected.
   uint32_t successive_datapath_failures_ ABSL_GUARDED_BY(mutex_) = 0;

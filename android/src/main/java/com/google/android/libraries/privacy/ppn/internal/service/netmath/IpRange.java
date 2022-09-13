@@ -40,7 +40,7 @@ public class IpRange {
 
   private final BigInteger low;
   private final BigInteger high;
-  private final @NumBits int numBits;
+  @NumBits private final int numBits;
 
   IpRange(BigInteger low, BigInteger high, @NumBits int numBits) {
     if (numBits != NumBits.IPV4 && numBits != NumBits.IPV6) {

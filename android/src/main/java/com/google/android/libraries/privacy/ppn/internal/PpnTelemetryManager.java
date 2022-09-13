@@ -135,8 +135,8 @@ class PpnTelemetryManager {
         Log.e(TAG, "Unable to collect telemetry from Krypton.", e);
       }
     }
-    PpnTelemetryImpl.Builder builder =
-        PpnTelemetryImpl.builder()
+    PpnTelemetry.Builder builder =
+        PpnTelemetry.builder()
             .setPpnServiceUptime(serviceTracker.collectDuration(clock))
             .setPpnConnectionUptime(connectionTracker.collectDuration(clock))
             .setNetworkUptime(networkTracker.collectDuration(clock))

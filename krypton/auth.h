@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -16,6 +16,7 @@
 #define PRIVACY_NET_KRYPTON_AUTH_H_
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -62,7 +63,7 @@ class Auth {
     kUnauthenticated  // User is not authenticated.
   };
 
-  Auth(KryptonConfig* config, HttpFetcherInterface* http_fetcher_native,
+  Auth(const KryptonConfig& config, HttpFetcherInterface* http_fetcher_native,
        OAuthInterface* oath_native, utils::LooperThread* looper_thread_);
   virtual ~Auth();
 
@@ -87,10 +88,7 @@ class Auth {
   // Stop needs to be called to exit the underlying threads clean.
   void Stop() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Returns the shared pointer for AuthResponse. Shared pointer is needed as
-  // underlying object could be erased due to re-auth.
-  virtual std::shared_ptr<AuthAndSignResponse> auth_response() const
-      ABSL_LOCKS_EXCLUDED(mutex_);
+  virtual AuthAndSignResponse auth_response() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   void CollectTelemetry(KryptonTelemetry* telemetry)
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -100,10 +98,14 @@ class Auth {
   absl::StatusOr<std::string> signer_public_key() const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  absl::StatusOr<std::string> fetch_nonce() const ABSL_LOCKS_EXCLUDED(mutex_);
+
  private:
   void RequestKeyForBlindSigning(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
-  // Authenticates with Zinc|Auth server and is a non blocking call.
-  void Authenticate(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Authenticates with Auth server and is a non blocking call.
+  void Authenticate(bool is_rekey, std::optional<std::string> nonce)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Sets the authentication sate.
   void SetState(State) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -117,19 +119,22 @@ class Auth {
 
   State state_ ABSL_GUARDED_BY(mutex_);
   mutable absl::Mutex mutex_;
-  // Auth response is a shared pointer as parameters might change due to
-  // re-auth.
-  std::shared_ptr<AuthAndSignResponse> auth_and_sign_response_
-      ABSL_GUARDED_BY(mutex_);
+  AuthAndSignResponse auth_and_sign_response_ ABSL_GUARDED_BY(mutex_);
 
-  void RaiseAuthFailureNotification(absl::Status status) const
+  void RaiseAuthFailureNotification(absl::Status status)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  std::string FetchAttestationDataWithNonce(const std::string& nonce)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   HttpFetcher http_fetcher_;
+  KryptonConfig config_;
+
   OAuthInterface* oauth_;                // Not owned.
   NotificationInterface* notification_;  // Not owned.
   utils::LooperThread* looper_thread_;   // Not owned.
-  KryptonConfig* config_;                // Not owned.
   crypto::SessionCrypto* key_material_;  // Not owned.
+
   std::atomic_bool stopped_ = false;
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
   std::vector<google::protobuf::Duration> latencies_ ABSL_GUARDED_BY(mutex_);

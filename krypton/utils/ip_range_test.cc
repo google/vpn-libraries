@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -17,12 +17,15 @@
 #include <sys/socket.h>
 
 #include <optional>
+#include <string>
+#include <type_traits>
 
+#include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
-#include "third_party/absl/types/optional.h"
+#include "util/task/status_macros.h"
 
 namespace privacy {
 namespace krypton {
@@ -94,7 +97,7 @@ TEST(IPRange, TestValidIPv4WithPrefix) {
 TEST(IPRange, TestValidIPv4WithoutPrefix) {
   ASSERT_OK_AND_ASSIGN(const IPRange ip_range, IPRange::Parse("10.2.2.32"));
   EXPECT_EQ(ip_range.address(), "10.2.2.32");
-  EXPECT_THAT(ip_range.prefix(), Eq(absl::nullopt));
+  EXPECT_THAT(ip_range.prefix(), Eq(std::nullopt));
   EXPECT_EQ(ip_range.family(), AF_INET);
 }
 
@@ -129,7 +132,7 @@ TEST(IPRange, TestValidIPv6WithPrefix) {
 TEST(IPRange, TestValidIPv6WithoutPrefix) {
   ASSERT_OK_AND_ASSIGN(const IPRange ip_range, IPRange::Parse("2604:fe::03"));
   EXPECT_EQ(ip_range.address(), "2604:fe::03");
-  EXPECT_THAT(ip_range.prefix(), Eq(absl::nullopt));
+  EXPECT_THAT(ip_range.prefix(), Eq(std::nullopt));
   EXPECT_EQ(ip_range.family(), AF_INET6);
 }
 
@@ -150,6 +153,50 @@ TEST(IPRange, TestInvalidV6Range) {
               StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(IPRange::Parse("2604:fe::03/256"),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+// Testing proto conversion.
+TEST(IPRange, TestFromProtoInvalidFamily) {
+  TunFdData::IpRange proto;
+  EXPECT_THAT(IPRange::FromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(IPRange, TestFromProtoIPv4WithPrefix) {
+  TunFdData::IpRange proto;
+  proto.set_ip_family(TunFdData::IpRange::IPV4);
+  proto.set_ip_range("127.0.0.1");
+  proto.set_prefix(32);
+
+  // TODO: Change this to an OSS-friendly pattern once one is
+  // available.
+  ASSERT_OK_AND_ASSIGN(const IPRange range, IPRange::FromProto(proto));
+  EXPECT_EQ(range.address(), "127.0.0.1");
+  EXPECT_EQ(range.prefix(), 32);
+  EXPECT_EQ(range.family(), AF_INET);
+}
+
+TEST(IPRange, TestFromProtoIPv4WithoutPrefix) {
+  TunFdData::IpRange proto;
+  proto.set_ip_family(TunFdData::IpRange::IPV4);
+  proto.set_ip_range("127.0.0.1");
+
+  ASSERT_OK_AND_ASSIGN(const IPRange range, IPRange::FromProto(proto));
+  EXPECT_EQ(range.address(), "127.0.0.1");
+  EXPECT_EQ(range.prefix(), std::nullopt);
+  EXPECT_EQ(range.family(), AF_INET);
+}
+
+TEST(IPRange, TestFromProtoIPv6) {
+  TunFdData::IpRange proto;
+  proto.set_ip_family(TunFdData::IpRange::IPV6);
+  proto.set_ip_range("2604:fe::03");
+  proto.set_prefix(64);
+
+  ASSERT_OK_AND_ASSIGN(const IPRange range, IPRange::FromProto(proto));
+  EXPECT_EQ(range.address(), "2604:fe::03");
+  EXPECT_EQ(range.prefix(), 64);
+  EXPECT_EQ(range.family(), AF_INET6);
 }
 
 }  // namespace

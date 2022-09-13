@@ -16,7 +16,6 @@ package com.google.android.libraries.privacy.ppn.internal.service.netmath;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
 
 import com.google.android.libraries.privacy.ppn.internal.service.netmath.IpRange.NumBits;
 import java.math.BigInteger;
@@ -24,6 +23,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.List;
+import org.hamcrest.MatcherAssert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -118,7 +118,7 @@ public class IpRangeTest {
       Cidr[] want = (Cidr[]) test[3];
 
       List<Cidr> cidrs = r.toCidrs();
-      assertThat(Arrays.asList(want), is(cidrs));
+      MatcherAssert.assertThat(Arrays.asList(want), is(cidrs));
     }
   }
 

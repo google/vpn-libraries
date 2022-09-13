@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -43,7 +43,7 @@ namespace crypto {
 // This is not thread safe.
 class SessionCrypto {
  public:
-  explicit SessionCrypto(const KryptonConfig* config);
+  explicit SessionCrypto(const KryptonConfig& config);
   ~SessionCrypto() = default;
 
   struct KeyMaterial {
@@ -57,8 +57,8 @@ class SessionCrypto {
   std::string public_value() const { return absl::Base64Escape(public_value_); }
 
   // Set the remote public value. Remote public & salt should be in base64.
-  absl::Status SetRemoteKeyMaterial(const std::string& remote_public_value,
-                                    const std::string& nonce);
+  absl::Status SetRemoteKeyMaterial(absl::string_view remote_public_value,
+                                    absl::string_view nonce);
 
   // Provides the parameters needed for packet transform params.
   absl::StatusOr<TransformParams> GetTransformParams();
@@ -90,22 +90,22 @@ class SessionCrypto {
   // Set the public key received in PublicKeyResponse. Parameter is PEM
   // RSA public key.
   absl::Status SetBlindingPublicKey(absl::string_view rsa_public);
-  absl::optional<std::string> GetZincBlindToken() const;
-  absl::optional<std::string> GetBrassUnblindedToken(
+  std::optional<std::string> GetZincBlindToken() const;
+  std::optional<std::string> GetBrassUnblindedToken(
       absl::string_view zinc_blind_signature) const;
   const std::string& original_message() const { return original_message_; }
 
-  absl::optional<std::string> GetRekeySignature() const {
+  std::optional<std::string> GetRekeySignature() const {
     return rekey_signature_;
   }
 
   void SetSignature(absl::string_view signature) {
-    rekey_signature_ = absl::optional<std::string>(signature);
+    rekey_signature_ = std::optional<std::string>(signature);
   }
 
-  absl::optional<std::string> blind_signing_public_key_hash() const {
+  std::optional<std::string> blind_signing_public_key_hash() const {
     if (blind_signing_public_key_hash_.empty()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return absl::Base64Escape(blind_signing_public_key_hash_);
   }
@@ -131,9 +131,10 @@ class SessionCrypto {
   std::unique_ptr<RsaFdhBlinder> blinder_ = nullptr;
   std::unique_ptr<RsaFdhVerifier> verifier_ = nullptr;
   std::string original_message_;
-  absl::optional<std::string> rekey_signature_;
+  std::optional<std::string> rekey_signature_;
   std::string blind_signing_public_key_hash_;
-  const KryptonConfig* config_;  // not owned.
+
+  KryptonConfig config_;  // not owned.
 };
 }  // namespace crypto
 }  // namespace krypton

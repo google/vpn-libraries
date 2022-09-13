@@ -1,6 +1,6 @@
 // Copyright 2021 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the "LICENSE");
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -13,6 +13,9 @@
 // limitations under the License.
 
 #include "privacy/net/krypton/keepalive_packet_pipe.h"
+
+#include <functional>
+#include <utility>
 
 namespace privacy {
 namespace krypton {
@@ -34,7 +37,7 @@ absl::Status KeepAlivePacketPipe::StopReadingPackets() {
 }
 
 void KeepAlivePacketPipe::ReadPackets(
-    std::function<bool(absl::Status, Packet)> handler) {
+    std::function<bool(absl::Status, std::vector<Packet>)> handler) {
   {
     absl::MutexLock l(&mutex_);
     if (stopped_) {
@@ -48,19 +51,19 @@ void KeepAlivePacketPipe::ReadPackets(
         mutex_.Unlock();
         // TODO: Figure out how can we construct the keepalive
         // packet properly.
-        handler(absl::OkStatus(), Packet());
+        handler(absl::OkStatus(), std::vector<Packet>());
         mutex_.Lock();
       }
     }
     mutex_.Unlock();
   });
   packet_pipe_->ReadPackets(
-      [this, handler](absl::Status status, Packet packet) {
+      [this, handler](absl::Status status, std::vector<Packet> packets) {
         {
           absl::MutexLock l(&mutex_);
           packet_read_cv_.Signal();
         }
-        return handler(status, std::move(packet));
+        return handler(status, std::move(packets));
       });
 }
 

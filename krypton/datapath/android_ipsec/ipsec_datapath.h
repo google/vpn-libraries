@@ -1,6 +1,6 @@
 // Copyright 2021 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the "LICENSE");
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -41,15 +41,27 @@ namespace android {
 class IpSecDatapath : public DatapathInterface,
                       public datapath::PacketForwarder::NotificationInterface {
  public:
+  // Extension to VpnService with methods needed specifically for Android IpSec.
+  class IpSecVpnServiceInterface : public virtual VpnServiceInterface {
+   public:
+    // Creates a UDP connection to an endpoint on the network.
+    virtual absl::StatusOr<std::unique_ptr<PacketPipe>> CreateNetworkPipe(
+        const NetworkInfo&, const Endpoint&) = 0;
+
+    virtual PacketPipe* GetTunnel() = 0;
+
+    virtual absl::Status ConfigureIpSec(const IpSecTransformParams& params) = 0;
+  };
+
   explicit IpSecDatapath(utils::LooperThread* looper,
-                         VpnServiceInterface* vpn_service)
+                         IpSecVpnServiceInterface* vpn_service)
       : notification_thread_(looper), vpn_service_(vpn_service) {}
   ~IpSecDatapath() override = default;
 
   // Initialize the Ipsec data path.
   // TODO: Remove AddEgressResponse and Bridge specific stuff from
   // Start method.
-  absl::Status Start(std::shared_ptr<AddEgressResponse> egress_response,
+  absl::Status Start(const AddEgressResponse& egress_response,
                      const TransformParams& params) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -57,9 +69,8 @@ class IpSecDatapath : public DatapathInterface,
   void Stop() override ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::Status SwitchNetwork(uint32_t session_id, const Endpoint& endpoint,
-                             absl::optional<NetworkInfo> network_info,
-                             PacketPipe* tunnel, int counter) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
+                             std::optional<NetworkInfo> network_info,
+                             int counter) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::Status SetKeyMaterials(const TransformParams& params) override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -70,19 +81,19 @@ class IpSecDatapath : public DatapathInterface,
 
   void PacketForwarderConnected() override;
 
+  void GetDebugInfo(DatapathDebugInfo* debug_info) override;
+
  private:
   void ShutdownPacketForwarder() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   absl::Mutex mutex_;
 
   utils::LooperThread* notification_thread_;
-  VpnServiceInterface* vpn_service_;
+  IpSecVpnServiceInterface* vpn_service_;
 
-  absl::optional<IpSecTransformParams> key_material_ ABSL_GUARDED_BY(mutex_);
+  std::optional<IpSecTransformParams> key_material_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<PacketForwarder> forwarder_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<PacketPipe> network_pipe_ ABSL_GUARDED_BY(mutex_);
-
-  std::atomic_bool shutting_down_ = false;
 };
 
 }  // namespace android

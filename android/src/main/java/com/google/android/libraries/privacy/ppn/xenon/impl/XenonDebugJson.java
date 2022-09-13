@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn.xenon.impl;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus.ConnectionQuality;
 import com.google.android.libraries.privacy.ppn.internal.json.Json;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.ArrayList;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -31,6 +32,7 @@ public class XenonDebugJson {
 
   public static final String AVAILABLE_NETWORKS = "availableNetworks";
   public static final String ACTIVE_NETWORK = "activeNetwork";
+  public static final String PENDING_NETWORKS = "pendingNetworks";
 
   public static final String CONNECTION_QUALITY = "connectionQuality";
 
@@ -38,24 +40,39 @@ public class XenonDebugJson {
   public static class Builder {
     private final JSONObject json = new JSONObject();
     private final ArrayList<JSONObject> availableNetworks = new ArrayList<>();
+    private final ArrayList<JSONObject> pendingNetworks = new ArrayList<>();
 
+    @CanIgnoreReturnValue
     public Builder setActiveNetwork(PpnNetwork network) {
       Json.put(json, ACTIVE_NETWORK, encodeNetwork(network));
       return this;
     }
 
+    @CanIgnoreReturnValue
     public Builder addAvailableNetwork(PpnNetwork network) {
       availableNetworks.add(encodeNetwork(network));
-      Json.put(json, AVAILABLE_NETWORKS, new JSONArray(availableNetworks));
       return this;
     }
 
+    @CanIgnoreReturnValue
+    public Builder addPendingNetwork(PpnNetwork network) {
+      pendingNetworks.add(encodeNetwork(network));
+      return this;
+    }
+
+    @CanIgnoreReturnValue
     public Builder setConnectionQuality(ConnectionQuality quality) {
       Json.put(json, CONNECTION_QUALITY, quality.name());
       return this;
     }
 
     public JSONObject build() {
+      if (!availableNetworks.isEmpty()) {
+        Json.put(json, AVAILABLE_NETWORKS, new JSONArray(availableNetworks));
+      }
+      if (!pendingNetworks.isEmpty()) {
+        Json.put(json, PENDING_NETWORKS, new JSONArray(pendingNetworks));
+      }
       return json;
     }
 

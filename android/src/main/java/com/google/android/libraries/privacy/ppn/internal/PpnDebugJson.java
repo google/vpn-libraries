@@ -15,6 +15,7 @@
 package com.google.android.libraries.privacy.ppn.internal;
 
 import com.google.android.libraries.privacy.ppn.internal.json.Json;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import org.json.JSONObject;
 
 /** Utility class for creating and using PPN debug json. */
@@ -29,16 +30,19 @@ public class PpnDebugJson {
   public static class Builder {
     private final JSONObject json = new JSONObject();
 
+    @CanIgnoreReturnValue
     public Builder setServiceDebugJson(JSONObject service) {
       Json.put(json, SERVICE, service);
       return this;
     }
 
+    @CanIgnoreReturnValue
     public Builder setKryptonDebugJson(JSONObject krypton) {
       Json.put(json, KRYPTON, krypton);
       return this;
     }
 
+    @CanIgnoreReturnValue
     public Builder setXenonDebugJson(JSONObject xenon) {
       Json.put(json, XENON, xenon);
       return this;

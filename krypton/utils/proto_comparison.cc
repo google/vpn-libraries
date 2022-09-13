@@ -1,6 +1,6 @@
 // Copyright 2021 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the "LICENSE");
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -68,14 +68,6 @@ bool TunFdDataEquiv(const TunFdData& td1, const TunFdData& td2) {
   for (size_t i = 0; i < td1.tunnel_dns_addresses_size(); i++) {
     if (!IpRangeEquiv(td1.tunnel_dns_addresses(i),
                       td2.tunnel_dns_addresses(i))) {
-      return false;
-    }
-  }
-  if (td1.tunnel_routes_size() != td2.tunnel_routes_size()) {
-    return false;
-  }
-  for (size_t i = 0; i < td1.tunnel_routes_size(); i++) {
-    if (!IpRangeEquiv(td1.tunnel_routes(i), td2.tunnel_routes(i))) {
       return false;
     }
   }

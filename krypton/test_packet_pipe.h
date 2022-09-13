@@ -1,19 +1,22 @@
 // Copyright 2021 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 #ifndef PRIVACY_NET_KRYPTON_TEST_PACKET_PIPE_H_
 #define PRIVACY_NET_KRYPTON_TEST_PACKET_PIPE_H_
+
+#include <functional>
+#include <string>
 
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/utils/status.h"
@@ -33,14 +36,15 @@ class TestPacketPipe : public PacketPipe {
   TestPacketPipe(const TestPacketPipe&) = delete;
   TestPacketPipe& operator=(const TestPacketPipe&) = delete;
 
-  absl::Status WritePacket(const Packet& packet) override
+  absl::Status WritePackets(std::vector<Packet> packet) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void ReadPackets(std::function<bool(absl::Status, Packet)> handler) override
+  void ReadPackets(
+      std::function<bool(absl::Status, std::vector<Packet>)> handler) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::StatusOr<std::function<bool(absl::Status, Packet)>> GetReadHandler()
-      ABSL_LOCKS_EXCLUDED(mutex_);
+  absl::StatusOr<std::function<bool(absl::Status, std::vector<Packet>)>>
+  GetReadHandler() ABSL_LOCKS_EXCLUDED(mutex_);
 
   void Close() override {}
 
@@ -59,7 +63,7 @@ class TestPacketPipe : public PacketPipe {
   absl::Mutex mutex_;
 
   // Handler set by read that will be called with any packets that are written.
-  std::optional<std::function<bool(absl::Status, Packet)>> handler_
+  std::optional<std::function<bool(absl::Status, std::vector<Packet>)>> handler_
       ABSL_GUARDED_BY(mutex_);
 
   // Packets that have been written to this pipe.

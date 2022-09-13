@@ -17,12 +17,12 @@ package com.google.android.libraries.privacy.ppn.internal.service.netmath;
 import static junit.framework.TestCase.fail;
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
 
 import com.google.android.libraries.privacy.ppn.internal.service.netmath.IpRange.NumBits;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import org.hamcrest.MatcherAssert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -82,8 +82,9 @@ public class CidrTest {
 
   @Test
   public void cidrNetworkOnly() {
-    assertThat("ipv4", Cidr.parseFrom("1.2.3.4/8").networkOnly(), is(Cidr.parseFrom("1.0.0.0/8")));
-    assertThat(
+    MatcherAssert.assertThat(
+        "ipv4", Cidr.parseFrom("1.2.3.4/8").networkOnly(), is(Cidr.parseFrom("1.0.0.0/8")));
+    MatcherAssert.assertThat(
         "ipv6",
         Cidr.parseFrom("2620:0:1234:5711:e8e5:9c3d:dff4:1d32/64").networkOnly(),
         is(Cidr.parseFrom("2620:0:1234:5711::/64")));

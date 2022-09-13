@@ -21,17 +21,18 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import android.net.VpnService;
-import com.google.testing.mockito.Mocks;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.robolectric.RobolectricTestRunner;
 
 /** Unit test for {@link RouteManager}. */
 @RunWith(RobolectricTestRunner.class)
 public class RouteManagerTest {
-  @Rule public Mocks mocks = new Mocks(this);
+  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
 
   @Mock private VpnService.Builder mockBuilder;
 

@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -17,7 +17,9 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "base/logging.h"
 #include "privacy/net/krypton/datapath_interface.h"
@@ -46,21 +48,16 @@ void Krypton::Start(const KryptonConfig& config) {
             << " service_type=" << config.service_type()
             << " safe_disconnect_enabled=" << config.safe_disconnect_enabled();
 
-  if (config.install_crash_signal_handler()) {
-    LOG(INFO) << "Installing Krypton crash signal handler.";
-    SignalHandler::RegisterNotificationInterface(notification_);
-  }
-
   config_ = config;
   notification_thread_ =
       std::make_unique<utils::LooperThread>("Krypton Looper");
-  session_manager_ = absl::make_unique<SessionManager>(
-      datapath_builder_, http_fetcher_, timer_manager_, vpn_service_, oauth_,
-      &config_, notification_thread_.get());
-  tunnel_manager_ = absl::make_unique<TunnelManager>(
+  session_manager_ = std::make_unique<SessionManager>(
+      config_, http_fetcher_, timer_manager_, vpn_service_, oauth_,
+      notification_thread_.get());
+  tunnel_manager_ = std::make_unique<TunnelManager>(
       vpn_service_, config.safe_disconnect_enabled());
-  clock_ = absl::make_unique<RealClock>();
-  reconnector_ = absl::make_unique<Reconnector>(
+  clock_ = std::make_unique<RealClock>();
+  reconnector_ = std::make_unique<Reconnector>(
       timer_manager_, config, session_manager_.get(), tunnel_manager_.get(),
       notification_thread_.get(), clock_.get());
   reconnector_->RegisterNotificationInterface(notification_);
@@ -74,8 +71,6 @@ void Krypton::Start(const KryptonConfig& config) {
 }
 
 Krypton::~Krypton() {
-  SignalHandler::RegisterNotificationInterface(nullptr);
-
   absl::MutexLock l(&stopped_lock_);
   if (!stopped_) {
     LOG(DFATAL) << "Please call |Stop| before deleting this object";
@@ -173,7 +168,7 @@ absl::Status Krypton::SetNetwork(const NetworkInfo& network_info) {
 }
 
 absl::Status Krypton::SetNoNetworkAvailable() {
-  return reconnector_->SetNetwork(absl::nullopt);
+  return reconnector_->SetNetwork(std::nullopt);
 }
 
 void Krypton::SetSafeDisconnectEnabled(bool enable) {

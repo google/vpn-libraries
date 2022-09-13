@@ -1,25 +1,28 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 #include "privacy/net/krypton/utils/looper.h"
 
+#include <functional>
 #include <memory>
 #include <optional>
-#include <thread>  //NOLINT
+#include <string>
+#include <utility>
 
 #include "base/logging.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/strings/string_view.h"
 
 namespace privacy {
 namespace krypton {
@@ -27,7 +30,7 @@ namespace utils {
 
 ABSL_CONST_INIT thread_local LooperThread* current_looper_thread = nullptr;
 
-LooperThread::LooperThread(const std::string& name)
+LooperThread::LooperThread(absl::string_view name)
     : name_(name),
       started_(false),
       lameduck_(false),
@@ -92,11 +95,11 @@ void LooperThread::Join() {
   LOG(INFO) << "Looper is joined: " << name_;
 }
 
-absl::optional<std::function<void()>> LooperThread::Dequeue() {
+std::optional<std::function<void()>> LooperThread::Dequeue() {
   absl::MutexLock l(&mutex_);
   while (queue_.empty()) {
     if (lameduck_) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     queue_changed_.Wait(&mutex_);
   }
@@ -107,6 +110,11 @@ absl::optional<std::function<void()>> LooperThread::Dequeue() {
 
 void LooperThread::Loop() {
   current_looper_thread = this;
+#ifdef __APPLE__
+  // Set a name for the thread to make debugging in Xcode nicer.
+  std::string label = "Looper: " + name_;
+  pthread_setname_np(label.c_str());
+#endif
   {
     absl::MutexLock l(&mutex_);
     if (started_) {
@@ -150,7 +158,7 @@ void LooperThread::AddCleanupHandler(std::function<void()> runnable) {
   cleanup_queue_.emplace_back(runnable);
 }
 
-absl::optional<std::function<void()>> LooperThread::DequeueCleanupHandler() {
+std::optional<std::function<void()>> LooperThread::DequeueCleanupHandler() {
   absl::MutexLock l(&mutex_);
   if (!lameduck_) {
     LOG(FATAL) << "Attempted to dequeue cleanup handler on running looper: "
@@ -158,7 +166,7 @@ absl::optional<std::function<void()>> LooperThread::DequeueCleanupHandler() {
   }
   if (cleanup_queue_.empty()) {
     cleaned_up_ = true;
-    return absl::nullopt;
+    return std::nullopt;
   }
   auto runnable = std::move(cleanup_queue_.front());
   cleanup_queue_.pop_front();

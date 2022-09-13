@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -47,7 +47,7 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
 
   jbyteArray java_response_array =
       static_cast<jbyteArray>(env.value()->CallObjectMethod(
-          jni_ppn->GetHttpFetcherObject(),
+          http_fetcher_instance_->get(),
           jni_ppn->GetHttpFetcherPostJsonMethod(),
           JavaByteArray(env.value(), request_bytes).get()));
 
@@ -84,7 +84,7 @@ absl::StatusOr<std::string> HttpFetcher::LookupDns(
   }
 
   jstring java_ip = static_cast<jstring>(env.value()->CallObjectMethod(
-      jni_ppn->GetHttpFetcherObject(), jni_ppn->GetHttpFetcherLookupDnsMethod(),
+      http_fetcher_instance_->get(), jni_ppn->GetHttpFetcherLookupDnsMethod(),
       JavaString(env.value(), hostname).get()));
 
   // If Java returned null, then treat it as an Internal error.

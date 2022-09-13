@@ -30,10 +30,10 @@ import android.net.Network;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
 import androidx.test.core.app.ApplicationProvider;
+import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
-import com.google.testing.mockito.Mocks;
 import java.net.DatagramSocket;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -43,6 +43,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.shadows.ShadowVpnService;
@@ -50,7 +52,7 @@ import org.robolectric.shadows.ShadowVpnService;
 /** Unit test for {@link RouteManager}. */
 @RunWith(RobolectricTestRunner.class)
 public class VpnManagerTest {
-  @Rule public Mocks mocks = new Mocks(this);
+  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
 
   // When possible, we use the ShadowVpnService for testing. But for tests where the Shadow is
   // incomplete, we use mocks.
@@ -69,7 +71,8 @@ public class VpnManagerTest {
 
   @Test
   public void setService_marksServiceAsRunning() {
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext());
+    PpnOptions options = new PpnOptions.Builder().build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
     assertThat(manager.isRunning()).isFalse();
 
     manager.setService(service);
@@ -79,7 +82,8 @@ public class VpnManagerTest {
 
   @Test
   public void setServiceNull_marksServiceAsStopped() {
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext());
+    PpnOptions options = new PpnOptions.Builder().build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
     manager.setService(service);
     assertThat(manager.isRunning()).isTrue();
 
@@ -90,7 +94,8 @@ public class VpnManagerTest {
 
   @Test
   public void stopService_tellsServiceToStop() {
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext());
+    PpnOptions options = new PpnOptions.Builder().build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
     manager.setService(service);
     assertThat(manager.isRunning()).isTrue();
 
@@ -102,7 +107,8 @@ public class VpnManagerTest {
 
   @Test
   public void switchNetwork_setsUnderlyingNetworks() {
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext());
+    PpnOptions options = new PpnOptions.Builder().build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
 
     PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
@@ -122,7 +128,8 @@ public class VpnManagerTest {
   @Test
   public void createTunFd_establishesASocket() throws Exception {
     ShadowVpnService.setPrepareResult(null);
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext());
+    PpnOptions options = new PpnOptions.Builder().build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
     doReturn(mockFd).when(mockBuilder).establish();
     doReturn(0xdead).when(mockFd).detachFd();
@@ -134,6 +141,7 @@ public class VpnManagerTest {
 
     verify(mockService).newBuilder();
     verify(mockBuilder, atLeastOnce()).addRoute(anyString(), anyInt());
+    verify(mockBuilder).setMtu(anyInt());
     verify(mockBuilder).setMetered(anyBoolean());
     verify(mockBuilder).establish();
     verify(mockFd).detachFd();
@@ -147,7 +155,8 @@ public class VpnManagerTest {
   @Test
   public void createTunFd_setsDisallowedApplications() throws Exception {
     ShadowVpnService.setPrepareResult(null);
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext());
+    PpnOptions options = new PpnOptions.Builder().build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
     manager.setDisallowedApplications(new HashSet<>(Arrays.asList("foo", "bar", "baz")));
     manager.setServiceWrapper(mockService);
     doReturn(mockFd).when(mockBuilder).establish();
@@ -161,6 +170,7 @@ public class VpnManagerTest {
     verify(mockService).newBuilder();
     verify(mockBuilder, atLeastOnce()).addRoute(anyString(), anyInt());
     verify(mockBuilder).setMetered(anyBoolean());
+    verify(mockBuilder).setMtu(anyInt());
     verify(mockBuilder).addDisallowedApplication("foo");
     verify(mockBuilder).addDisallowedApplication("bar");
     verify(mockBuilder).addDisallowedApplication("baz");
@@ -175,11 +185,11 @@ public class VpnManagerTest {
 
   @Test
   public void createProtectedDatagramSocket_protectsAndBindsSocket() throws Exception {
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext());
+    PpnOptions options = new PpnOptions.Builder().build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
     doReturn(0xfeed).when(mockFd).detachFd();
     doReturn(mockFd).when(mockService).parcelSocket(any(DatagramSocket.class));
-    doReturn(mockFd).when(mockFd).dup();
 
     PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
     verify(mockNetwork, atLeast(0)).getNetworkHandle();
@@ -191,7 +201,6 @@ public class VpnManagerTest {
     verify(mockService).protect(socket.capture());
     verify(mockNetwork).bindSocket(socket.getValue());
     verify(mockService).parcelSocket(socket.getValue());
-    verify(mockFd).dup();
     verify(mockFd).detachFd();
 
     verifyNoMoreInteractions(mockService);

@@ -73,9 +73,4 @@ class KryptonAdapter implements KryptonListener {
   public int onKryptonNeedsNetworkFd(NetworkInfo network) throws PpnException {
     return 0;
   }
-
-  @Override
-  public String onKryptonNeedsOAuthToken() throws PpnException {
-    return null;
-  }
 }

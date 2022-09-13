@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -19,24 +19,26 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/jsoncpp/reader.h"
 #include "third_party/jsoncpp/value.h"
-#include "third_party/jsoncpp/writer.h"
 
 namespace privacy {
 namespace krypton {
 
 using privacy::ppn::PpnDataplaneResponse;
+using privacy::ppn::PpnIkeResponse;
 
 namespace {
 
@@ -92,6 +94,25 @@ absl::Status CopyStringArray(Json::Value object, const std::string& key,
 #define COPY_STRING_VALUE(json_obj, json_key, proto, proto_field) \
   COPY_SCALAR_VALUE(json_obj, json_key, proto, proto_field, isString, asString)
 
+// Similar to COPY_STRING_VALUE, but decodes base64 strings as bytes.
+#define COPY_BYTES_VALUE(json_obj, json_key, proto, proto_field)           \
+  do {                                                                     \
+    if (!json_obj.isMember(JsonKeys::json_key)) {                          \
+      break;                                                               \
+    }                                                                      \
+    if (!json_obj[JsonKeys::json_key].isString()) {                        \
+      return absl::InvalidArgumentError(                                   \
+          absl::StrCat(JsonKeys::json_key, " value is not a string"));     \
+    }                                                                      \
+    std::string encoded = json_obj[JsonKeys::json_key].asString();         \
+    std::string decoded;                                                   \
+    if (!absl::Base64Unescape(encoded, &decoded)) {                        \
+      return absl::InvalidArgumentError(                                   \
+          absl::StrCat(JsonKeys::json_key, " value is not valid base64")); \
+    }                                                                      \
+    proto.set_##proto_field(decoded);                                      \
+  } while (0)
+
 absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
     Json::Value json) {
   PpnDataplaneResponse response;
@@ -144,10 +165,22 @@ absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
   return response;
 }
 
+absl::StatusOr<PpnIkeResponse> ParseIkeResponse(Json::Value json) {
+  PpnIkeResponse response;
+
+  COPY_BYTES_VALUE(json, kClientId, response, client_id);
+  COPY_BYTES_VALUE(json, kSharedSecret, response, shared_secret);
+
+  COPY_STRING_VALUE(json, kServerAddress, response, server_address);
+
+  return response;
+}
+
 #undef COPY_STRING_VALUE
 #undef COPY_INT_VALUE
 #undef COPY_SCALAR_VALUE
 #undef COPY_STRING_ARRAY
+#undef COPY_BYTES_VALUE
 
 }  // namespace
 
@@ -182,8 +215,13 @@ absl::Status AddEgressResponse::DecodeJsonBody(Json::Value value) {
   }
   if (value.isMember(JsonKeys::kPpnDataplane)) {
     PPN_ASSIGN_OR_RETURN(
-        auto proto, ParsePpnDataplaneResponse(value[JsonKeys::kPpnDataplane]));
-    ppn_dataplane_response_ = absl::make_unique<PpnDataplaneResponse>(proto);
+        ppn_dataplane_response_,
+        ParsePpnDataplaneResponse(value[JsonKeys::kPpnDataplane]));
+    return absl::OkStatus();
+  }
+  if (value.isMember(JsonKeys::kIkeDataplane)) {
+    PPN_ASSIGN_OR_RETURN(ike_response_,
+                         ParseIkeResponse(value[JsonKeys::kIkeDataplane]));
     return absl::OkStatus();
   }
   return absl::InvalidArgumentError(

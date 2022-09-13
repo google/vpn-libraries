@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn.xenon.impl;
 import android.content.Context;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import androidx.annotation.Nullable;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus.ConnectionQuality;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
@@ -56,6 +57,7 @@ final class PpnNetworkSelectorImpl implements PpnNetworkSelector {
     this.context = context;
   }
 
+  @Nullable
   @Override
   public PpnNetwork getBestNetwork(List<PpnNetwork> ppnNetworkList) {
     if (ppnNetworkList.isEmpty()) {

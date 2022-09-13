@@ -24,7 +24,9 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import com.google.android.libraries.privacy.ppn.PpnException;
+import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
+import com.google.android.libraries.privacy.ppn.internal.TunFdData.IpRange.IpFamily;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import java.io.IOException;
 import java.net.DatagramSocket;
@@ -43,6 +45,7 @@ public class VpnManager {
   private static final int SOCKET_BUFFER_SIZE_BYTES = 4 * 1024 * 1024;
 
   private final Context context;
+  private final PpnOptions options;
 
   // The underlying VpnService this manager is managing.
   // This may be null if the service is not running.
@@ -52,8 +55,9 @@ public class VpnManager {
 
   private volatile Set<String> disallowedApplications = Collections.emptySet();
 
-  public VpnManager(Context context) {
+  public VpnManager(Context context, PpnOptions options) {
     this.context = context;
+    this.options = options;
   }
 
   /**
@@ -129,7 +133,7 @@ public class VpnManager {
 
     VpnService.Builder builder = service.newBuilder();
     setVpnServiceParametersForDisallowedApplications(builder, disallowedApplications);
-    setVpnServiceParametersFromTunFdData(builder, tunFdData);
+    setVpnServiceParametersFromTunFdData(builder, tunFdData, options);
 
     // If the network was set before the tunnel was established, make sure to set it on the builder.
     PpnNetwork network = getNetwork();
@@ -178,14 +182,12 @@ public class VpnManager {
   }
 
   private static void setVpnServiceParametersFromTunFdData(
-      VpnService.Builder builder, TunFdData tunFdData) {
+      VpnService.Builder builder, TunFdData tunFdData, PpnOptions options) {
     if (tunFdData.hasSessionName()) {
       builder.setSession(tunFdData.getSessionName());
     }
 
-    if (tunFdData.hasMtu()) {
-      builder.setMtu(tunFdData.getMtu());
-    }
+    builder.setMtu(tunFdData.getMtu());
 
     // VpnService.Builder.setMetered(...) is only supported in API 29+.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -194,14 +196,17 @@ public class VpnManager {
     }
 
     for (TunFdData.IpRange ipRange : tunFdData.getTunnelIpAddressesList()) {
+      // TODO: Don't enable IPv6 until it's working.
+      if (!options.isIPv6Enabled() && ipRange.getIpFamily() == IpFamily.IPV6) {
+        Log.w(TAG, "Skipping IPv6 tunnel address: " + ipRange.getIpRange());
+        continue;
+      }
+      Log.w(TAG, "Adding tunnel address: " + ipRange.getIpRange());
       builder.addAddress(ipRange.getIpRange(), ipRange.getPrefix());
     }
     for (TunFdData.IpRange ipRange : tunFdData.getTunnelDnsAddressesList()) {
       Log.w(TAG, "Adding DNS: " + ipRange.getIpRange());
       builder.addDnsServer(ipRange.getIpRange());
-    }
-    for (TunFdData.IpRange ipRange : tunFdData.getTunnelRoutesList()) {
-      builder.addRoute(ipRange.getIpRange(), ipRange.getPrefix());
     }
 
     RouteManager.addRoutes(builder);
@@ -242,12 +247,14 @@ public class VpnManager {
       service.protect(socket);
       network.bindSocket(socket);
 
-      // We need to explicitly duplicate the socket otherwise it will fail for Android version 9
-      // (P) and older.
-      // TODO: Find a cleaner way to support both versions.
-      ParcelFileDescriptor pfd = service.parcelSocket(socket).dup();
-      // ParcelFileDescriptor duplicates the socket, so the original needs to be closed.
+      // Explicitly duplicate the socket for Android version 9 (P) and older.
+      ParcelFileDescriptor pfd = service.parcelSocket(socket);
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        pfd = pfd.dup();
+      }
+      // pfd is a duplicate of the original socket, which needs to be closed.
       socket.close();
+      socket = null;
       int fd = pfd.detachFd();
       if (fd <= 0) {
         throw new PpnException("Invalid file descriptor from datagram socket: " + fd);

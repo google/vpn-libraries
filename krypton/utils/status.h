@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -54,13 +54,13 @@ namespace utils {
   }                                                      \
   lhs = std::move(statusor.ValueOrDie())
 
-// Takes an HTTP status code and returns the corresponding absl::StatusCode.
-// This is the standard HTTP status code -> error mapping defined in:
+// Takes an HTTP status code and returns the corresponding absl::Status.
+// This uses the standard HTTP status code -> error mapping defined in:
 // https://github.com/googleapis/googleapis/blob/master/google/rpc/code.proto
-absl::StatusCode GetStatusCodeForHttpStatus(int http_status);
+absl::Status GetStatusForHttpStatus(int http_status, absl::string_view message);
 
 // Status code errors that are treated as permanent errors.
-bool IsPermanentError(absl::StatusCode code);
+bool IsPermanentError(absl::Status status);
 
 /** Gets PPN-specific details from the given Status. */
 PpnStatusDetails GetPpnStatusDetails(absl::Status status);

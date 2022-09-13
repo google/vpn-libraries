@@ -15,8 +15,8 @@
 package com.google.android.libraries.privacy.ppn.krypton;
 
 import android.content.Context;
-import androidx.annotation.VisibleForTesting;
 import android.util.Log;
+import androidx.annotation.VisibleForTesting;
 import androidx.work.WorkManager;
 import com.google.android.libraries.privacy.ppn.PpnException;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
@@ -50,14 +50,23 @@ public class KryptonImpl implements Krypton, TimerListener {
   private static final String TAG = "Krypton";
   private static final String NATIVE_TAG = "KryptonNative";
 
+  // In order to use JNI, somebody has to call System.loadLibrary.
+  // We can't call it from multiple places, so this block is the one true place to load it.
+  // Therefore, any class that needs JNI just needs to make sure the static block is called.
+  // Normally, this isn't an issue, since any binary that uses Krypton will already have it loaded.
   static {
+    Log.i(TAG, "Loading krypton_jni library.");
     System.loadLibrary("krypton_jni");
   }
+  // Helper for binaries that use Krypton JNI methods without creating an actual Krypton instance.
+  // It can be a no-op, because all that needs to happen is for the static block above to run.
+  public static void ensureJniIsLoaded() {}
 
   private final KryptonListener listener;
   private final HttpFetcher httpFetcher;
   private final ExecutorService backgroundExecutor;
   private final TimerIdManager timerIdManager;
+  private final OAuthTokenProvider oAuthTokenProvider;
 
   /**
    * Initializes a Krypton instance with the given parameters.
@@ -68,9 +77,11 @@ public class KryptonImpl implements Krypton, TimerListener {
   public KryptonImpl(
       Context context,
       HttpFetcher httpFetcher,
+      OAuthTokenProvider oAuthTokenProvider,
       KryptonListener kryptonListener,
       ExecutorService backgroundExecutor) {
     this.httpFetcher = httpFetcher;
+    this.oAuthTokenProvider = oAuthTokenProvider;
     this.listener = kryptonListener;
     this.backgroundExecutor = backgroundExecutor;
     this.timerIdManager =
@@ -368,22 +379,10 @@ public class KryptonImpl implements Krypton, TimerListener {
     }
   }
 
-  /**
-   * Used to call into the PPN service to get a new OAuth token for Zinc.
-   *
-   * @return the token as a String, or an empty String if there was a failure.
-   */
-  private String getOAuthToken() {
-    try {
-      return listener.onKryptonNeedsOAuthToken();
-    } catch (PpnException e) {
-      // This method is used from C++ code, so we can't easily throw an Exception here.
-      Log.e(TAG, "Unable to get Zinc oauth token.", e);
-      return "";
-    }
+  /** Used to call into the PPN service to get a new OAuth token for Zinc. */
+  private OAuthTokenProvider getOAuthTokenProvider() {
+    return oAuthTokenProvider;
   }
-
-  // LINT.ThenChange(//depot/google3/privacy/net/krypton/jni/jni_cache.cc)
 
   @Override
   public void onTimerExpired(int timerId) {

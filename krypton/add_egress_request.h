@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -17,6 +17,8 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 
 #include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
@@ -39,10 +41,7 @@ class AddEgressRequest {
   // Parameters needed for PpnDataplane.
   struct PpnDataplaneRequestParams {
    public:
-    PpnDataplaneRequestParams() = default;
-    ~PpnDataplaneRequestParams() = default;
-
-    std::shared_ptr<AuthAndSignResponse> auth_response;
+    AuthAndSignResponse auth_response;
     const crypto::SessionCrypto* crypto;  // Not owned.
     std::string copper_control_plane_address;
     ppn::PpnDataplaneRequest::CryptoSuite suite;
@@ -62,15 +61,10 @@ class AddEgressRequest {
     std::string apn_type;
   };
 
-  // Returns the corresponding headers and json_body separately.
-  absl::optional<HttpRequest> EncodeToProtoForBridge(
-      std::shared_ptr<AuthAndSignResponse> auth_response);
-
-  absl::optional<HttpRequest> EncodeToProtoForPpn(
+  std::optional<HttpRequest> EncodeToProtoForPpn(
       const PpnDataplaneRequestParams& params);
 
  private:
-  Json::Value BuildBodyJson(std::shared_ptr<AuthAndSignResponse> auth_response);
   Json::Value BuildBodyJson(const PpnDataplaneRequestParams& params);
 };
 }  // namespace krypton

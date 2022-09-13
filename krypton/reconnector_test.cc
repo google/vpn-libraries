@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -50,6 +50,12 @@ using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::status::StatusIs;
 
+constexpr char kExpectedConfig[] = R"pb(
+  zinc_url: "https://autopush.zinc"
+  brass_url: "https://autopush.brass"
+  service_type: "g1"
+)pb";
+
 class MockSessionNotification : public Session::NotificationInterface {
  public:
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
@@ -67,11 +73,10 @@ class MockSessionManagerInterface : public SessionManagerInterface {
   MOCK_METHOD(void, RegisterNotificationInterface,
               (Session::NotificationInterface*), (override));
   MOCK_METHOD(void, EstablishSession,
-              (absl::string_view, absl::string_view, absl::string_view, int,
-               TunnelManagerInterface*, absl::optional<NetworkInfo>),
+              (int, TunnelManagerInterface*, std::optional<NetworkInfo>),
               (override));
   MOCK_METHOD(void, TerminateSession, (bool), (override));
-  MOCK_METHOD(absl::optional<Session*>, session, (), (const, override));
+  MOCK_METHOD(std::optional<Session*>, session, (), (const, override));
 };
 
 class MockTunnelManager : public TunnelManagerInterface {
@@ -81,7 +86,7 @@ class MockTunnelManager : public TunnelManagerInterface {
   MOCK_METHOD(void, SetSafeDisconnectEnabled, (bool), (override));
   MOCK_METHOD(bool, IsSafeDisconnectEnabled, (), (override));
   MOCK_METHOD(void, StartSession, (), (override));
-  MOCK_METHOD(absl::StatusOr<PacketPipe*>, GetTunnel, (TunFdData), (override));
+  MOCK_METHOD(absl::Status, EnsureTunnelIsUp, (TunFdData), (override));
   MOCK_METHOD(absl::Status, RecreateTunnelIfNeeded, (), (override));
   MOCK_METHOD(void, TerminateSession, (bool), (override));
   MOCK_METHOD(bool, IsTunnelActive, (), (override));
@@ -101,7 +106,7 @@ class ReconnectorTest : public ::testing::Test {
 
     fake_clock_.SetNow(absl::FromUnixSeconds(fake_clock_now_));
 
-    reconnector_ = absl::make_unique<Reconnector>(
+    reconnector_ = std::make_unique<Reconnector>(
         &timer_manager_, config, &session_manager_, &tunnel_manager_,
         notification_thread_.get(), &fake_clock_);
     reconnector_->RegisterNotificationInterface(
@@ -112,8 +117,7 @@ class ReconnectorTest : public ::testing::Test {
   void InitialExpectations(int* timer_id) {
     EXPECT_CALL(session_manager_,
                 EstablishSession(
-                    "https://autopush.zinc", "https://autopush.brass", "g1",
-                    /*restart_count=*/0, &tunnel_manager_, Eq(absl::nullopt)));
+                    /*restart_count=*/0, &tunnel_manager_, Eq(std::nullopt)));
     ExpectStartTimer(absl::Seconds(30), timer_id);
   }
 
@@ -206,11 +210,9 @@ TEST_F(ReconnectorTest, CheckExponentialBackOff) {
     EXPECT_CALL(session_manager_, TerminateSession);
     reconnector_->ControlPlaneDisconnected(absl::NotFoundError("Some status"));
 
-    EXPECT_CALL(
-        session_manager_,
-        EstablishSession("https://autopush.zinc", "https://autopush.brass",
-                         "g1", ++session_reconnect_count, &tunnel_manager_,
-                         Eq(absl::nullopt)));
+    EXPECT_CALL(session_manager_,
+                EstablishSession(++session_reconnect_count, &tunnel_manager_,
+                                 Eq(std::nullopt)));
     ExpectStartTimer(absl::Seconds(30), &connection_deadline_timer_id);
     timer_interface_.TimerExpiry(reconnect_time_id);
   }
@@ -235,11 +237,9 @@ TEST_F(ReconnectorTest, ResetFailureCountersWhenSetNetworkCalled) {
   EXPECT_CALL(session_manager_, TerminateSession);
   reconnector_->ControlPlaneDisconnected(absl::NotFoundError("Some status"));
 
-  EXPECT_CALL(
-      session_manager_,
-      EstablishSession("https://autopush.zinc", "https://autopush.brass", "g1",
-                       ++session_reconnect_count, &tunnel_manager_,
-                       Eq(absl::nullopt)));
+  EXPECT_CALL(session_manager_,
+              EstablishSession(++session_reconnect_count, &tunnel_manager_,
+                               Eq(std::nullopt)));
   ExpectStartTimer(absl::Seconds(30), &connection_deadline_timer_id);
   timer_interface_.TimerExpiry(reconnect_time_id);
   EXPECT_EQ(1, reconnector_->SuccessiveControlplaneFailuresTestOnly());
@@ -277,13 +277,13 @@ TEST_F(ReconnectorTest, TestAirplaneModeOn) {
 
   EXPECT_CALL(session_manager_, TerminateSession);
   EXPECT_CALL(krypton_notification_interface_, Disconnected);
-  EXPECT_OK(reconnector_->SetNetwork(absl::nullopt));
+  EXPECT_OK(reconnector_->SetNetwork(std::nullopt));
   EXPECT_EQ(reconnector_->state(), Reconnector::State::kPaused);
 }
 
 TEST_F(ReconnectorTest, TestAirplaneModeOff) {
   int connection_deadline_timer_id;
-  int reconnect_time_id;
+  int reconnect_time_id = 0;
   InitialExpectations(&connection_deadline_timer_id);
 
   reconnector_->Start();
@@ -295,7 +295,7 @@ TEST_F(ReconnectorTest, TestAirplaneModeOff) {
 
   EXPECT_CALL(session_manager_, TerminateSession);
   // Go to Airplane mode.
-  EXPECT_OK(reconnector_->SetNetwork(absl::nullopt));
+  EXPECT_OK(reconnector_->SetNetwork(std::nullopt));
   EXPECT_EQ(reconnector_->state(), Reconnector::State::kPaused);
 
   // Turn Airplane mode off
@@ -304,10 +304,8 @@ TEST_F(ReconnectorTest, TestAirplaneModeOff) {
   timer_interface_.TimerExpiry(reconnect_time_id);
 
   EXPECT_OK(reconnector_->SetNetwork(NetworkInfo()));
-  EXPECT_CALL(
-      session_manager_,
-      EstablishSession("https://autopush.zinc", "https://autopush.brass", "g1",
-                       /*restart_count=*/1, &tunnel_manager_, _));
+  EXPECT_CALL(session_manager_, EstablishSession(
+                                    /*restart_count=*/1, &tunnel_manager_, _));
   ExpectStartTimer(absl::Seconds(30), &reconnect_time_id);
 
   // This will start the session establishment.
@@ -316,7 +314,7 @@ TEST_F(ReconnectorTest, TestAirplaneModeOff) {
 
 TEST_F(ReconnectorTest, TestSnooze) {
   int connection_deadline_timer_id;
-  int snooze_timer_id;
+  int snooze_timer_id = 0;
   absl::Duration snooze_duration_mins = absl::Minutes(1);
 
   InitialExpectations(&connection_deadline_timer_id);
@@ -341,10 +339,8 @@ TEST_F(ReconnectorTest, TestResumeSnoozeTimerExpired) {
   int snooze_timer_id;
   absl::Duration snooze_duration_mins = absl::Minutes(1);
 
-  EXPECT_CALL(
-      session_manager_,
-      EstablishSession("https://autopush.zinc", "https://autopush.brass", "g1",
-                       /*restart_count=*/0, &tunnel_manager_, _));
+  EXPECT_CALL(session_manager_, EstablishSession(
+                                    /*restart_count=*/0, &tunnel_manager_, _));
   EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(30)))
       .WillRepeatedly(DoAll(SaveArg<0>(&connection_deadline_timer_id),
                             Return(absl::OkStatus())));
@@ -361,10 +357,8 @@ TEST_F(ReconnectorTest, TestResumeSnoozeTimerExpired) {
   EXPECT_OK(reconnector_->Snooze(snooze_duration_mins));
   EXPECT_EQ(reconnector_->state(), Reconnector::State::kSnoozed);
 
-  EXPECT_CALL(
-      session_manager_,
-      EstablishSession("https://autopush.zinc", "https://autopush.brass", "g1",
-                       /*restart_count=*/1, &tunnel_manager_, _));
+  EXPECT_CALL(session_manager_, EstablishSession(
+                                    /*restart_count=*/1, &tunnel_manager_, _));
 
   EXPECT_CALL(timer_interface_, CancelTimer(snooze_timer_id)).Times(1);
   timer_interface_.TimerExpiry(snooze_timer_id);
@@ -375,10 +369,8 @@ TEST_F(ReconnectorTest, TestResumeWhenTimerNotExpired) {
   int snooze_timer_id;
   absl::Duration snooze_duration_mins = absl::Minutes(1);
 
-  EXPECT_CALL(
-      session_manager_,
-      EstablishSession("https://autopush.zinc", "https://autopush.brass", "g1",
-                       /*restart_count=*/0, &tunnel_manager_, _));
+  EXPECT_CALL(session_manager_, EstablishSession(
+                                    /*restart_count=*/0, &tunnel_manager_, _));
   EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(30)))
       .WillRepeatedly(DoAll(SaveArg<0>(&connection_deadline_timer_id),
                             Return(absl::OkStatus())));
@@ -394,10 +386,8 @@ TEST_F(ReconnectorTest, TestResumeWhenTimerNotExpired) {
   EXPECT_OK(reconnector_->Snooze(snooze_duration_mins));
   EXPECT_EQ(reconnector_->state(), Reconnector::State::kSnoozed);
 
-  EXPECT_CALL(
-      session_manager_,
-      EstablishSession("https://autopush.zinc", "https://autopush.brass", "g1",
-                       /*restart_count=*/1, &tunnel_manager_, _));
+  EXPECT_CALL(session_manager_, EstablishSession(
+                                    /*restart_count=*/1, &tunnel_manager_, _));
 
   // If Resume() is not triggered automatically, we would like to cancel the
   // timer that will automatically trigger Resume().
@@ -410,24 +400,20 @@ TEST_F(ReconnectorTest, TestResumeWhenTimerNotExpired) {
 TEST_F(ReconnectorTest, TestResumeCreateTempTunnelForSafeDisconnect) {
   absl::Duration snooze_duration_mins = absl::Minutes(1);
   tunnel_manager_.SetSafeDisconnectEnabled(/*enabled=*/true);
-  EXPECT_CALL(
-      session_manager_,
-      EstablishSession("https://autopush.zinc", "https://autopush.brass", "g1",
-                       /*restart_count=*/0, &tunnel_manager_, _));
+  EXPECT_CALL(session_manager_, EstablishSession(
+                                    /*restart_count=*/0, &tunnel_manager_, _));
   reconnector_->Start();
   reconnector_->ControlPlaneConnected();
   EXPECT_OK(reconnector_->Snooze(snooze_duration_mins));
-  EXPECT_CALL(
-      session_manager_,
-      EstablishSession("https://autopush.zinc", "https://autopush.brass", "g1",
-                       /*restart_count=*/1, &tunnel_manager_, _));
+  EXPECT_CALL(session_manager_, EstablishSession(
+                                    /*restart_count=*/1, &tunnel_manager_, _));
   EXPECT_CALL(tunnel_manager_, RecreateTunnelIfNeeded);
   EXPECT_OK(reconnector_->Resume());
 }
 
 TEST_F(ReconnectorTest, TestStopSnoozeTimerWhenStopped) {
   int connection_deadline_timer_id;
-  int snooze_timer_id;
+  int snooze_timer_id = 0;
   absl::Duration snooze_duration_mins = absl::Minutes(1);
 
   InitialExpectations(&connection_deadline_timer_id);
@@ -492,7 +478,7 @@ TEST_F(ReconnectorTest, TestSnoozeOnCancelReconnection) {
   EXPECT_EQ(reconnector_->state(), Reconnector::State::kConnected);
 
   // Go to Airplane mode.
-  EXPECT_OK(reconnector_->SetNetwork(absl::nullopt));
+  EXPECT_OK(reconnector_->SetNetwork(std::nullopt));
   EXPECT_EQ(reconnector_->state(), Reconnector::State::kPaused);
 
   // Setting network while in Airplane mode to initiate reconnection.
@@ -515,7 +501,7 @@ TEST_F(ReconnectorTest, TestSnoozeSetNetworkNoOp) {
   // should not be called) when SetNetwork() is called.
   EXPECT_CALL(timer_interface_, StartTimer).Times(0);
   EXPECT_CALL(session_manager_, TerminateSession).Times(0);
-  EXPECT_OK(reconnector_->SetNetwork(absl::nullopt));
+  EXPECT_OK(reconnector_->SetNetwork(std::nullopt));
   EXPECT_EQ(reconnector_->state(), Reconnector::State::kSnoozed);
 
   EXPECT_OK(reconnector_->SetNetwork(NetworkInfo()));
@@ -586,7 +572,7 @@ class DatapathReconnectorTest : public ReconnectorTest {
     notification_thread_ =
         std::make_unique<utils::LooperThread>("ReconnectorTest Looper");
 
-    reconnector_ = absl::make_unique<Reconnector>(
+    reconnector_ = std::make_unique<Reconnector>(
         &timer_manager_, config, &session_manager_, &tunnel_manager_,
         notification_thread_.get(), &fake_clock_);
     reconnector_->RegisterNotificationInterface(
@@ -657,11 +643,9 @@ TEST_F(DatapathReconnectorTest, TestDatapathReconnectorReattempts) {
 
     // Reconnection timer expiry.
     ExpectStartTimer(absl::Seconds(30), &connection_deadline_timer_id);
-    EXPECT_CALL(
-        session_manager_,
-        EstablishSession("https://autopush.zinc", "https://autopush.brass",
-                         "g1", ++session_reconnect_count, &tunnel_manager_,
-                         Eq(absl::nullopt)));
+    EXPECT_CALL(session_manager_,
+                EstablishSession(++session_reconnect_count, &tunnel_manager_,
+                                 Eq(std::nullopt)));
 
     timer_interface_.TimerExpiry(reconnect_time_id);
 

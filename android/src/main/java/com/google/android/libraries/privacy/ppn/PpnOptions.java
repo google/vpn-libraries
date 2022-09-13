@@ -14,7 +14,12 @@
 
 package com.google.android.libraries.privacy.ppn;
 
+import android.os.Build;
+import android.util.Log;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
+import com.google.common.collect.ImmutableList;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -27,6 +32,7 @@ import java.util.concurrent.Executors;
 
 /** Options for configuring how PPN runs. */
 public class PpnOptions {
+  private static final String TAG = "PpnOptions";
   private static final String DEFAULT_ZINC_URL = "https://staging.zinc.cloud.cupronickel.goog/auth";
   private static final String DEFAULT_ZINC_PUBLIC_SIGNING_KEY_URL =
       "https://staging.zinc.cloud.cupronickel.goog/publickey";
@@ -56,14 +62,14 @@ public class PpnOptions {
   private final int connectivityCheckMaxRetries;
 
   private final Optional<String> copperControllerAddress;
+  private final Optional<String> copperHostnameOverride;
   private final List<String> copperHostnameSuffix;
 
-  private final Optional<Boolean> ipSecEnabled;
-  private final Optional<Boolean> bridgeOnPpnEnabled;
+  private final Optional<DatapathProtocol> datapathProtocol;
   private final Optional<Integer> bridgeKeyLength;
   private final Optional<Duration> rekeyDuration;
   private final Optional<Boolean> blindSigningEnabled;
-  private final Optional<Boolean> shouldInstallKryptonCrashSignalHandler;
+  private final boolean ipv6Enabled;
 
   private final Optional<Duration> reconnectorInitialTimeToReconnect;
   private final Optional<Duration> reconnectorSessionConnectionDeadline;
@@ -76,6 +82,13 @@ public class PpnOptions {
   private final boolean dnsCacheEnabled;
   private final ExecutorService backgroundExecutor;
   private final Optional<PpnAccountManager> accountManager;
+  private final boolean accountRefreshWorkerEnabled;
+  private final boolean integrityAttestationEnabled;
+  private final boolean hardwareAttestationEnabled;
+  private final Optional<Long> attestationCloudProjectNumber;
+
+  private final Optional<String> apiKey;
+  private final boolean attachOauthTokenAsHeader;
 
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
@@ -89,20 +102,20 @@ public class PpnOptions {
     this.connectivityCheckMaxRetries = builder.connectivityCheckMaxRetries;
 
     this.copperControllerAddress = builder.copperControllerAddress;
+    this.copperHostnameOverride = builder.copperHostnameOverride;
     this.copperHostnameSuffix = builder.copperHostnameSuffix;
 
-    this.ipSecEnabled = builder.ipSecEnabled;
-    this.bridgeOnPpnEnabled = builder.bridgeOnPpnEnabled;
+    this.datapathProtocol = builder.datapathProtocol;
     this.bridgeKeyLength = builder.bridgeKeyLength;
     this.rekeyDuration = builder.rekeyDuration;
     this.blindSigningEnabled = builder.blindSigningEnabled;
-    this.shouldInstallKryptonCrashSignalHandler = builder.shouldInstallKryptonCrashSignalHandler;
 
     this.reconnectorInitialTimeToReconnect = builder.reconnectorInitialTimeToReconnect;
     this.reconnectorSessionConnectionDeadline = builder.reconnectorSessionConnectionDeadline;
 
     this.isStickyService = builder.isStickyService;
     this.safeDisconnectEnabled = builder.safeDisconnectEnabled;
+    this.ipv6Enabled = builder.ipv6Enabled;
 
     this.disallowedApplications = Collections.unmodifiableSet(builder.disallowedApplications);
 
@@ -112,6 +125,12 @@ public class PpnOptions {
             ? builder.backgroundExecutor.get()
             : Executors.newSingleThreadExecutor();
     this.accountManager = builder.accountManager;
+    this.accountRefreshWorkerEnabled = builder.accountRefreshWorkerEnabled;
+    this.integrityAttestationEnabled = builder.integrityAttestationEnabled;
+    this.hardwareAttestationEnabled = builder.hardwareAttestationEnabled;
+    this.attestationCloudProjectNumber = builder.attestationCloudProjectNumber;
+    this.apiKey = builder.apiKey;
+    this.attachOauthTokenAsHeader = builder.attachOauthTokenAsHeader;
   }
 
   public String getZincUrl() {
@@ -150,16 +169,16 @@ public class PpnOptions {
     return copperControllerAddress;
   }
 
+  public Optional<String> getCopperHostnameOverride() {
+    return copperHostnameOverride;
+  }
+
   public List<String> getCopperHostnameSuffix() {
     return copperHostnameSuffix;
   }
 
-  public Optional<Boolean> isIpSecEnabled() {
-    return ipSecEnabled;
-  }
-
-  public Optional<Boolean> isBridgeOnPpnEnabled() {
-    return bridgeOnPpnEnabled;
+  public Optional<DatapathProtocol> getDatapathProtocol() {
+    return datapathProtocol;
   }
 
   public Optional<Integer> getBridgeKeyLength() {
@@ -174,8 +193,8 @@ public class PpnOptions {
     return blindSigningEnabled;
   }
 
-  public Optional<Boolean> shouldInstallKryptonCrashSignalHandler() {
-    return shouldInstallKryptonCrashSignalHandler;
+  public boolean isIPv6Enabled() {
+    return ipv6Enabled;
   }
 
   public Optional<Duration> getReconnectorInitialTimeToReconnect() {
@@ -210,6 +229,30 @@ public class PpnOptions {
     return accountManager;
   }
 
+  public boolean isAccountRefreshWorkerEnabled() {
+    return accountRefreshWorkerEnabled;
+  }
+
+  public boolean isIntegrityAttestationEnabled() {
+    return integrityAttestationEnabled;
+  }
+
+  public boolean isHardwareAttestationEnabled() {
+    return hardwareAttestationEnabled;
+  }
+
+  public Optional<Long> getAttestationCloudProjectNumber() {
+    return attestationCloudProjectNumber;
+  }
+
+  public Optional<String> getApiKey() {
+    return apiKey;
+  }
+
+  public boolean isAttachOauthTokenAsHeaderEnabled() {
+    return attachOauthTokenAsHeader;
+  }
+
   /** A Builder for creating a PpnOptions. */
   public static class Builder {
     private String zincUrl = DEFAULT_ZINC_URL;
@@ -221,26 +264,33 @@ public class PpnOptions {
     private Duration connectivityCheckRetryDelay = DEFAULT_CONNECTIVITY_CHECK_RETRY_DELAY;
     private int connectivityCheckMaxRetries = DEFAULT_CONNECTIVITY_CHECK_MAX_RETRIES;
     private Optional<String> copperControllerAddress = Optional.empty();
-    private List<String> copperHostnameSuffix = List.of(DEFAULT_COPPER_HOSTNAME_SUFFIX);
+    private Optional<String> copperHostnameOverride = Optional.empty();
+    private List<String> copperHostnameSuffix = ImmutableList.of(DEFAULT_COPPER_HOSTNAME_SUFFIX);
 
-    private Optional<Boolean> ipSecEnabled = Optional.empty();
-    private Optional<Boolean> bridgeOnPpnEnabled = Optional.empty();
+    private Optional<DatapathProtocol> datapathProtocol = Optional.empty();
     private Optional<Integer> bridgeKeyLength = Optional.empty();
     private Optional<Duration> rekeyDuration = Optional.empty();
     private Optional<Boolean> blindSigningEnabled = Optional.empty();
-    private Optional<Boolean> shouldInstallKryptonCrashSignalHandler = Optional.empty();
 
     private Optional<Duration> reconnectorInitialTimeToReconnect = Optional.empty();
     private Optional<Duration> reconnectorSessionConnectionDeadline = Optional.empty();
 
     private boolean isStickyService = false;
     private boolean safeDisconnectEnabled = false;
+    private boolean ipv6Enabled = true;
 
     private Set<String> disallowedApplications = Collections.emptySet();
 
     private boolean dnsCacheEnabled = true;
     private Optional<ExecutorService> backgroundExecutor = Optional.empty();
     private Optional<PpnAccountManager> accountManager = Optional.empty();
+    private boolean accountRefreshWorkerEnabled = true;
+    private boolean integrityAttestationEnabled = false;
+    private boolean hardwareAttestationEnabled = false;
+    private Optional<Long> attestationCloudProjectNumber = Optional.empty();
+
+    private Optional<String> apiKey = Optional.empty();
+    private boolean attachOauthTokenAsHeader = false;
 
     public Builder() {}
 
@@ -252,6 +302,7 @@ public class PpnOptions {
      *
      * <p>If null or an empty string is passed in, it will be ignored.
      */
+    @CanIgnoreReturnValue
     public Builder setZincUrl(String url) {
       if (!isNullOrEmpty(url)) {
         this.zincUrl = url;
@@ -267,6 +318,7 @@ public class PpnOptions {
      *
      * <p>If null or an empty string is passed in, it will be ignored.
      */
+    @CanIgnoreReturnValue
     public Builder setZincPublicSigningKeyUrl(String url) {
       if (!isNullOrEmpty(url)) {
         this.zincPublicSigningKeyUrl = url;
@@ -281,6 +333,7 @@ public class PpnOptions {
      *
      * <p>If null or an empty string is passed in, it will be ignored.
      */
+    @CanIgnoreReturnValue
     public Builder setBrassUrl(String url) {
       if (!isNullOrEmpty(url)) {
         this.brassUrl = url;
@@ -295,6 +348,7 @@ public class PpnOptions {
      *
      * <p>If null or an empty string is passed in, it will be ignored.
      */
+    @CanIgnoreReturnValue
     public Builder setZincOAuthScopes(String scopes) {
       if (!isNullOrEmpty(scopes)) {
         this.zincOAuthScopes = scopes;
@@ -309,6 +363,7 @@ public class PpnOptions {
      *
      * <p>If null or an empty string is passed in, it will be ignored.
      */
+    @CanIgnoreReturnValue
     public Builder setZincServiceType(String type) {
       if (!isNullOrEmpty(type)) {
         this.zincServiceType = type;
@@ -323,6 +378,7 @@ public class PpnOptions {
      *
      * <p>If null or an empty string is passed in, it will be ignored.
      */
+    @CanIgnoreReturnValue
     public Builder setConnectivityCheckUrl(String connectivityCheckUrl) {
       if (!isNullOrEmpty(connectivityCheckUrl)) {
         this.connectivityCheckUrl = connectivityCheckUrl;
@@ -338,6 +394,7 @@ public class PpnOptions {
      *
      * <p>If null is passed in, it will be ignored.
      */
+    @CanIgnoreReturnValue
     public Builder setConnectivityCheckRetryDelay(Duration retryDelay) {
       if (retryDelay != null) {
         this.connectivityCheckRetryDelay = retryDelay;
@@ -351,6 +408,7 @@ public class PpnOptions {
      *
      * <p>If this is not set, it will default to a reasonable value.
      */
+    @CanIgnoreReturnValue
     public Builder setConnectivityCheckMaxRetries(int maxRetries) {
       this.connectivityCheckMaxRetries = maxRetries;
       return this;
@@ -361,9 +419,23 @@ public class PpnOptions {
      *
      * <p>If null or an empty string is passed in, it will be ignored.
      */
+    @CanIgnoreReturnValue
     public Builder setCopperControllerAddress(String address) {
       if (!isNullOrEmpty(address)) {
         this.copperControllerAddress = Optional.of(address);
+      }
+      return this;
+    }
+
+    /**
+     * Sets a copper hostname override for testing purposes.
+     *
+     * <p>If null or an empty string is passed in, it will be ignored.
+     */
+    @CanIgnoreReturnValue
+    public Builder setCopperHostnameOverride(String address) {
+      if (!isNullOrEmpty(address)) {
+        this.copperHostnameOverride = Optional.of(address);
       }
       return this;
     }
@@ -375,6 +447,7 @@ public class PpnOptions {
      *
      * <p>Empty element will be ignored too.
      */
+    @CanIgnoreReturnValue
     public Builder setCopperHostnameSuffix(List<String> suffixList) {
       if (suffixList != null) {
         List<String> copperSuffix = new ArrayList<>();
@@ -388,19 +461,15 @@ public class PpnOptions {
       return this;
     }
 
-    /** Sets whether to use IPSec for the data path. */
-    public Builder setIpSecEnabled(boolean ipSecEnabled) {
-      this.ipSecEnabled = Optional.of(ipSecEnabled);
-      return this;
-    }
-
-    /** Sets whether to use Bridge on PPN. */
-    public Builder setBridgeOnPpnEnabled(boolean bridgeOnPpnEnabled) {
-      this.bridgeOnPpnEnabled = Optional.of(bridgeOnPpnEnabled);
+    /** Sets the PPN datapath protocol. */
+    @CanIgnoreReturnValue
+    public Builder setDatapathProtocol(DatapathProtocol datapathProtocol) {
+      this.datapathProtocol = Optional.of(datapathProtocol);
       return this;
     }
 
     /** Sets the key length to use for the bridge. */
+    @CanIgnoreReturnValue
     public Builder setBridgeKeyLength(int length) {
       if (length != 128 && length != 256) {
         throw new IllegalArgumentException("bridge key length must be 128 or 256");
@@ -414,23 +483,34 @@ public class PpnOptions {
      *
      * <p>If null is passed in, it will be ignored.
      */
+    @CanIgnoreReturnValue
     public Builder setRekeyDuration(Duration duration) {
       this.rekeyDuration = Optional.of(duration);
       return this;
     }
 
+    @CanIgnoreReturnValue
     public Builder setBlindSigningEnabled(boolean blindSigningEnabled) {
       this.blindSigningEnabled = Optional.of(blindSigningEnabled);
       return this;
     }
 
     /** Sets whether Krypton should install a signal handler to help gracefully handle crashes. */
+    @CanIgnoreReturnValue
     public Builder setShouldInstallKryptonCrashSignalHandler(boolean value) {
-      this.shouldInstallKryptonCrashSignalHandler = Optional.of(value);
+      Log.i(TAG, "Krypton crash signal handler has been deprecated");
+      return this;
+    }
+
+    /** Sets whether PPN should try to use IPv6 at all. */
+    @CanIgnoreReturnValue
+    public Builder setIPv6Enabled(boolean ipv6Enabled) {
+      this.ipv6Enabled = ipv6Enabled;
       return this;
     }
 
     /** Sets the initial time between reconnects. */
+    @CanIgnoreReturnValue
     public Builder setReconnectorInitialTimeToReconnect(Duration duration) {
       if (duration != null) {
         this.reconnectorInitialTimeToReconnect = Optional.of(duration);
@@ -439,6 +519,7 @@ public class PpnOptions {
     }
 
     /** Sets the deadline for a session to be established. */
+    @CanIgnoreReturnValue
     public Builder setReconnectorSessionConnectionDeadline(Duration duration) {
       if (duration != null) {
         this.reconnectorSessionConnectionDeadline = Optional.of(duration);
@@ -446,17 +527,20 @@ public class PpnOptions {
       return this;
     }
 
+    @CanIgnoreReturnValue
     public Builder setStickyService(boolean isStickyService) {
       this.isStickyService = isStickyService;
       return this;
     }
 
+    @CanIgnoreReturnValue
     public Builder setSafeDisconnectEnabled(boolean enabled) {
       this.safeDisconnectEnabled = enabled;
       return this;
     }
 
     /** Sets the list of apps that will bypass the VPN, as package names. */
+    @CanIgnoreReturnValue
     public Builder setDisallowedApplications(Iterable<String> packageNames) {
       HashSet<String> copy = new HashSet<>();
       for (String packageName : packageNames) {
@@ -467,19 +551,82 @@ public class PpnOptions {
     }
 
     /** Sets whether to use an internal DNS cache in the library. */
+    @CanIgnoreReturnValue
     public Builder setDnsCacheEnabled(boolean enabled) {
       this.dnsCacheEnabled = enabled;
       return this;
     }
 
     /** Sets the Executor that PPN should use for most work it needs to do in the background. */
+    @CanIgnoreReturnValue
     public Builder setBackgroundExecutor(ExecutorService executor) {
       this.backgroundExecutor = Optional.of(executor);
       return this;
     }
 
+    @CanIgnoreReturnValue
     public Builder setAccountManager(PpnAccountManager accountManager) {
       this.accountManager = Optional.of(accountManager);
+      return this;
+    }
+
+    /**
+     * Sets whether PPN should schedule a periodic background worker to pro-actively refresh account
+     * credentials.
+     */
+    @CanIgnoreReturnValue
+    public Builder setAccountRefreshWorkerEnabled(boolean enabled) {
+      this.accountRefreshWorkerEnabled = enabled;
+      return this;
+    }
+
+    /** Sets whether PPN should try to perform device validation. */
+    @CanIgnoreReturnValue
+    public Builder setIntegrityAttestationEnabled(boolean enable) {
+      this.integrityAttestationEnabled = enable;
+      return this;
+    }
+
+    /**
+     * Sets whether PPN should try to perform hardware attestation.
+     *
+     * <p>This flag should be turned on for devices running Keystore 2.0+ or above only. Doing this
+     * on a device that does not support Keystore 2.0+ (24+) might result in failed device
+     * attestation. Restriction is 23+ because API used in Hardware Attestation was added in API 23.
+     */
+    @CanIgnoreReturnValue
+    @RequiresApi(23)
+    public Builder setHardwareAttestationEnabled(boolean enable) {
+      if (enable && Build.VERSION.SDK_INT < 23) {
+        Log.e(TAG, "Cannot set hardware attestation if API < 23. Ignoring.");
+        return this;
+      }
+      this.hardwareAttestationEnabled = enable;
+      return this;
+    }
+
+    /** Sets the GCP Project ID that might be necessary for attestation. */
+    @CanIgnoreReturnValue
+    public Builder setAttestationCloudProjectNumber(long cloudNumber) {
+      this.attestationCloudProjectNumber = Optional.of(cloudNumber);
+      return this;
+    }
+
+    /** Sets the API Key to use in auth requests that don't already have an attach OAuth token. */
+    @CanIgnoreReturnValue
+    public Builder setApiKey(String apiKey) {
+      if (!isNullOrEmpty(apiKey)) {
+        this.apiKey = Optional.of(apiKey);
+      }
+      return this;
+    }
+
+    /**
+     * Sets whether to attach the OAuth token as a header in http requests, instead of in the body.
+     */
+    @CanIgnoreReturnValue
+    public Builder setAttachOauthTokenAsHeaderEnabled(boolean attachOauthTokenAsHeader) {
+      this.attachOauthTokenAsHeader = attachOauthTokenAsHeader;
       return this;
     }
 
@@ -491,5 +638,17 @@ public class PpnOptions {
     private static boolean isNullOrEmpty(@Nullable String s) {
       return s == null || s.isEmpty();
     }
+  }
+
+  /** Defines the Datapath Protocols supported by PPN. */
+  public enum DatapathProtocol {
+    /** Use IpSec datapath. */
+    IPSEC,
+
+    /** Use bridge over PPN. */
+    BRIDGE,
+
+    /** Use IKE with VpnManager. */
+    IKE,
   }
 }

@@ -18,6 +18,7 @@ import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth8.assertThat;
 import static org.junit.Assert.assertThrows;
 
+import com.google.android.libraries.privacy.ppn.PpnOptions.DatapathProtocol;
 import java.time.Duration;
 import java.util.Arrays;
 import org.junit.Test;
@@ -282,27 +283,41 @@ public class PpnOptionsTest {
   }
 
   @Test
-  public void setIpSecEnabled_defaultValue() {
+  public void testCopperHostnameOverride_hasDefault() {
     PpnOptions options = new PpnOptions.Builder().build();
-    assertThat(options.isIpSecEnabled()).isEmpty();
+    assertThat(options.getCopperHostnameOverride()).isEmpty();
   }
 
   @Test
-  public void setIpSecEnabled_setsValue() {
-    PpnOptions options = new PpnOptions.Builder().setIpSecEnabled(true).build();
-    assertThat(options.isIpSecEnabled().get()).isTrue();
+  public void setCopperHostnameOverride_storesValue() {
+    String address = "127.0.0.1";
+    PpnOptions options = new PpnOptions.Builder().setCopperHostnameOverride(address).build();
+    assertThat(options.getCopperHostnameOverride()).hasValue(address);
   }
 
   @Test
-  public void setBridgeOnPpnEnabled_defaultValue() {
+  public void setCopperHostnameOverride_ignoresNull() {
+    PpnOptions options = new PpnOptions.Builder().setCopperHostnameOverride(null).build();
+    assertThat(options.getCopperHostnameOverride()).isEmpty();
+  }
+
+  @Test
+  public void setCopperHostnameOverride_ignoresEmpty() {
+    PpnOptions options = new PpnOptions.Builder().setCopperHostnameOverride("").build();
+    assertThat(options.getCopperHostnameOverride()).isEmpty();
+  }
+
+  @Test
+  public void setDatapathProtocol_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
-    assertThat(options.isBridgeOnPpnEnabled()).isEmpty();
+    assertThat(options.getDatapathProtocol()).isEmpty();
   }
 
   @Test
-  public void setBridgeOnPpnEnabled_setsValue() {
-    PpnOptions options = new PpnOptions.Builder().setBridgeOnPpnEnabled(true).build();
-    assertThat(options.isBridgeOnPpnEnabled().get()).isTrue();
+  public void setDatapathProtocol_setsValue() {
+    PpnOptions options =
+        new PpnOptions.Builder().setDatapathProtocol(DatapathProtocol.IPSEC).build();
+    assertThat(options.getDatapathProtocol()).hasValue(DatapathProtocol.IPSEC);
   }
 
   @Test
@@ -345,19 +360,6 @@ public class PpnOptionsTest {
   public void setBlindSigningEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setBlindSigningEnabled(true).build();
     assertThat(options.isBlindSigningEnabled().get()).isTrue();
-  }
-
-  @Test
-  public void setShouldInstallKryptonCrashSignalHandler_defaultValue() {
-    PpnOptions options = new PpnOptions.Builder().build();
-    assertThat(options.shouldInstallKryptonCrashSignalHandler()).isEmpty();
-  }
-
-  @Test
-  public void setShouldInstallKryptonCrashSignalHandler_setsValue() {
-    PpnOptions options =
-        new PpnOptions.Builder().setShouldInstallKryptonCrashSignalHandler(true).build();
-    assertThat(options.shouldInstallKryptonCrashSignalHandler().get()).isTrue();
   }
 
   @Test
@@ -415,6 +417,18 @@ public class PpnOptionsTest {
   }
 
   @Test
+  public void setIPv6Enabled_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.isIPv6Enabled()).isTrue();
+  }
+
+  @Test
+  public void setIPv6Enabled_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setIPv6Enabled(false).build();
+    assertThat(options.isIPv6Enabled()).isFalse();
+  }
+
+  @Test
   public void disallowedApplications_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
     assertThat(options.getDisallowedApplications()).isNotNull();
@@ -440,5 +454,29 @@ public class PpnOptionsTest {
   public void setDnsCacheEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setDnsCacheEnabled(false).build();
     assertThat(options.isDnsCacheEnabled()).isFalse();
+  }
+
+  @Test
+  public void setApiKey_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.getApiKey()).isEmpty();
+  }
+
+  @Test
+  public void setApiKey_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setApiKey("apiKey").build();
+    assertThat(options.getApiKey()).hasValue("apiKey");
+  }
+
+  @Test
+  public void setAttachOauthTokenAsHeaderEnabled_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.isAttachOauthTokenAsHeaderEnabled()).isFalse();
+  }
+
+  @Test
+  public void setAttachOauthTokenAsHeaderEnabled_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setAttachOauthTokenAsHeaderEnabled(true).build();
+    assertThat(options.isAttachOauthTokenAsHeaderEnabled()).isTrue();
   }
 }

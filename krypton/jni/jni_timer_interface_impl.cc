@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -40,7 +40,7 @@ absl::Status JniTimerInterfaceImpl::StartTimer(int timer_id,
   }
 
   auto result = static_cast<jboolean>(env.value()->CallBooleanMethod(
-      jni_ppn->GetTimerIdManagerObject(),
+      timer_id_manager_instance_->get(),
       jni_ppn->GetTimerIdManagerStartTimerMethod(), timer_id,
       duration / absl::Milliseconds(1)));
 
@@ -61,7 +61,7 @@ void JniTimerInterfaceImpl::CancelTimer(int timer_id) {
   }
 
   auto result = static_cast<jboolean>(env.value()->CallBooleanMethod(
-      jni_ppn->GetTimerIdManagerObject(),
+      timer_id_manager_instance_->get(),
       jni_ppn->GetTimerIdManagerCancelTimerMethod(), timer_id));
 
   if (result == 0) {
@@ -81,7 +81,7 @@ void JniTimerInterfaceImpl::CancelAllTimers() {
   }
 
   env.value()->CallVoidMethod(
-      jni_ppn->GetTimerIdManagerObject(),
+      timer_id_manager_instance_->get(),
       jni_ppn->GetTimerIdManagerCancelAllTimersMethod());
 }
 }  // namespace jni

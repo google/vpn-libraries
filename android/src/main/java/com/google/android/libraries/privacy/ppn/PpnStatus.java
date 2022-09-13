@@ -14,6 +14,7 @@
 
 package com.google.android.libraries.privacy.ppn;
 
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -129,6 +130,7 @@ public class PpnStatus {
       return new PpnStatus(this);
     }
 
+    @CanIgnoreReturnValue
     public Builder setDetailedErrorCode(DetailedErrorCode code) {
       this.detailedErrorCode = code;
       return this;

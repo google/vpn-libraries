@@ -27,7 +27,6 @@ import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkSelector;
 import com.google.common.collect.ImmutableList;
-import com.google.testing.mockito.Mocks;
 import java.util.List;
 import org.joda.time.DateTimeUtils;
 import org.junit.Before;
@@ -35,6 +34,8 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.shadows.ShadowNetwork;
 import org.robolectric.shadows.ShadowWifiManager;
@@ -45,7 +46,7 @@ public final class PpnNetworkSelectorImplTest {
   private PpnNetworkSelector ppnNetworkSelector;
   private ShadowWifiManager shadowWifiManager;
 
-  @Rule public final Mocks mocks = new Mocks(this);
+  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
   @Mock private WifiInfo mockWifiInfo;
 
   @Before

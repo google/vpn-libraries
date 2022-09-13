@@ -1,6 +1,6 @@
 // Copyright 2021 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the "LICENSE");
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -104,13 +104,6 @@ TEST(ProtoComparison, TunFdDataEquiv) {
   EXPECT_THAT(TunFdDataEquiv(td1, td1), IsTrue());
   td2 = td1;
   *td2.add_tunnel_dns_addresses() = ipr2;
-  EXPECT_THAT(TunFdDataEquiv(td1, td2), IsFalse());
-
-  // tunnel_routes
-  *td1.add_tunnel_routes() = ipr1;
-  EXPECT_THAT(TunFdDataEquiv(td1, td1), IsTrue());
-  td2 = td1;
-  *td2.add_tunnel_routes() = ipr2;
   EXPECT_THAT(TunFdDataEquiv(td1, td2), IsFalse());
 }
 

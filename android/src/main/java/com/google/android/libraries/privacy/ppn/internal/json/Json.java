@@ -52,6 +52,19 @@ public class Json {
    * Puts a (key, value) pair into a json object while swallowing the impossible checked exception.
    * (JSONObject.put() can only throw if passed infinity or NaN as a value.)
    */
+  public static void put(JSONObject json, String key, long value) {
+    try {
+      json.put(key, value);
+    } catch (JSONException impossible) {
+      // put cannot throw if the value is an int.
+      throw new AssertionError(impossible);
+    }
+  }
+
+  /**
+   * Puts a (key, value) pair into a json object while swallowing the impossible checked exception.
+   * (JSONObject.put() can only throw if passed infinity or NaN as a value.)
+   */
   public static void put(JSONObject json, String key, boolean value) {
     try {
       json.put(key, value);

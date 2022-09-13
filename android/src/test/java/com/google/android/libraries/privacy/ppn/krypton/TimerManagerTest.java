@@ -24,7 +24,6 @@ import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.work.WorkManager;
 import androidx.work.testing.WorkManagerTestInitHelper;
-import com.google.testing.mockito.Mocks;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -34,11 +33,13 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
 @RunWith(AndroidJUnit4.class)
 public final class TimerManagerTest {
   private static final String TAG = "TimerManagerTest";
-  @Rule public Mocks mocks = new Mocks(this);
+  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
   @Mock private TimerListener timerExpiryListener;
   private TimerIdManager timerIdManager;
 

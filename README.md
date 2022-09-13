@@ -18,11 +18,11 @@ provides a reference, open source implementation for the VPN used in VPN by
 Google One.
 
 The VPN libraries in this repo are currently adopted by the Google One Android
-App as of October 2020.
+App as of October 2020, and by the Google One iOS App as of February 2022.
 
 ## Current status
 
-The VPN client library is currently available for Android
+The VPN client library is currently available for Android and iOS
 
 *Important considerations*: The source code in its current form may not be
 buildable and is meant as a reference implementation that is not intended for
@@ -34,8 +34,8 @@ guarantees
 
 ## Learn more
 
-You can learn more about the first implementation of the Google VPN libraries at
-https://one.google.com/about/vpn
+You can learn more about the implementation of the Google VPN libraries by
+visiting https://one.google.com/about/vpn
 
 ## Community contributions
 

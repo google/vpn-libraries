@@ -26,6 +26,7 @@ import com.google.android.libraries.privacy.ppn.internal.HttpResponse;
 import com.google.android.libraries.privacy.ppn.internal.HttpStatus;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.io.IOException;
@@ -57,6 +58,7 @@ public class HttpFetcher {
 
   private static final String TAG = "HttpFetcher";
   private static final String JSON_CONTENT_TYPE = "application/json; charset=utf-8";
+  private static final String PROTO_CONTENT_TYPE = "application/x-protobuf";
 
   // The overall timeout for POST requests.
   private Duration requestTimeout = Duration.ofSeconds(30);
@@ -117,9 +119,16 @@ public class HttpFetcher {
   static Request buildPostRequest(HttpRequest request) throws JSONException {
     Request.Builder reqBuilder = getGenericRequestBuilder(request);
 
-    JSONObject jsonBodyObject = new JSONObject(request.getJsonBody());
-    reqBuilder.post(
-        RequestBody.create(MediaType.parse(JSON_CONTENT_TYPE), jsonBodyObject.toString()));
+    if (request.hasProtoBody()) {
+      MediaType contentType = MediaType.parse(PROTO_CONTENT_TYPE);
+      byte[] protoBytes = request.getProtoBody().toByteArray();
+      reqBuilder.post(RequestBody.create(contentType, protoBytes));
+    } else {
+      JSONObject jsonBodyObject = new JSONObject(request.getJsonBody());
+      reqBuilder.post(
+          RequestBody.create(MediaType.parse(JSON_CONTENT_TYPE), jsonBodyObject.toString()));
+    }
+
     return reqBuilder.build();
   }
 
@@ -280,7 +289,7 @@ public class HttpFetcher {
           @Override
           public void onFailure(Call call, IOException e) {
             // The failed request may have sensitive info, so don't log it.
-            Log.w(TAG, "Failed http request.");
+            Log.w(TAG, "Failed http request.", e);
             tcs.setResult(buildHttpResponse(500, "IOException executing request"));
           }
 
@@ -302,36 +311,50 @@ public class HttpFetcher {
               return;
             }
 
-            // Read the response body.
-            String body;
-            try {
-              body = response.body().string();
-            } catch (IOException e) {
-              // The failed response may have sensitive info, so don't log it.
-              Log.w(TAG, "Failed to read http response body.");
-              tcs.setResult(buildHttpResponse(500, "IOException reading response body"));
-              return;
-            }
-
-            // Limit response length to 1 MB before JSON parsing.
-            if (body.length() > 1024 * 1024) {
-              Log.w(TAG, "Response body length exceeds limit of 1MB.");
-              tcs.setResult(buildHttpResponse(500, "response length exceeds limit of 1MB"));
-              return;
-            }
-
-            if (parseJsonBody) {
-              // Parse the response body as JSON.
-              JSONObject message;
+            if (PROTO_CONTENT_TYPE.equals(response.header("Content-Type"))) {
               try {
-                message = new JSONObject(body);
-              } catch (JSONException e) {
+                ByteString bytes = ByteString.readFrom(response.body().byteStream());
+                responseBuilder.setProtoBody(bytes);
+              } catch (IOException e) {
                 // The failed response may have sensitive info, so don't log it.
-                Log.w(TAG, "Response body has malformed JSON.");
-                tcs.setResult(buildHttpResponse(500, "invalid response JSON"));
+                Log.w(TAG, "Failed to read http proto response body.", e);
+                tcs.setResult(buildHttpResponse(500, "IOException reading response body bytes"));
                 return;
               }
-              responseBuilder.setJsonBody(message.toString());
+            } else {
+              // Assume anything else is JSON, for backwards compatibility.
+
+              // Read the response body.
+              String body;
+              try {
+                body = response.body().string();
+              } catch (IOException e) {
+                // The failed response may have sensitive info, so don't log it.
+                Log.w(TAG, "Failed to read http response body string.", e);
+                tcs.setResult(buildHttpResponse(500, "IOException reading response body"));
+                return;
+              }
+
+              // Limit response length to 1 MB before JSON parsing.
+              if (body.length() > 1024 * 1024) {
+                Log.w(TAG, "Response body length exceeds limit of 1MB.");
+                tcs.setResult(buildHttpResponse(500, "response length exceeds limit of 1MB"));
+                return;
+              }
+
+              if (parseJsonBody) {
+                // Parse the response body as JSON.
+                JSONObject message;
+                try {
+                  message = new JSONObject(body);
+                } catch (JSONException e) {
+                  // The failed response may have sensitive info, so don't log it.
+                  Log.w(TAG, "Response body has malformed JSON.");
+                  tcs.setResult(buildHttpResponse(500, "invalid response JSON"));
+                  return;
+                }
+                responseBuilder.setJsonBody(message.toString());
+              }
             }
 
             tcs.setResult(responseBuilder.build());
@@ -360,7 +383,7 @@ public class HttpFetcher {
       return addresses.get(0).getHostAddress();
 
     } catch (UnknownHostException e) {
-      Log.w("Failed to look up DNS for " + hostname, e);
+      Log.w(TAG, "Failed to look up DNS for " + hostname, e);
       return null;
     }
   }

@@ -1,13 +1,13 @@
 // Copyright 2020 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the );
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an  BASIS,
+// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -22,6 +22,8 @@
 #include <string>
 
 #include "base/logging.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
+
 #include "privacy/net/krypton/fd_packet_pipe.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/jni/jni_utils.h"
@@ -35,8 +37,15 @@ namespace privacy {
 namespace krypton {
 namespace jni {
 
-absl::StatusOr<std::unique_ptr<PacketPipe>> VpnService::CreateTunnel(
-    const TunFdData& tun_fd_data) {
+DatapathInterface* VpnService::BuildDatapath(const KryptonConfig& config,
+                                             utils::LooperThread* looper,
+                                             TimerManager* /*timer_manager*/) {
+  if (config.datapath_protocol() == KryptonConfig::IPSEC) {
+    return new datapath::android::IpSecDatapath(looper, this);
+  }
+}
+
+absl::Status VpnService::CreateTunnel(const TunFdData& tun_fd_data) {
   LOG(INFO) << "Requesting TUN fd from Java with tun data "
             << tun_fd_data.DebugString();
 
@@ -51,7 +60,7 @@ absl::StatusOr<std::unique_ptr<PacketPipe>> VpnService::CreateTunnel(
   tun_fd_data.SerializeToString(&tun_fd_bytes);
 
   jint fd = env.value()->CallIntMethod(
-      jni_cache->GetKryptonObject(), jni_cache->GetKryptonCreateTunFdMethod(),
+      krypton_instance_->get(), jni_cache->GetKryptonCreateTunFdMethod(),
       JavaByteArray(env.value(), tun_fd_bytes).get());
 
   if (fd < 0) {
@@ -59,7 +68,35 @@ absl::StatusOr<std::unique_ptr<PacketPipe>> VpnService::CreateTunnel(
                         absl::StrCat("Unable to create TUN fd: ", fd));
   }
 
-  return std::make_unique<FdPacketPipe>(fd);
+  absl::MutexLock l(&mutex_);
+  if (tunnel_ != nullptr) {
+    LOG(WARNING) << "Old tunnel was still open. Closing now.";
+    tunnel_->Close();
+  }
+  tunnel_ = std::make_unique<FdPacketPipe>(fd);
+  return absl::OkStatus();
+}
+
+PacketPipe* VpnService::GetTunnel() {
+  absl::MutexLock l(&mutex_);
+  return tunnel_.get();
+}
+
+absl::StatusOr<int> VpnService::GetTunnelFd() {
+  auto tunnel = GetTunnel();
+  if (tunnel == nullptr) {
+    return absl::InternalError("tunnel is null");
+  }
+  return tunnel->GetFd();
+}
+
+void VpnService::CloseTunnel() {
+  absl::MutexLock l(&mutex_);
+  if (tunnel_ == nullptr) {
+    return;
+  }
+  tunnel_->Close();
+  tunnel_.reset();
 }
 
 absl::StatusOr<int> VpnService::CreateProtectedNetworkSocket(
@@ -78,8 +115,7 @@ absl::StatusOr<int> VpnService::CreateProtectedNetworkSocket(
   network_info.SerializeToString(&network_info_bytes);
 
   jint fd = env.value()->CallIntMethod(
-      jni_cache->GetKryptonObject(),
-      jni_cache->GetKryptonCreateNetworkFdMethod(),
+      krypton_instance_->get(), jni_cache->GetKryptonCreateNetworkFdMethod(),
       JavaByteArray(env.value(), network_info_bytes).get());
 
   if (fd < 0) {
@@ -91,9 +127,16 @@ absl::StatusOr<int> VpnService::CreateProtectedNetworkSocket(
 }
 
 absl::StatusOr<std::unique_ptr<PacketPipe>> VpnService::CreateNetworkPipe(
-    const NetworkInfo& network_info, const Endpoint&) {
+    const NetworkInfo& network_info, const Endpoint& endpoint) {
   PPN_ASSIGN_OR_RETURN(int fd, CreateProtectedNetworkSocket(network_info));
-  return std::make_unique<FdPacketPipe>(fd);
+
+  auto pipe = std::make_unique<FdPacketPipe>(fd);
+  auto status = pipe->Connect(endpoint);
+  if (!status.ok()) {
+    pipe->Close();
+    return status;
+  }
+  return pipe;
 }
 
 absl::Status VpnService::ConfigureIpSec(const IpSecTransformParams& params) {
@@ -109,8 +152,7 @@ absl::Status VpnService::ConfigureIpSec(const IpSecTransformParams& params) {
   std::string transform_params_bytes;
   params.SerializeToString(&transform_params_bytes);
   jboolean status = env.value()->CallBooleanMethod(
-      jni_cache->GetKryptonObject(),
-      jni_cache->GetKryptonConfigureIpSecMethod(),
+      krypton_instance_->get(), jni_cache->GetKryptonConfigureIpSecMethod(),
       JavaByteArray(env.value(), transform_params_bytes).get());
   if (static_cast<bool>(status)) {
     return absl::OkStatus();

@@ -14,6 +14,9 @@
 
 package com.google.android.libraries.privacy.ppn.krypton;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
+import android.util.Base64;
 import com.google.android.libraries.privacy.ppn.internal.json.Json;
 import com.squareup.okhttp.mockwebserver.MockResponse;
 import com.squareup.okhttp.mockwebserver.MockWebServer;
@@ -26,7 +29,24 @@ import org.json.JSONObject;
 public class MockBrass {
   private final MockWebServer mockWebServer;
 
-  private static JSONObject buildJsonResponse() {
+  private static String encodeBase64(String input) {
+    byte[] bytes = Base64.encode(input.getBytes(UTF_8), Base64.DEFAULT);
+    return new String(bytes, UTF_8);
+  }
+
+  private static JSONObject buildIkeJsonResponse() {
+    JSONObject ike = new JSONObject();
+    Json.put(ike, "server_address", "server");
+    Json.put(ike, "client_id", encodeBase64("client"));
+    Json.put(ike, "shared_secret", encodeBase64("secret"));
+
+    JSONObject body = new JSONObject();
+    Json.put(body, "ike", ike);
+
+    return body;
+  }
+
+  private static JSONObject buildPpnDataplaneJsonResponse() {
     JSONObject userPrivateIp = new JSONObject();
     Json.put(userPrivateIp, "ipv4_range", "10.2.2.123/32");
     Json.put(userPrivateIp, "ipv6_range", "fec2:0001::3/64");
@@ -56,7 +76,17 @@ public class MockBrass {
   private static MockResponse buildPositiveResponse() {
     // mock a simple response with the JSON Content
     MockResponse response = new MockResponse();
-    JSONObject jsonContent = buildJsonResponse();
+    JSONObject jsonContent = buildPpnDataplaneJsonResponse();
+    response.setBody(jsonContent.toString());
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    return response;
+  }
+
+  /** Returns a MockResponse that simulates Brass successfully adding an IKE egress. */
+  private static MockResponse buildPositiveIkeResponse() {
+    // mock a simple response with the JSON Content
+    MockResponse response = new MockResponse();
+    JSONObject jsonContent = buildIkeJsonResponse();
     response.setBody(jsonContent.toString());
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     return response;
@@ -76,6 +106,10 @@ public class MockBrass {
 
   public void enqueuePositiveResponse() {
     mockWebServer.enqueue(buildPositiveResponse());
+  }
+
+  public void enqueuePositiveIkeResponse() {
+    mockWebServer.enqueue(buildPositiveIkeResponse());
   }
 
   /** Returns the url for clients to use when connecting to this Brass instance. */

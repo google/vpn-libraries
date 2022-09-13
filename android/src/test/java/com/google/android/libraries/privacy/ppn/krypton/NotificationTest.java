@@ -19,6 +19,7 @@ import static com.google.common.truth.Truth.assertThat;
 import android.os.ConditionVariable;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.work.testing.WorkManagerTestInitHelper;
+import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnSnoozeStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
@@ -37,7 +38,6 @@ import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Duration;
 import com.google.protobuf.Timestamp;
-import com.google.testing.mockito.Mocks;
 import java.nio.charset.Charset;
 import java.time.Instant;
 import java.util.concurrent.ExecutorService;
@@ -48,12 +48,14 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.robolectric.RobolectricTestRunner;
 
 /** Unit tests for JNI notifications from Krypton C++ to KryptonImpl.java. */
 @RunWith(RobolectricTestRunner.class)
 public class NotificationTest {
-  @Rule public Mocks mocks = new Mocks(this);
+  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
   @Mock private BoundSocketFactoryFactory socketFactoryFactory;
 
   private final JniTestNotification notification = new JniTestNotification();
@@ -70,8 +72,20 @@ public class NotificationTest {
   }
 
   private KryptonImpl createKrypton(KryptonListener listener) {
+    OAuthTokenProvider tokenProvider =
+        new AttestingOAuthTokenProvider(
+            ApplicationProvider.getApplicationContext(), new PpnOptions.Builder().build()) {
+          @Override
+          public String getOAuthToken() {
+            return "some_oauth_token";
+          }
+        };
     return new KryptonImpl(
-        ApplicationProvider.getApplicationContext(), httpFetcher, listener, backgroundExecutor);
+        ApplicationProvider.getApplicationContext(),
+        httpFetcher,
+        tokenProvider,
+        listener,
+        backgroundExecutor);
   }
 
   @Test
@@ -94,7 +108,7 @@ public class NotificationTest {
 
       ConnectionStatus status =
           ConnectionStatus.newBuilder().setQuality(ConnectionStatus.ConnectionQuality.GOOD).build();
-      notification.connected(status);
+      notification.connected(krypton, status);
 
       assertThat(connected.block(1000)).isTrue();
       assertThat(statusRef.get().getQuality()).isEqualTo(ConnectionStatus.ConnectionQuality.GOOD);
@@ -122,7 +136,7 @@ public class NotificationTest {
       krypton.init();
 
       ConnectingStatus status = ConnectingStatus.newBuilder().setIsBlockingTraffic(true).build();
-      notification.connecting(status);
+      notification.connecting(krypton, status);
 
       assertThat(connecting.block(1000)).isTrue();
       assertThat(statusRef.get().getIsBlockingTraffic()).isTrue();
@@ -147,7 +161,7 @@ public class NotificationTest {
     try {
       krypton.init();
 
-      notification.controlPlaneConnected();
+      notification.controlPlaneConnected(krypton);
 
       assertThat(connected.block(1000)).isTrue();
     } finally {
@@ -175,7 +189,7 @@ public class NotificationTest {
 
       ConnectionStatus status =
           ConnectionStatus.newBuilder().setQuality(ConnectionStatus.ConnectionQuality.GOOD).build();
-      notification.statusUpdate(status);
+      notification.statusUpdate(krypton, status);
 
       assertThat(statusUpdated.block(1000)).isTrue();
       assertThat(statusRef.get().getQuality()).isEqualTo(ConnectionStatus.ConnectionQuality.GOOD);
@@ -208,7 +222,7 @@ public class NotificationTest {
               .setMessage("This is a test.")
               .setIsBlockingTraffic(true)
               .build();
-      notification.disconnected(status);
+      notification.disconnected(krypton, status);
 
       assertThat(disconnected.block(1000)).isTrue();
       assertThat(statusRef.get().getCode()).isEqualTo(Code.PERMISSION_DENIED.getCode());
@@ -242,7 +256,7 @@ public class NotificationTest {
           new PpnStatus.Builder(Code.RESOURCE_EXHAUSTED, "Another test.")
               .setDetailedErrorCode(DetailedErrorCode.DISALLOWED_COUNTRY)
               .build();
-      notification.permanentFailure(status);
+      notification.permanentFailure(krypton, status);
 
       assertThat(failed.block(1000)).isTrue();
       assertThat(statusRef.get().getCode()).isEqualTo(Code.RESOURCE_EXHAUSTED);
@@ -277,7 +291,7 @@ public class NotificationTest {
           ReconnectionStatus.newBuilder()
               .setTimeToReconnect(Duration.newBuilder().setSeconds(5).build())
               .build();
-      notification.waitingToReconnect(reconnectionStatus);
+      notification.waitingToReconnect(krypton, reconnectionStatus);
 
       assertThat(waitingToReconnect.block(1000)).isTrue();
       assertThat(statusRef.get().getTimeToReconnect().getSeconds()).isEqualTo(5);
@@ -311,7 +325,7 @@ public class NotificationTest {
           new PpnStatus.Builder(Code.DATA_LOSS, "More tests.")
               .setDetailedErrorCode(DetailedErrorCode.DISALLOWED_COUNTRY)
               .build();
-      notification.networkDisconnected(network, status);
+      notification.networkDisconnected(krypton, network, status);
 
       assertThat(networkDisconnected.block(1000)).isTrue();
       assertThat(networkRef.get().getNetworkId()).isEqualTo(42);
@@ -345,7 +359,7 @@ public class NotificationTest {
               .setSnoozeEndTime(
                   Timestamp.newBuilder().setSeconds(snoozeDuration).setNanos(0).build())
               .build();
-      notification.snoozed(snoozeStatus);
+      notification.snoozed(krypton, snoozeStatus);
       assertThat(snoozeStatusRef.get().getSnoozeEndTime())
           .isEqualTo(Instant.ofEpochSecond(snoozeDuration));
     } finally {
@@ -368,7 +382,7 @@ public class NotificationTest {
       krypton.init();
 
       ResumeStatus resumeStatus = ResumeStatus.getDefaultInstance();
-      notification.resumed(resumeStatus);
+      notification.resumed(krypton, resumeStatus);
       assertThat(resume.block(1000)).isTrue();
     } finally {
       krypton.stop();
@@ -393,7 +407,7 @@ public class NotificationTest {
       krypton.init();
 
       TunFdData tunFdData = TunFdData.newBuilder().setMtu(12345).build();
-      int fd = notification.createTunFd(tunFdData);
+      int fd = notification.createTunFd(krypton, tunFdData);
 
       assertThat(fd).isEqualTo(54321);
       assertThat(tunFdDataRef.get().getMtu()).isEqualTo(12345);
@@ -421,34 +435,10 @@ public class NotificationTest {
       krypton.init();
 
       NetworkInfo network = NetworkInfo.newBuilder().setNetworkId(321).build();
-      int fd = notification.createNetworkFd(network);
+      int fd = notification.createNetworkFd(krypton, network);
 
       assertThat(fd).isEqualTo(123);
       assertThat(networkRef.get().getNetworkId()).isEqualTo(321);
-
-    } finally {
-      krypton.stop();
-    }
-  }
-
-  @Test
-  public void getOauthToken_callsCallback() throws Exception {
-    // Set up a listener and condition we can wait on.
-    KryptonImpl krypton =
-        createKrypton(
-            new KryptonAdapter() {
-              @Override
-              public String onKryptonNeedsOAuthToken() {
-                return "hello world";
-              }
-            });
-
-    try {
-      krypton.init();
-
-      String token = notification.getOAuthToken();
-
-      assertThat(token).isEqualTo("hello world");
 
     } finally {
       krypton.stop();
@@ -485,7 +475,7 @@ public class NotificationTest {
               .setUplinkSpi(1)
               .setDownlinkSpi(2)
               .build();
-      assertThat(notification.configureIpSec(params)).isTrue();
+      assertThat(notification.configureIpSec(krypton, params)).isTrue();
     } finally {
       krypton.stop();
     }

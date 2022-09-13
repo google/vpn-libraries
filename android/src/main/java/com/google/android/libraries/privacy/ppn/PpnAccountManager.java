@@ -18,39 +18,12 @@ import android.accounts.Account;
 import android.content.Context;
 import android.net.Network;
 import androidx.annotation.Nullable;
-import androidx.work.ListenableWorker;
-import androidx.work.WorkManager;
-import java.time.Instant;
-import java.util.concurrent.Executor;
 
 /**
  * Common interface for getting account information, since the particular implementation may differ
  * between first-party and third-party apps.
  */
 public interface PpnAccountManager {
-  /** An OAuth token, and associated metadata. */
-  public class PpnTokenData {
-    private final String token;
-    private final Instant expiration;
-
-    public PpnTokenData(String token, Instant expiration) {
-      this.token = token;
-      this.expiration = expiration;
-    }
-
-    public String getToken() {
-      return token;
-    }
-
-    public Instant getExpiration() {
-      return expiration;
-    }
-  }
-
-  /** Creates an instance of PpnAccountRefresher. */
-  PpnAccountRefresher createAccountRefresher(
-      WorkManager workManager, Executor backgroundExecutor, String accountName, String scope);
-
   /**
    * Returns the Account with the given name.
    *
@@ -63,10 +36,6 @@ public interface PpnAccountManager {
    *
    * @throws PpnException if the app doesn't have permission for the given scope.
    */
-  PpnTokenData getOAuthToken(
-      Context context, Account account, String scope, @Nullable Network network)
+  String getOAuthToken(Context context, Account account, String scope, @Nullable Network network)
       throws PpnException;
-
-  /** Returns the class of the Worker that refreshes the Account. */
-  Class<? extends ListenableWorker> getWorkerClass();
 }

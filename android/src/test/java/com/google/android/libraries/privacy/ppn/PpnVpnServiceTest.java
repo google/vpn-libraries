@@ -25,19 +25,20 @@ import android.content.Intent;
 import com.google.android.gms.tasks.Tasks;
 import com.google.android.libraries.privacy.ppn.internal.PpnImpl;
 import com.google.android.libraries.privacy.ppn.internal.PpnLibrary;
-import com.google.testing.mockito.Mocks;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.robolectric.RobolectricTestRunner;
 
 @RunWith(RobolectricTestRunner.class)
 public class PpnVpnServiceTest {
 
-  @Rule public Mocks mocks = new Mocks(this);
+  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
 
   @Mock private PpnImpl ppn;
   private PpnVpnService ppnVpnService;

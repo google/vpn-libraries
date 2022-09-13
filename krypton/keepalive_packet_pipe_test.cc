@@ -1,6 +1,6 @@
 // Copyright 2021 Google LLC
 //
-// Licensed under the Apache License, Version 2.0 (the "LICENSE");
+// Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -14,7 +14,9 @@
 
 #include "privacy/net/krypton/keepalive_packet_pipe.h"
 
-#include <thread>  // NOLINT
+#include <functional>
+#include <string>
+#include <utility>
 
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "testing/base/public/gmock.h"
@@ -37,22 +39,28 @@ class FakePacketPipe : public PacketPipe {
   ///
   /// Test only.
   void ResumeReadingPackets() {
-    std::function<bool(absl::Status, Packet)> handler;
+    std::function<bool(absl::Status, std::vector<Packet>)> handler;
     {
       absl::MutexLock l(&mutex_);
       handler = handler_;
     }
-    handler(absl::OkStatus(), Packet("foo", 3, IPProtocol::kIPv4, []() {}));
+    Packet packet("foo", 3, IPProtocol::kIPv4, []() {});
+    std::vector<Packet> packets;
+    packets.emplace_back(std::move(packet));
+    handler(absl::OkStatus(), std::move(packets));
   }
 
   absl::Status StopReadingPackets() override { return absl::OkStatus(); }
 
-  void ReadPackets(std::function<bool(absl::Status, Packet)> handler) override {
+  void ReadPackets(
+      std::function<bool(absl::Status, std::vector<Packet>)> handler) override {
     absl::MutexLock l(&mutex_);
     handler_ = handler;
   }
 
-  absl::Status WritePacket(const Packet&) override { return absl::OkStatus(); }
+  absl::Status WritePackets(std::vector<Packet>) override {
+    return absl::OkStatus();
+  }
 
   absl::StatusOr<int> GetFd() const override {
     return absl::UnimplementedError("Not implemented");
@@ -62,7 +70,7 @@ class FakePacketPipe : public PacketPipe {
 
  private:
   absl::Mutex mutex_;
-  std::function<bool(absl::Status, Packet)> handler_;
+  std::function<bool(absl::Status, std::vector<Packet>)> handler_;
 };
 
 class KeepAlivePacketPipeTest : public ::testing::Test {
@@ -77,9 +85,9 @@ TEST_F(KeepAlivePacketPipeTest, TestTimeout) {
   absl::CondVar cv;
   absl::MutexLock l(&mutex);
   keepalive_pipe_.ReadPackets(
-      [&cv, &mutex](absl::Status status, Packet packet) {
+      [&cv, &mutex](absl::Status status, std::vector<Packet> packets) {
         EXPECT_OK(status);
-        EXPECT_EQ(packet.protocol(), IPProtocol::kUnknown);
+        EXPECT_EQ(0, packets.size());
         absl::MutexLock l(&mutex);
         cv.Signal();
         return true;
@@ -93,14 +101,14 @@ TEST_F(KeepAlivePacketPipeTest, TestTimeoutAfterReadingPackets) {
   absl::CondVar cv;
   absl::MutexLock l(&mutex);
   keepalive_pipe_.ReadPackets(
-      [&cv, &mutex](absl::Status status, Packet packet) {
-        if (packet.protocol() == IPProtocol::kUnknown) {
+      [&cv, &mutex](absl::Status status, std::vector<Packet> packets) {
+        if (packets.size() != 1) {
           absl::MutexLock l(&mutex);
           cv.Signal();
           return false;
         }
         EXPECT_OK(status);
-        EXPECT_EQ(packet.data(), "foo");
+        EXPECT_EQ(packets[0].data(), "foo");
         return true;
       });
 
@@ -113,15 +121,15 @@ TEST_F(KeepAlivePacketPipeTest, TestCanReadPacketsAfterTimeout) {
   absl::MutexLock l(&mutex);
   absl::CondVar cv;
   keepalive_pipe_.ReadPackets(
-      [&cv, &mutex, this](absl::Status status, Packet packet) {
-        if (packet.protocol() == IPProtocol::kUnknown) {
+      [&cv, &mutex, this](absl::Status status, std::vector<Packet> packets) {
+        if (packets.size() != 1) {
           packet_pipe_.ResumeReadingPackets();
           return true;
         }
         absl::MutexLock l(&mutex);
         cv.Signal();
         EXPECT_OK(status);
-        EXPECT_EQ(packet.data(), "foo");
+        EXPECT_EQ(packets[0].data(), "foo");
         return true;
       });
 

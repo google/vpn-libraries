@@ -17,7 +17,6 @@ package com.google.android.libraries.privacy.ppn.internal.http;
 import static com.google.common.truth.Truth.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
 import android.net.Network;
@@ -27,7 +26,7 @@ import com.google.android.libraries.privacy.ppn.internal.HttpResponse;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.internal.json.Json;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
-import com.google.testing.mockito.Mocks;
+import com.google.common.net.InetAddresses;
 import com.squareup.okhttp.mockwebserver.MockResponse;
 import com.squareup.okhttp.mockwebserver.MockWebServer;
 import com.squareup.okhttp.mockwebserver.RecordedRequest;
@@ -48,6 +47,8 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.robolectric.RobolectricTestRunner;
 
 /** Unit tests for {@link HttpFetcher}. */
@@ -55,8 +56,8 @@ import org.robolectric.RobolectricTestRunner;
 public class HttpFetcherTest {
   private static final String TAG = "HttpFetcherTest";
 
-  @Rule public Mocks mocks = new Mocks(this);
-  @Mock private InetAddress mockAddress;
+  @Rule public final MockitoRule mocks = MockitoJUnit.rule();
+  private final InetAddress address = InetAddresses.forString("127.0.0.1");
   @Mock private Network mockNetwork;
   @Mock private BoundSocketFactoryFactory socketFactoryFactory;
 
@@ -425,9 +426,7 @@ public class HttpFetcherTest {
 
   @Test
   public void testLookupDns() throws Exception {
-    doReturn("127.0.0.1").when(mockAddress).getHostAddress();
-
-    Dns mockDns = (hostname) -> Arrays.asList(mockAddress);
+    Dns mockDns = (hostname) -> Arrays.asList(address);
     httpFetcher.setDns(mockDns);
 
     String address = httpFetcher.lookupDns("example.com");

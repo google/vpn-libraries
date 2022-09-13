@@ -21,6 +21,9 @@ import android.accounts.Account;
 import android.app.Notification;
 import android.content.Context;
 import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.LinkAddress;
+import android.net.LinkProperties;
 import android.net.Network;
 import android.net.VpnService;
 import android.os.Build;
@@ -29,14 +32,11 @@ import android.os.Looper;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
-import androidx.work.WorkManager;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.gms.tasks.TaskExecutors;
-import com.google.android.gms.tasks.Tasks;
 import com.google.android.libraries.privacy.ppn.Ppn;
 import com.google.android.libraries.privacy.ppn.PpnAccountManager;
-import com.google.android.libraries.privacy.ppn.PpnAccountRefresher;
 import com.google.android.libraries.privacy.ppn.PpnConnectingStatus;
 import com.google.android.libraries.privacy.ppn.PpnConnectionStatus;
 import com.google.android.libraries.privacy.ppn.PpnDisconnectionStatus;
@@ -49,6 +49,7 @@ import com.google.android.libraries.privacy.ppn.PpnSnoozeStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
 import com.google.android.libraries.privacy.ppn.PpnTelemetry;
+import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
 import com.google.android.libraries.privacy.ppn.internal.http.CachedDns;
 import com.google.android.libraries.privacy.ppn.internal.http.Dns;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
@@ -56,6 +57,7 @@ import com.google.android.libraries.privacy.ppn.internal.service.PpnServiceDebug
 import com.google.android.libraries.privacy.ppn.internal.service.ProtectedSocketFactoryFactory;
 import com.google.android.libraries.privacy.ppn.internal.service.VpnBypassDns;
 import com.google.android.libraries.privacy.ppn.internal.service.VpnManager;
+import com.google.android.libraries.privacy.ppn.krypton.AttestingOAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.krypton.Krypton;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonException;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonFactory;
@@ -63,16 +65,19 @@ import com.google.android.libraries.privacy.ppn.krypton.KryptonImpl;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonIpSecHelper;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonIpSecHelperImpl;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonListener;
+import com.google.android.libraries.privacy.ppn.krypton.OAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener;
 import com.google.android.libraries.privacy.ppn.xenon.Xenon;
 import com.google.android.libraries.privacy.ppn.xenon.impl.XenonImpl;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeoutException;
@@ -101,9 +106,6 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   private PpnTelemetryManager telemetry;
 
   private final PpnOptions options;
-  /* This field is null until it is needed, so that this can be constructed on the UI thread. */
-  @Nullable private PpnSettings settings;
-  private final Object settingsLock = new Object();
 
   @Nullable private PpnListener listener;
   private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -123,21 +125,9 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   private Set<String> disallowedApplications = Collections.emptySet();
 
   // Tracks whether PPN is fully connected, for managing notification state.
-  private AtomicBoolean connected = new AtomicBoolean();
+  private final AtomicBoolean connected = new AtomicBoolean();
 
-  /*
-   * Cached account that was used to enable PPN.
-   * This is volatile because it is updated from a background thread.
-   */
-  private volatile Account cachedAccount = null;
-
-  /*
-   * Class that refreshes a user account in the background periodically to keep it cached.
-   * This is nullable because it's constructed when PPN gets a user account.
-   */
-  @Nullable private PpnAccountRefresher accountRefresher;
-
-  // TODO: Re-organize these methods so this class is more readable.
+  private final AccountCache accountCache;
 
   @Override
   public void onKryptonPermanentFailure(PpnStatus status) {
@@ -253,7 +243,6 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     } catch (PpnException e) {
       Log.e(TAG, "Unable to stop Krypton after PPN is snoozed.", e);
     }
-    // TODO: pause AccountRefresher while Krypton is snoozed.
     PpnSnoozeStatus snoozeStatus = PpnSnoozeStatus.fromProto(status);
     Log.w(TAG, "Krypton snooze status: " + snoozeStatus);
     if (listener == null) {
@@ -315,11 +304,6 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     }
   }
 
-  @Override
-  public String onKryptonNeedsOAuthToken() throws PpnException {
-    return getZincOAuthToken();
-  }
-
   /** Creates a new instance of the PPN. */
   public PpnImpl(Context context, PpnOptions options) {
     this.context = context.getApplicationContext();
@@ -327,7 +311,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     this.backgroundExecutor = options.getBackgroundExecutor();
     this.notificationManager = new PpnNotificationManager();
     this.telemetry = new PpnTelemetryManager();
-    this.vpnManager = new VpnManager(context);
+    this.vpnManager = new VpnManager(context, options);
 
     Dns dns = new VpnBypassDns(vpnManager);
     if (options.isDnsCacheEnabled()) {
@@ -335,13 +319,47 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     }
     this.httpFetcher = new HttpFetcher(new ProtectedSocketFactoryFactory(vpnManager), dns);
 
+    final OAuthTokenProvider oAuthTokenProvider;
+    if (options.isIntegrityAttestationEnabled()) {
+      oAuthTokenProvider =
+          new AttestingOAuthTokenProvider(context, options) {
+            @Override
+            public String getOAuthToken() {
+              try {
+                return getZincOAuthToken();
+              } catch (PpnException e) {
+                Log.e(TAG, "Unable to get Zinc OAuth token.", e);
+              }
+              return "";
+            }
+          };
+    } else {
+      oAuthTokenProvider =
+          new OAuthTokenProvider() {
+            @Override
+            public String getOAuthToken() {
+              try {
+                return getZincOAuthToken();
+              } catch (PpnException e) {
+                Log.e(TAG, "Unable to get Zinc OAuth Token.", e);
+              }
+              return "";
+            }
+
+            @Override
+            @Nullable
+            public byte[] getAttestationData(String nonce) {
+              return null;
+            }
+          };
+    }
+
     this.kryptonFactory =
         (KryptonListener kryptonListener, ExecutorService bgExecutor) ->
-            new KryptonImpl(context, httpFetcher, kryptonListener, bgExecutor);
+            new KryptonImpl(context, httpFetcher, oAuthTokenProvider, kryptonListener, bgExecutor);
 
-    Optional<PpnAccountManager> accountManager = options.getAccountManager();
-    this.accountManager =
-        accountManager.isPresent() ? accountManager.get() : new GoogleAccountManager();
+    this.accountManager = options.getAccountManager().orElseGet(GoogleAccountManager::new);
+    this.accountCache = new AccountCache(context, backgroundExecutor, accountManager);
 
     this.xenon = new XenonImpl(context, this, httpFetcher, options);
 
@@ -354,15 +372,13 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   /** Nullifies the cached account used for enabling PPN. */
   @VisibleForTesting
   void clearCachedAccount() {
-    Log.i(TAG, "Clearing cached account.");
-    cachedAccount = null;
+    accountCache.clearCachedAccount();
   }
 
   @Override
   public void start(Account account) throws PpnException {
     Log.w(TAG, "PPN status: " + getDebugJson());
-    getSettings().setAccountName(account.name);
-    cachedAccount = account;
+    accountCache.setAccount(account);
     // Snapshot the disallowed applications, so that it only changes when PPN is restarted.
     vpnManager.setDisallowedApplications(disallowedApplications);
     startVpn();
@@ -602,15 +618,6 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     notificationManager.setNotification(context, notificationId, notification);
   }
 
-  private PpnSettings getSettings() {
-    synchronized (settingsLock) {
-      if (settings == null) {
-        settings = new PpnSettings(context.getApplicationContext());
-      }
-      return settings;
-    }
-  }
-
   private void startVpn() throws PpnException {
     Intent intent = new Intent(VpnService.SERVICE_INTERFACE);
     intent.setPackage(context.getApplicationContext().getPackageName());
@@ -637,19 +644,11 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     notificationManager.startService(service);
 
     // Look up the user account and notify the app that the PPN service has started.
-    return getPpnAccountAsync()
+    return accountCache
+        .getPpnAccountAsync()
         .continueWithTask(
             backgroundExecutor,
             accountTask -> {
-              Log.w(TAG, "Starting PpnAccountRefresher.");
-              accountRefresher =
-                  accountManager.createAccountRefresher(
-                      WorkManager.getInstance(context.getApplicationContext()),
-                      backgroundExecutor,
-                      accountTask.getResult().name,
-                      options.getZincOAuthScopes());
-              accountRefresher.start();
-
               Log.w(TAG, "PPN ready to start Krypton.");
               startKrypton();
               return accountTask;
@@ -679,52 +678,6 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   }
 
   /**
-   * Looks up the Account that was used to enable PPN.
-   *
-   * <p>If PPN has not been enabled with an account, then the return Task will be rejected with a
-   * PpnException.
-   *
-   * @return a Task that will be resolved with the account.
-   */
-  private Task<Account> getPpnAccountAsync() {
-    // If it's cached, just use that.
-    if (cachedAccount != null) {
-      return Tasks.forResult(cachedAccount);
-    }
-
-    // Do any remaining work off of the UI thread.
-    TaskCompletionSource<Account> tcs = new TaskCompletionSource<>();
-    backgroundExecutor.execute(
-        () -> {
-          try {
-            tcs.trySetResult(getPpnAccount());
-          } catch (Exception e) {
-            tcs.trySetException(e);
-          }
-        });
-    return tcs.getTask();
-  }
-
-  /**
-   * Looks up the Account that was used to enable PPN. This should not be called from the UI thread.
-   *
-   * @throws PpnException if PPN has not been enabled with an account.
-   */
-  private Account getPpnAccount() throws PpnException {
-    Log.w(TAG, "PPN getting Account.");
-    ensureBackgroundThread();
-    // Look up the Account used for starting PPN.
-    String accountName = getSettings().getAccountName();
-    if (isNullOrEmpty(accountName)) {
-      throw new PpnException("PPN was started without a user account.");
-    }
-    Account account = accountManager.getAccount(context, accountName);
-    Log.w(TAG, "PPN has Account.");
-    cachedAccount = account;
-    return account;
-  }
-
-  /**
    * Fetches a new oauth token for Zinc, using the user who started PPN. This method should not be
    * called from the UI thread.
    *
@@ -737,10 +690,9 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     if (ppnNetwork != null) {
       network = ppnNetwork.getNetwork();
     }
-    if (accountRefresher == null) {
-      throw new PpnException("Tried to getZincOAuthToken with null accountRefresher.");
-    }
-    return accountRefresher.getToken(context, network);
+
+    Account account = accountCache.getPpnAccount();
+    return accountManager.getOAuthToken(context, account, options.getZincOAuthScopes(), network);
   }
 
   /**
@@ -793,23 +745,31 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     if (options.getCopperControllerAddress().isPresent()) {
       builder.setCopperControllerAddress(options.getCopperControllerAddress().get());
     }
+    if (options.getCopperHostnameOverride().isPresent()) {
+      builder.setCopperHostnameOverride(options.getCopperHostnameOverride().get());
+    }
 
     builder.addAllCopperHostnameSuffix(options.getCopperHostnameSuffix());
 
-    if (options.isIpSecEnabled().isPresent()) {
-      builder.setIpsecDatapath(options.isIpSecEnabled().get());
+    if (options.getDatapathProtocol().isPresent()) {
+      switch (options.getDatapathProtocol().get()) {
+        case BRIDGE:
+          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.BRIDGE);
+          break;
+        case IPSEC:
+          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.IPSEC);
+          break;
+        case IKE:
+          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.IKE);
+          break;
+      }
     }
-    if (options.isBridgeOnPpnEnabled().isPresent()) {
-      builder.setBridgeOverPpn(options.isBridgeOnPpnEnabled().get());
-    }
+
     if (options.getBridgeKeyLength().isPresent()) {
       builder.setCipherSuiteKeyLength(options.getBridgeKeyLength().get());
     }
     if (options.isBlindSigningEnabled().isPresent()) {
       builder.setEnableBlindSigning(options.isBlindSigningEnabled().get());
-    }
-    if (options.shouldInstallKryptonCrashSignalHandler().isPresent()) {
-      builder.setInstallCrashSignalHandler(options.shouldInstallKryptonCrashSignalHandler().get());
     }
     if (options.getRekeyDuration().isPresent()) {
       Duration duration = options.getRekeyDuration().get();
@@ -821,7 +781,12 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
       builder.setRekeyDuration(proto);
     }
     builder.setSafeDisconnectEnabled(options.isSafeDisconnectEnabled());
-
+    builder.setIpv6Enabled(options.isIPv6Enabled());
+    builder.setIntegrityAttestationEnabled(options.isIntegrityAttestationEnabled());
+    if (options.getApiKey().isPresent()) {
+      builder.setApiKey(options.getApiKey().get());
+    }
+    builder.setAttachOauthTokenAsHeader(options.isAttachOauthTokenAsHeaderEnabled());
     return builder;
   }
 
@@ -918,13 +883,6 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     return tcs.getTask();
   }
 
-  // This method exists because every time we do this logic, the Google linter insists on us using
-  // an internal method for it. But this code is intended to be open sourced, so we can't use the
-  // internal version.
-  private static boolean isNullOrEmpty(@Nullable String s) {
-    return s == null || s.isEmpty();
-  }
-
   public void onStopService() {
     Log.w(TAG, "PPN Service has stopped.");
     // Grab the status reported from Krypton when it stopped, before resetting everything.
@@ -940,17 +898,43 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
       Log.e(TAG, "Unable to stop Krypton.", e);
     }
 
-    // Stop the AccountRefresher if it hasn't been stopped.
-    if (accountRefresher != null) {
-      accountRefresher.stop();
-      accountRefresher = null;
-    }
-
     // Report to the listener why PPN was stopped.
     telemetry.notifyStopped();
     if (listener != null) {
       listener.onPpnStopped(status);
     }
+  }
+
+  private NetworkInfo createNetworkInfo(PpnNetwork ppnNetwork) {
+    NetworkInfo.Builder builder =
+        NetworkInfo.newBuilder()
+            .setNetworkType(ppnNetwork.getNetworkType())
+            .setNetworkId(ppnNetwork.getNetworkId());
+
+    ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
+    LinkProperties linkProperties = manager.getLinkProperties(ppnNetwork.getNetwork());
+    boolean hasIPv4 = false;
+    boolean hasIPv6 = false;
+    for (LinkAddress linkAddress : linkProperties.getLinkAddresses()) {
+      InetAddress address = linkAddress.getAddress();
+      if (address instanceof Inet4Address) {
+        hasIPv4 = true;
+      } else if (address instanceof Inet6Address) {
+        hasIPv6 = true;
+      }
+    }
+    if (hasIPv4 && hasIPv6) {
+      builder.setAddressFamily(AddressFamily.V4V6);
+    } else if (hasIPv4 && !hasIPv6) {
+      builder.setAddressFamily(AddressFamily.V4);
+    } else if (!hasIPv4 && hasIPv6) {
+      builder.setAddressFamily(AddressFamily.V6);
+    } else {
+      // The default is to just try both.
+      builder.setAddressFamily(AddressFamily.V4V6);
+    }
+
+    return builder.build();
   }
 
   @Override
@@ -962,11 +946,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
           try {
             synchronized (kryptonLock) {
               if (krypton != null) {
-                NetworkInfo networkInfo =
-                    NetworkInfo.newBuilder()
-                        .setNetworkType(ppnNetwork.getNetworkType())
-                        .setNetworkId(ppnNetwork.getNetworkId())
-                        .build();
+                NetworkInfo networkInfo = createNetworkInfo(ppnNetwork);
                 Log.w(TAG, "Setting network on Krypton.");
                 krypton.setNetwork(networkInfo);
                 vpnManager.setNetwork(ppnNetwork);
