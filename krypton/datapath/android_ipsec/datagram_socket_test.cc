@@ -18,6 +18,7 @@
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "privacy/net/krypton/datapath/android_ipsec/simple_udp_server.h"
 #include "privacy/net/krypton/endpoint.h"
@@ -43,9 +44,9 @@ class DatagramSocketTest : public ::testing::Test {
   static absl::StatusOr<std::unique_ptr<DatagramSocket>> CreateSocket() {
     int fd = socket(AF_INET6, SOCK_DGRAM, 0);
     if (fd < 0) {
-      return absl::InternalError("unable to create socket");
+      return absl::InternalError("Unable to create socket");
     }
-    return std::make_unique<DatagramSocket>(fd);
+    return DatagramSocket::Create(fd);
   }
 
   static absl::StatusOr<Endpoint> GetLocalhost(int port) {
@@ -57,14 +58,14 @@ TEST_F(DatagramSocketTest, BasicReadAndWrite) {
   testing::SimpleUdpServer server;
 
   // Connect to the server.
-  ASSERT_OK_AND_ASSIGN(auto fd, CreateSocket());
+  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket());
   ASSERT_OK_AND_ASSIGN(auto localhost, GetLocalhost(server.port()));
-  ASSERT_OK(fd->Connect(localhost));
+  ASSERT_OK(sock->Connect(localhost));
 
   // Send a packet to the server, to establish the client port.
   std::vector<Packet> packets;
   packets.emplace_back("foo", 3, IPProtocol::kIPv6, []() {});
-  ASSERT_OK(fd->WritePackets(std::move(packets)));
+  ASSERT_OK(sock->WritePackets(std::move(packets)));
 
   // Verify the server received the packet.
   ASSERT_OK_AND_ASSIGN((auto [port, data]), server.ReceivePacket());
@@ -74,30 +75,30 @@ TEST_F(DatagramSocketTest, BasicReadAndWrite) {
   server.SendSamplePacket(port, "bar");
 
   // Read the packet on the client.
-  ASSERT_OK_AND_ASSIGN(auto recv_packets, fd->ReadPackets());
+  ASSERT_OK_AND_ASSIGN(auto recv_packets, sock->ReadPackets());
   ASSERT_EQ(1, recv_packets.size());
   EXPECT_EQ("bar", recv_packets[0].data());
 
   // Close the socket.
-  ASSERT_OK(fd->Close());
+  ASSERT_OK(sock->Close());
 
   // Make sure reading from the socket immediately returns.
   LOG(INFO) << "Trying to read packets after close.";
-  ASSERT_THAT(fd->ReadPackets(), StatusIs(absl::StatusCode::kAborted));
+  ASSERT_THAT(sock->ReadPackets(), StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(DatagramSocketTest, CloseBeforeRead) {
   testing::SimpleUdpServer server;
 
   // Connect to the server.
-  ASSERT_OK_AND_ASSIGN(auto fd, CreateSocket());
+  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket());
   ASSERT_OK_AND_ASSIGN(auto localhost, GetLocalhost(server.port()));
-  ASSERT_OK(fd->Connect(localhost));
+  ASSERT_OK(sock->Connect(localhost));
 
   // Send a packet to the server, to establish the client port.
   std::vector<Packet> packets;
   packets.emplace_back("foo", 3, IPProtocol::kIPv6, []() {});
-  ASSERT_OK(fd->WritePackets(std::move(packets)));
+  ASSERT_OK(sock->WritePackets(std::move(packets)));
 
   // Verify the server received the packet.
   ASSERT_OK_AND_ASSIGN((auto [port, data]), server.ReceivePacket());
@@ -107,27 +108,27 @@ TEST_F(DatagramSocketTest, CloseBeforeRead) {
   server.SendSamplePacket(port, "bar");
 
   // Close the socket.
-  ASSERT_OK(fd->Close());
+  ASSERT_OK(sock->Close());
 
   // The "bar" packet is dropped, because the FD was closed before it was read.
 
   // Make sure reading from the socket immediately returns.
   LOG(INFO) << "Trying to read packets after close.";
-  ASSERT_THAT(fd->ReadPackets(), StatusIs(absl::StatusCode::kAborted));
+  ASSERT_THAT(sock->ReadPackets(), StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(DatagramSocketTest, ReadBeforeWrite) {
   testing::SimpleUdpServer server;
 
   // Connect to the server.
-  ASSERT_OK_AND_ASSIGN(auto fd, CreateSocket());
+  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket());
   ASSERT_OK_AND_ASSIGN(auto localhost, GetLocalhost(server.port()));
-  ASSERT_OK(fd->Connect(localhost));
+  ASSERT_OK(sock->Connect(localhost));
 
   // Send a packet to the server, to establish the client port.
   std::vector<Packet> packets;
   packets.emplace_back("foo", 3, IPProtocol::kIPv6, []() {});
-  ASSERT_OK(fd->WritePackets(std::move(packets)));
+  ASSERT_OK(sock->WritePackets(std::move(packets)));
 
   // Verify the server received the packet.
   ASSERT_OK_AND_ASSIGN((auto [port, data]), server.ReceivePacket());
@@ -143,65 +144,88 @@ TEST_F(DatagramSocketTest, ReadBeforeWrite) {
   });
 
   // Read the packet on the client.
-  ASSERT_OK_AND_ASSIGN(auto recv_packets, fd->ReadPackets());
+  ASSERT_OK_AND_ASSIGN(auto recv_packets, sock->ReadPackets());
   ASSERT_EQ(1, recv_packets.size());
   EXPECT_EQ("bar", recv_packets[0].data());
 
   // Close the socket.
-  ASSERT_OK(fd->Close());
+  ASSERT_OK(sock->Close());
 
   // Make sure reading from the socket immediately returns.
   LOG(INFO) << "Trying to read packets after close.";
-  ASSERT_THAT(fd->ReadPackets(), StatusIs(absl::StatusCode::kAborted));
+  ASSERT_THAT(sock->ReadPackets(), StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(DatagramSocketTest, ReadBeforeClose) {
   testing::SimpleUdpServer server;
 
   // Connect to the server.
-  ASSERT_OK_AND_ASSIGN(auto fd, CreateSocket());
+  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket());
   ASSERT_OK_AND_ASSIGN(auto localhost, GetLocalhost(server.port()));
-  ASSERT_OK(fd->Connect(localhost));
+  ASSERT_OK(sock->Connect(localhost));
 
   // Send a packet to the server, to establish the client port.
   std::vector<Packet> packets;
   packets.emplace_back("foo", 3, IPProtocol::kIPv6, []() {});
-  ASSERT_OK(fd->WritePackets(std::move(packets)));
+  ASSERT_OK(sock->WritePackets(std::move(packets)));
 
   // Verify the server received the packet.
   ASSERT_OK_AND_ASSIGN((auto [port, data]), server.ReceivePacket());
   EXPECT_EQ("foo", data);
 
   krypton::utils::LooperThread looper("ReadBeforeWrite Writer");
-  looper.Post([&fd]() {
+  looper.Post([&sock]() {
     // Wait a second, so that the read can start.
     sleep(1);
 
     // Close the socket.
-    ASSERT_OK(fd->Close());
+    ASSERT_OK(sock->Close());
   });
 
   // Make sure reading from the socket immediately returns.
   LOG(INFO) << "Trying to read packets after close.";
-  ASSERT_THAT(fd->ReadPackets(), StatusIs(absl::StatusCode::kAborted));
+  ASSERT_OK_AND_ASSIGN(auto read_packets, sock->ReadPackets());
+  ASSERT_TRUE(read_packets.empty());
 }
 
 TEST_F(DatagramSocketTest, WriteAfterClose) {
   testing::SimpleUdpServer server;
 
   // Connect to the server.
-  ASSERT_OK_AND_ASSIGN(auto fd, CreateSocket());
+  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket());
   ASSERT_OK_AND_ASSIGN(auto localhost, GetLocalhost(server.port()));
-  ASSERT_OK(fd->Connect(localhost));
+  ASSERT_OK(sock->Connect(localhost));
 
-  // Close the fd.
-  ASSERT_OK(fd->Close());
+  // Close the socket.
+  ASSERT_OK(sock->Close());
 
   // Verify that writing to the FD now fails.
   std::vector<Packet> packets;
   packets.emplace_back("foo", 3, IPProtocol::kIPv6, []() {});
-  ASSERT_THAT(fd->WritePackets(std::move(packets)),
+  ASSERT_THAT(sock->WritePackets(std::move(packets)),
               StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST_F(DatagramSocketTest, ReadAfterShutdown) {
+  // Create the socket manually to get the fd
+  int fd = socket(AF_INET6, SOCK_DGRAM, 0);
+  ASSERT_GE(fd, 0);
+  ASSERT_OK_AND_ASSIGN(auto sock, DatagramSocket::Create(fd));
+
+  shutdown(fd, SHUT_RDWR);
+
+  ASSERT_THAT(sock->ReadPackets(), StatusIs(absl::StatusCode::kAborted));
+
+  ASSERT_OK(sock->Close());
+}
+
+TEST_F(DatagramSocketTest, CloseAfterClose) {
+  // Create the socket.
+  ASSERT_OK_AND_ASSIGN(auto fd, CreateSocket());
+
+  // Close the fd twice.
+  ASSERT_OK(fd->Close());
+  ASSERT_OK(fd->Close());
 }
 
 }  // namespace

@@ -15,7 +15,9 @@
 #include "privacy/net/krypton/keepalive_packet_pipe.h"
 
 #include <functional>
+#include <thread>
 #include <utility>
+#include <vector>
 
 namespace privacy {
 namespace krypton {

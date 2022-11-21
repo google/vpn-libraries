@@ -16,10 +16,11 @@
 #define PRIVACY_NET_KRYPTON_TEST_PACKET_PIPE_H_
 
 #include <functional>
+#include <optional>
 #include <string>
+#include <vector>
 
-#include "privacy/net/krypton/pal/vpn_service_interface.h"
-#include "privacy/net/krypton/utils/status.h"
+#include "privacy/net/krypton/pal/packet_pipe.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 
@@ -31,7 +32,7 @@ namespace krypton {
 class TestPacketPipe : public PacketPipe {
  public:
   explicit TestPacketPipe(int id) : id_(id) {}
-  ~TestPacketPipe() override {}
+  ~TestPacketPipe() override = default;
 
   TestPacketPipe(const TestPacketPipe&) = delete;
   TestPacketPipe& operator=(const TestPacketPipe&) = delete;
@@ -67,7 +68,7 @@ class TestPacketPipe : public PacketPipe {
       ABSL_GUARDED_BY(mutex_);
 
   // Packets that have been written to this pipe.
-  std::vector<Packet> written_packets_;
+  std::vector<Packet> outbound_packets_;
 };
 
 // Checks that a given PacketPipe has the given file descriptor.

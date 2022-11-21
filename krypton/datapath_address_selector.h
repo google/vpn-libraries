@@ -15,7 +15,9 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ADDRESS_SELECTOR_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ADDRESS_SELECTOR_H_
 
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"

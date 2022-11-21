@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>

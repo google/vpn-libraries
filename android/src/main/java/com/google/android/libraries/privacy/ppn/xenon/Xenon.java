@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn.xenon;
 import androidx.annotation.Nullable;
 import com.google.android.libraries.privacy.ppn.PpnException;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo;
+import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import java.util.List;
 import org.json.JSONObject;
 
@@ -52,6 +53,7 @@ public interface Xenon {
    *     passed in Network does not exist in the available map or if this network is the only
    *     available network.
    */
+  @ResultIgnorabilityUnspecified
   boolean deprioritize(NetworkInfo networkInfo);
 
   /** Reevaluates all the available networks to get the best network to use. */

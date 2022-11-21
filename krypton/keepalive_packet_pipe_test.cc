@@ -17,6 +17,7 @@
 #include <functional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "testing/base/public/gmock.h"

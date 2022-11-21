@@ -361,6 +361,24 @@ public class KryptonImpl implements Krypton, TimerListener {
   }
 
   /**
+   * Used to call into the PPN service and create a new network fd that uses TCP/IP. Krypton takes
+   * ownership of the returned fd, and is responsible for closing it. This is used specifically for
+   * determining MTU.
+   *
+   * @return the file descriptor, or a negative value, if one could not be created.
+   */
+  private int createTcpFd(byte[] networkInfoBytes) {
+    try {
+      NetworkInfo networkInfo =
+          NetworkInfo.parseFrom(networkInfoBytes, ExtensionRegistryLite.getEmptyRegistry());
+      return listener.onKryptonNeedsTcpFd(networkInfo);
+    } catch (PpnException | InvalidProtocolBufferException e) {
+      Log.e(TAG, "Unable to create TCP/IP fd.", e);
+      return -1;
+    }
+  }
+
+  /**
    * Applies an IPSec transform to a network file descriptor.
    *
    * @return true if transform is successfully applied; false otherwise.

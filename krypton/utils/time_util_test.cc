@@ -17,6 +17,7 @@
 #include "google/protobuf/timestamp.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 
 namespace privacy {
@@ -26,6 +27,39 @@ namespace {
 
 using ::testing::EqualsProto;
 using ::testing::status::IsOkAndHolds;
+
+TEST(Time, TestDurationFromProtoGood) {
+  google::protobuf::Duration proto;
+  proto.set_seconds(42);
+  proto.set_nanos(0);
+  ASSERT_OK_AND_ASSIGN(auto duration, DurationFromProto(proto));
+  EXPECT_EQ(duration, absl::Seconds(42));
+
+  proto.set_seconds(0);
+  proto.set_nanos(120);
+  ASSERT_OK_AND_ASSIGN(duration, DurationFromProto(proto));
+  EXPECT_EQ(duration, absl::Nanoseconds(120));
+}
+
+TEST(Time, TestDurationFromProtoBad) {
+  google::protobuf::Duration proto;
+  proto.set_seconds(0);
+  proto.set_nanos(1000000000);
+  EXPECT_THAT(DurationFromProto(proto),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // The max value of seconds is documented in duration.proto as 315,576,000,000
+  // which is about 10,000 years
+  proto.set_seconds(315576000001);
+  proto.set_nanos(0);
+  EXPECT_THAT(DurationFromProto(proto),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  proto.set_seconds(1);
+  proto.set_nanos(-120);
+  EXPECT_THAT(DurationFromProto(proto),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+}
 
 TEST(Time, TestDurationToProto) {
   google::protobuf::Duration proto;

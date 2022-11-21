@@ -17,7 +17,6 @@
 
 #include "google/protobuf/duration.proto.h"
 #include "google/protobuf/timestamp.proto.h"
-#include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/time/time.h"

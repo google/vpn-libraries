@@ -87,24 +87,8 @@ bool EventsHelper::FileHasError(const EventsHelper::Event& event) {
   return (event.events & EPOLLERR) != 0u;
 }
 
-bool EventsHelper::FileWasClosed(const EventsHelper::Event& event) {
-  return (event.events & EPOLLHUP) != 0u;
-}
-
 bool EventsHelper::FileCanRead(const EventsHelper::Event& event) {
   return (event.events & EPOLLIN) != 0u;
-}
-
-bool EventsHelper::FileCanWrite(const EventsHelper::Event& event) {
-  return (event.events & EPOLLOUT) != 0u;
-}
-
-std::string EventsHelper::EventStr(const EventsHelper::Event& event) {
-  unsigned int events = event.events;
-  return absl::StrCat((events & EPOLLIN) != 0u ? "IN " : "",
-                      (events & EPOLLOUT) != 0u ? "OUT " : "",
-                      (events & EPOLLERR) != 0u ? "ERR " : "",
-                      (events & EPOLLHUP) != 0u ? "HANGUP " : "");
 }
 
 }  // namespace android

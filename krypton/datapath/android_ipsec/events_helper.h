@@ -62,32 +62,14 @@ class EventsHelper {
   // Returns true if there is an error in the monitored event.
   static bool FileHasError(const EventsHelper::Event& event);
 
-  // Returns true if the File Descriptor has been closed. EPOLLHUP on
-  // File Descriptor to be read before returning 0.
-  static bool FileWasClosed(const EventsHelper::Event& event);
-
   // Returns true if the event is signaling there are bytes to be read
   // from the File Descriptor.
   static bool FileCanRead(const EventsHelper::Event& event);
-
-  // Returns if the event is signaling the File Descriptor is ready to accept
-  // write operations.
-  static bool FileCanWrite(const EventsHelper::Event& event);
-
-  // Returns a human-readable string of the epoll events for logging & debugging
-  // purpose.
-  static std::string EventStr(const EventsHelper::Event& event);
 
   // Returns the necessary flags to monitor file descriptors for read
   // operations.
   static inline constexpr unsigned int EventReadableFlags() {
     return EPOLLIN | EPOLLERR;
-  }
-
-  // Returns the necessary flags to monitor file descriptors for write
-  // operations.
-  static inline constexpr unsigned int EventWritableFlags() {
-    return EPOLLOUT | EPOLLERR;
   }
 
  private:

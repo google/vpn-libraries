@@ -19,6 +19,7 @@
 #include "privacy/net/krypton/proto/ppn_status.proto.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/cord.h"
+#include "third_party/absl/strings/str_cat.h"
 
 namespace privacy {
 namespace krypton {
@@ -27,7 +28,8 @@ namespace utils {
 namespace {
 
 absl::Status CreateDisallowedCountryStatus(absl::string_view message) {
-  absl::Status status = absl::FailedPreconditionError(message);
+  absl::Status status = absl::FailedPreconditionError(
+      absl::StrCat("Disallowed country: ", message));
   PpnStatusDetails details;
   details.set_detailed_error_code(PpnStatusDetails::DISALLOWED_COUNTRY);
   SetPpnStatusDetails(&status, details);
@@ -92,6 +94,12 @@ bool IsPermanentError(absl::Status status) {
   if (status.code() == absl::StatusCode::kFailedPrecondition &&
       GetPpnStatusDetails(status).detailed_error_code() ==
           PpnStatusDetails::DISALLOWED_COUNTRY) {
+    return true;
+  }
+
+  if (status.code() == absl::StatusCode::kFailedPrecondition &&
+      GetPpnStatusDetails(status).detailed_error_code() ==
+          PpnStatusDetails::LIBRARY_NOT_FOUND) {
     return true;
   }
 

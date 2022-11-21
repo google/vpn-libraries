@@ -15,11 +15,12 @@
  */
 package com.google.android.libraries.privacy.ppn.krypton;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import android.content.Context;
 import android.os.Build;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
-import android.util.Base64;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
@@ -38,6 +39,7 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.ProviderException;
@@ -54,6 +56,7 @@ public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider 
   private static final String TAG = "AttestingOAuthTokenProv";
   private static final String ANDROID_KEYSTORE_NAME = "AndroidKeyStore";
   private static final String HARDWARE_CERTIFICATE_ALIAS = "AndroidHardwareCerts";
+  private static final String NONCE_HASH_FUNCTION = "SHA-256";
 
   public static final String ANDROID_ATTESTATION_DATA_TYPE_URL =
       "type.googleapis.com/privacy.ppn.AndroidAttestationData";
@@ -107,7 +110,6 @@ public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider 
                     .setTypeUrl(ANDROID_ATTESTATION_DATA_TYPE_URL)
                     .setValue(data.build().toByteString()))
             .build();
-
     return attestationData.toByteArray();
   }
 
@@ -138,7 +140,7 @@ public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider 
 
     try {
       keyPairGenerator.initialize(buildKeyGenParameterSpec(nonce));
-    } catch (InvalidAlgorithmParameterException e) {
+    } catch (InvalidAlgorithmParameterException | NoSuchAlgorithmException e) {
       throw getErrorMessage("Failed to generate hardware certificates", e);
     }
     // Result of Key pair generation is unused but is necessary to generate the certificates (?)
@@ -164,15 +166,9 @@ public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider 
   }
 
   private static KeyGenParameterSpec buildKeyGenParameterSpec(String nonce)
-      throws KryptonException {
+      throws NoSuchAlgorithmException {
     // KeyGenParameterSpec was added in 23+ and is required to properly generate the
     // hardware-attested IDs.
-    byte[] nonceBytes;
-    try {
-      nonceBytes = Base64.decode(nonce, Base64.DEFAULT);
-    } catch (IllegalArgumentException e) {
-      throw getErrorMessage("Failed to Base64 decode nonce", e);
-    }
     return new KeyGenParameterSpec.Builder(HARDWARE_CERTIFICATE_ALIAS, KeyProperties.PURPOSE_SIGN)
         .setAlgorithmParameterSpec(
             new RSAKeyGenParameterSpec(
@@ -180,13 +176,18 @@ public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider 
         .setDigests(KeyProperties.DIGEST_SHA256)
         // PPN should be able to re-attest while phone is not being used and PPN is on.
         .setUserAuthenticationRequired(false)
-        .setAttestationChallenge(nonceBytes)
         .setDevicePropertiesAttestationIncluded(true)
+        .setAttestationChallenge(sha256(nonce.getBytes(UTF_8)))
         .build();
   }
 
   private static KryptonException getErrorMessage(String message, Throwable throwable)
       throws KryptonException {
-    throw new KryptonException(String.format("%s: %s", message, throwable.getMessage()));
+    throw new KryptonException(message, throwable);
+  }
+
+  private static byte[] sha256(byte[] data) throws NoSuchAlgorithmException {
+    MessageDigest digest = MessageDigest.getInstance(NONCE_HASH_FUNCTION);
+    return digest.digest(data);
   }
 }

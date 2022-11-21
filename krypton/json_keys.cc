@@ -35,6 +35,7 @@ const char JsonKeys::kIpRanges[] = "ip_ranges";
 const char JsonKeys::kDataplaneSockAddr[] = "data_plane_sock_addrs";
 const char JsonKeys::kError[] = "error";
 const char JsonKeys::kApnType[] = "apn_type";
+const char JsonKeys::kDynamicMtuEnabled[] = "dynamic_mtu_enabled";
 
 // PPN
 const char JsonKeys::kPpn[] = "ppn";

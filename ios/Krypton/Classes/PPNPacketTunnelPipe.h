@@ -19,11 +19,12 @@
 
 #import <NetworkExtension/NetworkExtension.h>
 
-#include "privacy/net/krypton/pal/vpn_service_interface.h"
-#include "third_party/absl/base/thread_annotations.h"
-#include "third_party/absl/status/status.h"
-#include "third_party/absl/synchronization/mutex.h"
+#include <functional>
+#include <string>
+#include <vector>
 
+#include "privacy/net/krypton/pal/packet_pipe.h"
+#include "third_party/absl/status/status.h"
 @class PPNPacketTunnelPipeWrapper;
 
 namespace privacy {

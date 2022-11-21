@@ -171,7 +171,8 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
   public void removeTransformFromFd(int networkFd) throws KryptonException {
     try {
       Log.w(TAG, "Removing transforms.");
-      ipSecManager.removeTransportModeTransforms(ParcelFileDescriptor.fromFd(networkFd).getFileDescriptor());
+      ipSecManager.removeTransportModeTransforms(
+          ParcelFileDescriptor.fromFd(networkFd).getFileDescriptor());
       close();
     } catch (IOException e) {
       throw new KryptonException("Error encountered when removing transform from fd.", e);
@@ -201,10 +202,7 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
   }
 
   private IpSecTransform buildTransform(
-      InetAddress address,
-      SecurityParameterIndex spi,
-      byte[] keyMaterial,
-      int remotePort)
+      InetAddress address, SecurityParameterIndex spi, byte[] keyMaterial, int remotePort)
       throws ResourceUnavailableException, SpiUnavailableException, IOException {
     IpSecAlgorithm algorithm =
         new IpSecAlgorithm(IpSecAlgorithm.AUTH_CRYPT_AES_GCM, keyMaterial, 128);

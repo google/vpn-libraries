@@ -21,6 +21,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
@@ -245,7 +246,7 @@ void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
   request_time_ = absl::Now();
   auto auth_token = oauth_->GetOAuthToken();
   if (!auth_token.ok()) {
-    LOG(ERROR) << "Error fetching oauth token";
+    LOG(ERROR) << "Error fetching oauth token: " << auth_token.status();
     SetState(State::kUnauthenticated);
     RaiseAuthFailureNotification(
         absl::InternalError("Error fetching Oauth token"));

@@ -20,6 +20,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"

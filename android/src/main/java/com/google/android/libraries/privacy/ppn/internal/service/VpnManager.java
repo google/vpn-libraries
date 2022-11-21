@@ -253,6 +253,62 @@ public class VpnManager {
         pfd = pfd.dup();
       }
       // pfd is a duplicate of the original socket, which needs to be closed.
+      int fd = pfd.detachFd();
+      if (fd <= 0) {
+        throw new PpnException("Invalid file descriptor from datagram socket: " + fd);
+      }
+      return fd;
+    } catch (IOException e) {
+      throw new PpnException("Unable to create socket or bind network to socket.", e);
+    } finally {
+      if (socket != null) {
+        socket.close();
+        socket = null;
+      }
+    }
+  }
+
+  /**
+   * Creates a new protected TCP socket, which can be used by Krypton. This can only be called after
+   * onStartService and before onStopService.
+   *
+   * @param ppnNetwork PpnNetwork to bind to.
+   * @return the file descriptor of the socket. The receiver is responsible for closing it.
+   * @throws PpnException if the service has not been set.
+   */
+  public int createProtectedStreamSocket(PpnNetwork ppnNetwork) throws PpnException {
+    return createProtectedStreamSocket(ppnNetwork.getNetwork());
+  }
+
+  /**
+   * Creates a new protected TCP socket, which can be used by Krypton. This can only be called after
+   * onStartService and before onStopService.
+   *
+   * @param network Network to bind to.
+   * @return the file descriptor of the socket. The receiver is responsible for closing it.
+   * @throws PpnException if the service has not been set.
+   */
+  private int createProtectedStreamSocket(Network network) throws PpnException {
+    VpnServiceWrapper service = vpnService;
+    if (service == null) {
+      throw new PpnException("Tried to create a protected socket when PPN service wasn't running.");
+    }
+    Socket socket = null;
+
+    try {
+      socket = new Socket();
+      socket.setReceiveBufferSize(SOCKET_BUFFER_SIZE_BYTES);
+      socket.setSendBufferSize(SOCKET_BUFFER_SIZE_BYTES);
+
+      service.protect(socket);
+      network.bindSocket(socket);
+
+      // Explicitly duplicate the socket for Android version 9 (P) and older.
+      ParcelFileDescriptor pfd = service.parcelSocket(socket);
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        pfd = pfd.dup();
+      }
+      // pfd is a duplicate of the original socket, which needs to be closed.
       socket.close();
       socket = null;
       int fd = pfd.detachFd();
@@ -262,7 +318,12 @@ public class VpnManager {
       return fd;
     } catch (IOException e) {
       if (socket != null) {
-        socket.close();
+        try {
+          socket.close();
+        } catch (IOException ignored) {
+          // There's nothing really to be done in this case.
+          Log.w(TAG, "Unable to close socket.", ignored);
+        }
       }
       throw new PpnException("Unable to create socket or bind network to socket.", e);
     }

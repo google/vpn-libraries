@@ -25,7 +25,6 @@
 #include "privacy/net/krypton/datapath_address_selector.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
-#include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
@@ -34,13 +33,10 @@
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
-#include "privacy/net/krypton/tunnel_manager.h"
 #include "privacy/net/krypton/tunnel_manager_interface.h"
 #include "privacy/net/krypton/utils/looper.h"
-#include "third_party/absl/base/call_once.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
 
@@ -220,7 +216,6 @@ class Session : public Auth::NotificationInterface,
       absl::OkStatus();
 
   bool has_active_tunnel_ ABSL_GUARDED_BY(mutex_) = false;
-  std::unique_ptr<PacketPipe> active_network_socket_ ABSL_GUARDED_BY(mutex_);
   std::optional<NetworkInfo> active_network_info_ ABSL_GUARDED_BY(mutex_);
 
   // Counts the number of times the endpoint switched till now.

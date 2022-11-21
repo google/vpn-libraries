@@ -18,7 +18,7 @@ import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth8.assertThat;
 import static org.junit.Assert.assertThrows;
 
-import com.google.android.libraries.privacy.ppn.PpnOptions.DatapathProtocol;
+import com.google.android.libraries.privacy.ppn.internal.KryptonConfig;
 import java.time.Duration;
 import java.util.Arrays;
 import org.junit.Test;
@@ -316,8 +316,8 @@ public class PpnOptionsTest {
   @Test
   public void setDatapathProtocol_setsValue() {
     PpnOptions options =
-        new PpnOptions.Builder().setDatapathProtocol(DatapathProtocol.IPSEC).build();
-    assertThat(options.getDatapathProtocol()).hasValue(DatapathProtocol.IPSEC);
+        new PpnOptions.Builder().setDatapathProtocol(PpnOptions.DatapathProtocol.IPSEC).build();
+    assertThat(options.getDatapathProtocol()).hasValue(PpnOptions.DatapathProtocol.IPSEC);
   }
 
   @Test
@@ -478,5 +478,148 @@ public class PpnOptionsTest {
   public void setAttachOauthTokenAsHeaderEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setAttachOauthTokenAsHeaderEnabled(true).build();
     assertThat(options.isAttachOauthTokenAsHeaderEnabled()).isTrue();
+  }
+
+  @Test
+  public void setIpv4KeepaliveInterval_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.getIpv4KeepaliveInterval()).isEmpty();
+  }
+
+  @Test
+  public void setIpv4KeepaliveInterval_setsValue() {
+    PpnOptions options =
+        new PpnOptions.Builder().setIpv4KeepaliveInterval(Duration.ofMillis(42)).build();
+    assertThat(options.getIpv4KeepaliveInterval()).isPresent();
+    assertThat(options.getIpv4KeepaliveInterval().get()).isEqualTo(Duration.ofMillis(42));
+  }
+
+  @Test
+  public void setIpv6KeepaliveInterval_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.getIpv6KeepaliveInterval()).isEmpty();
+  }
+
+  @Test
+  public void setIpv6KeepaliveInterval_setsValue() {
+    PpnOptions options =
+        new PpnOptions.Builder().setIpv6KeepaliveInterval(Duration.ofMillis(42)).build();
+    assertThat(options.getIpv6KeepaliveInterval()).isPresent();
+    assertThat(options.getIpv6KeepaliveInterval().get()).isEqualTo(Duration.ofMillis(42));
+  }
+
+  @Test
+  public void createKryptonConfig_setsValues() {
+    PpnOptions options =
+        new PpnOptions.Builder()
+            .setZincUrl("a")
+            .setZincPublicSigningKeyUrl("psk")
+            .setBrassUrl("b")
+            .setZincOAuthScopes("c")
+            .setZincServiceType("d")
+            .setBridgeKeyLength(128)
+            .setDatapathProtocol(PpnOptions.DatapathProtocol.BRIDGE)
+            .setBlindSigningEnabled(true)
+            .setShouldInstallKryptonCrashSignalHandler(true)
+            .setCopperControllerAddress("e")
+            .setCopperHostnameOverride("g")
+            .setCopperHostnameSuffix(Arrays.asList("f"))
+            .setRekeyDuration(Duration.ofMillis(1005))
+            .setReconnectorInitialTimeToReconnect(Duration.ofMillis(2))
+            .setReconnectorSessionConnectionDeadline(Duration.ofMillis(4))
+            .setSafeDisconnectEnabled(true)
+            .setIPv6Enabled(false)
+            .setDynamicMtuEnabled(true)
+            .setIntegrityAttestationEnabled(true)
+            .setApiKey("apiKey")
+            .setAttachOauthTokenAsHeaderEnabled(true)
+            .setIpv4KeepaliveInterval(Duration.ofMillis(8))
+            .setIpv6KeepaliveInterval(Duration.ofMillis(16))
+            .build();
+
+    KryptonConfig config = options.createKryptonConfigBuilder().build();
+
+    assertThat(config.getZincUrl()).isEqualTo("a");
+    assertThat(config.getZincPublicSigningKeyUrl()).isEqualTo("psk");
+    assertThat(config.getBrassUrl()).isEqualTo("b");
+    assertThat(config.getServiceType()).isEqualTo("d");
+    assertThat(config.getCipherSuiteKeyLength()).isEqualTo(128);
+    assertThat(config.hasEnableBlindSigning()).isTrue();
+    assertThat(config.getEnableBlindSigning()).isTrue();
+    assertThat(config.getCopperControllerAddress()).isEqualTo("e");
+    assertThat(config.getCopperHostnameOverride()).isEqualTo("g");
+    assertThat(config.getCopperHostnameSuffixCount()).isEqualTo(1);
+    assertThat(config.getCopperHostnameSuffix(0)).isEqualTo("f");
+    assertThat(config.hasDatapathProtocol()).isTrue();
+    assertThat(config.getDatapathProtocol()).isEqualTo(KryptonConfig.DatapathProtocol.BRIDGE);
+    assertThat(config.getRekeyDuration().getSeconds()).isEqualTo(1);
+    assertThat(config.getRekeyDuration().getNanos()).isEqualTo(5000000);
+    assertThat(config.hasReconnectorConfig()).isTrue();
+    assertThat(config.getReconnectorConfig().getInitialTimeToReconnectMsec()).isEqualTo(2);
+    assertThat(config.getReconnectorConfig().getSessionConnectionDeadlineMsec()).isEqualTo(4);
+    assertThat(config.getSafeDisconnectEnabled()).isTrue();
+    assertThat(config.getIpv6Enabled()).isFalse();
+    assertThat(config.getDynamicMtuEnabled()).isTrue();
+    assertThat(config.getIntegrityAttestationEnabled()).isTrue();
+    assertThat(config.getApiKey()).isEqualTo("apiKey");
+    assertThat(config.getAttachOauthTokenAsHeader()).isTrue();
+    assertThat(config.hasIpv4KeepaliveInterval()).isTrue();
+    assertThat(config.getIpv4KeepaliveInterval().getSeconds()).isEqualTo(0);
+    assertThat(config.getIpv4KeepaliveInterval().getNanos()).isEqualTo(8000000);
+    assertThat(config.hasIpv6KeepaliveInterval()).isTrue();
+    assertThat(config.getIpv6KeepaliveInterval().getSeconds()).isEqualTo(0);
+    assertThat(config.getIpv6KeepaliveInterval().getNanos()).isEqualTo(16000000);
+  }
+
+  @Test
+  public void createKryptonConfig_defaultValues() {
+    PpnOptions options = new PpnOptions.Builder().build();
+
+    KryptonConfig config = options.createKryptonConfigBuilder().build();
+
+    assertThat(config.getZincUrl()).isNotEmpty();
+    assertThat(config.getBrassUrl()).isNotEmpty();
+    assertThat(config.getServiceType()).isNotEmpty();
+    assertThat(config.hasCipherSuiteKeyLength()).isFalse();
+    assertThat(config.hasEnableBlindSigning()).isFalse();
+    assertThat(config.hasCopperControllerAddress()).isFalse();
+    assertThat(config.hasCopperHostnameOverride()).isFalse();
+    assertThat(config.getCopperHostnameSuffixCount()).isEqualTo(1);
+    assertThat(config.getCopperHostnameSuffix(0)).isNotEmpty();
+    assertThat(config.hasDatapathProtocol()).isFalse();
+    assertThat(config.hasRekeyDuration()).isFalse();
+    assertThat(config.hasReconnectorConfig()).isTrue();
+    assertThat(config.getReconnectorConfig().hasInitialTimeToReconnectMsec()).isFalse();
+    assertThat(config.getReconnectorConfig().hasSessionConnectionDeadlineMsec()).isFalse();
+    assertThat(config.getSafeDisconnectEnabled()).isFalse();
+    assertThat(config.getIpv6Enabled()).isTrue();
+    assertThat(config.getDynamicMtuEnabled()).isFalse();
+    assertThat(config.getIntegrityAttestationEnabled()).isFalse();
+    assertThat(config.getApiKey()).isEmpty();
+    assertThat(config.getAttachOauthTokenAsHeader()).isFalse();
+    assertThat(config.hasIpv4KeepaliveInterval()).isFalse();
+    assertThat(config.hasIpv6KeepaliveInterval()).isFalse();
+  }
+
+  @Test
+  public void createKryptonConfig_ipsecProtocolInPpnOptions() {
+    PpnOptions options =
+        new PpnOptions.Builder().setDatapathProtocol(PpnOptions.DatapathProtocol.IPSEC).build();
+
+    KryptonConfig config = options.createKryptonConfigBuilder().build();
+
+    assertThat(config.hasDatapathProtocol()).isTrue();
+    assertThat(config.getDatapathProtocol()).isEqualTo(KryptonConfig.DatapathProtocol.IPSEC);
+  }
+
+  @Test
+  public void createKryptonConfig_bridgeProtocolInPpnOptions() {
+    PpnOptions options =
+        new PpnOptions.Builder().setDatapathProtocol(PpnOptions.DatapathProtocol.BRIDGE).build();
+
+    KryptonConfig config = options.createKryptonConfigBuilder().build();
+
+    assertThat(config.hasDatapathProtocol()).isTrue();
+    assertThat(config.getDatapathProtocol()).isEqualTo(KryptonConfig.DatapathProtocol.BRIDGE);
   }
 }

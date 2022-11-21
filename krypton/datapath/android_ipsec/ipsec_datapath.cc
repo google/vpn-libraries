@@ -27,10 +27,7 @@
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/utils/status.h"
-#include "third_party/absl/functional/bind_front.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/status/statusor.h"
-#include "third_party/absl/strings/str_split.h"
 #include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
@@ -55,7 +52,7 @@ absl::Status IpSecDatapath::Start(const AddEgressResponse& /*egress_response*/,
 
 void IpSecDatapath::Stop() {
   absl::MutexLock l(&mutex_);
-  ShutdownPacketForwarder();
+  ShutdownIpSecPacketForwarder();
 }
 
 absl::Status IpSecDatapath::SwitchNetwork(
@@ -72,37 +69,49 @@ absl::Status IpSecDatapath::SwitchNetwork(
     LOG(ERROR) << "tunnel is null";
     return absl::InvalidArgumentError("tunnel is null");
   }
-  LOG(INFO) << "SwitchNetwork using Tunnel: " << tunnel->DebugString();
+  LOG(INFO) << "Switching Network";
 
   // TODO: There may still be error notifications in the
   // LooperThread that will be processed after the packet forwarder has been
   // shut down, which could lead to shutting it down multiple times. We need to
   // either have the forwarder have its own LooperThread or filter events from
   // previous runs.
-  ShutdownPacketForwarder();
+  ShutdownIpSecPacketForwarder();
 
   if (!key_material_) {
     return absl::FailedPreconditionError("Key Material is not set");
   }
   key_material_->set_uplink_spi(session_id);
 
-  auto network_pipe = vpn_service_->CreateNetworkPipe(*network_info, endpoint);
-  if (!network_pipe.ok()) {
-    auto status = network_pipe.status();
+  auto network_fd = vpn_service_->CreateProtectedNetworkSocket(*network_info);
+  if (!network_fd.ok()) {
+    auto status = network_fd.status();
     auto* notification = notification_;
-    LOG(ERROR) << "Unable to create network pipe: " << status;
+    LOG(ERROR) << "Unable to create network socket fd: " << status;
     notification_thread_->Post(
         [notification, status]() { notification->DatapathFailed(status); });
+    // Returning OK since failure is handled by preceding notification call
     return absl::OkStatus();
   }
 
-  if (*network_pipe == nullptr) {
+  auto network_socket =
+      vpn_service_->ConfigureNetworkSocket(*network_fd, endpoint);
+  if (!network_socket.ok()) {
+    auto status = network_socket.status();
+    auto* notification = notification_;
+    LOG(ERROR) << "Unable to configure network socket: " << status;
+    notification_thread_->Post(
+        [notification, status]() { notification->DatapathFailed(status); });
+    // Returning OK since failure is handled by preceding notification call
+    return absl::OkStatus();
+  }
+
+  if (*network_socket == nullptr) {
     return absl::InternalError("got a null network socket");
   }
-  PPN_ASSIGN_OR_RETURN(int network_fd, (*network_pipe)->GetFd());
 
   key_material_->set_network_id(network_info->network_id());
-  key_material_->set_network_fd(network_fd);
+  key_material_->set_network_fd(*network_fd);
   key_material_->set_destination_address(endpoint.address());
   key_material_->set_destination_port(endpoint.port());
   if (endpoint.ip_protocol() == IPProtocol::kIPv4) {
@@ -112,7 +121,7 @@ absl::Status IpSecDatapath::SwitchNetwork(
   } else {
     return absl::InternalError("unsupported address family for endpoint");
   }
-  LOG(INFO) << "Configuring IpSecManager with fd=" << network_fd
+  LOG(INFO) << "Configuring IpSecManager with fd=" << *network_fd
             << " network=" << network_info->network_id()
             << " uplink_spi=" << key_material_->uplink_spi()
             << " downlink_spi=" << key_material_->downlink_spi()
@@ -122,12 +131,10 @@ absl::Status IpSecDatapath::SwitchNetwork(
 
   LOG(INFO) << "Done configuring IpSecManager.";
 
-  network_pipe_ = *std::move(network_pipe);
+  network_socket_ = *std::move(network_socket);
 
-  forwarder_ = std::make_unique<PacketForwarder>(
-      /*encryptor = */ nullptr,
-      /*decryptor = */ nullptr, tunnel, network_pipe_.get(),
-      notification_thread_, this);
+  forwarder_ = std::make_unique<IpSecPacketForwarder>(
+      tunnel, network_socket_.get(), notification_thread_, this);
 
   LOG(INFO) << "Starting packet forwarder.";
   forwarder_->Start();
@@ -151,21 +158,21 @@ absl::Status IpSecDatapath::SetKeyMaterials(const TransformParams& params) {
   return absl::OkStatus();
 }
 
-void IpSecDatapath::ShutdownPacketForwarder() {
+void IpSecDatapath::ShutdownIpSecPacketForwarder() {
   if (forwarder_ != nullptr) {
     LOG(INFO) << "Stopping packet forwarder.";
     forwarder_->Stop();
     forwarder_ = nullptr;
   }
-  if (network_pipe_ != nullptr) {
-    LOG(INFO) << "Resetting network pipe.";
-    network_pipe_->Close();
-    network_pipe_ = nullptr;
+  if (network_socket_ != nullptr) {
+    LOG(INFO) << "Stopping network socket.";
+    PPN_LOG_IF_ERROR(network_socket_->Close());
+    network_socket_ = nullptr;
   }
-  LOG(INFO) << "The packet forwarder and network pipe are shut down.";
+  LOG(INFO) << "The packet forwarder and network socket are shut down.";
 }
 
-void IpSecDatapath::PacketForwarderFailed(const absl::Status& status) {
+void IpSecDatapath::IpSecPacketForwarderFailed(const absl::Status& status) {
   LOG(WARNING) << "IpSecDatapath packet forwarder failed: " << status;
   Stop();
   auto* notification = notification_;
@@ -173,7 +180,7 @@ void IpSecDatapath::PacketForwarderFailed(const absl::Status& status) {
       [notification, status]() { notification->DatapathFailed(status); });
 }
 
-void IpSecDatapath::PacketForwarderPermanentFailure(
+void IpSecDatapath::IpSecPacketForwarderPermanentFailure(
     const absl::Status& status) {
   LOG(WARNING) << "IpSecDatapath packet forwarder permanently failed: "
                << status;
@@ -184,7 +191,7 @@ void IpSecDatapath::PacketForwarderPermanentFailure(
   });
 }
 
-void IpSecDatapath::PacketForwarderConnected() {
+void IpSecDatapath::IpSecPacketForwarderConnected() {
   LOG(WARNING) << "IpSecDatapath packet forwarder connected.";
   auto* notification = notification_;
   notification_thread_->Post(

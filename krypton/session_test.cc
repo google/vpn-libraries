@@ -214,7 +214,8 @@ class SessionTest : public ::testing::Test {
            service_type: "service_type"
            datapath_protocol: BRIDGE
            copper_hostname_suffix: [ 'g-tun.com' ]
-           enable_blind_signing: false)pb")};
+           enable_blind_signing: false
+           dynamic_mtu_enabled: true)pb")};
 
   MockSessionNotification notification_;
   MockHttpFetcher http_fetcher_;
@@ -353,7 +354,8 @@ class BridgeOnPpnSession : public SessionTest {
                                             ip_range: "2001:4860:4860::8844"
                                             prefix: 128
                                           }
-                                          is_metered: false)pb")));
+                                          is_metered: false
+                                          mtu: 1396)pb")));
 
     NetworkInfo expected_network_info;
     expected_network_info.set_network_id(1234);
@@ -421,7 +423,8 @@ class BridgeOnPpnSession : public SessionTest {
                                             ip_range: "2001:4860:4860::8844"
                                             prefix: 128
                                           }
-                                          is_metered: false)pb")));
+                                          is_metered: false
+                                          mtu: 1396)pb")));
 
     NetworkInfo expected_network_info;
     expected_network_info.set_network_type(NetworkType::CELLULAR);
@@ -538,7 +541,8 @@ TEST_F(BridgeOnPpnSession, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
                                           ip_range: "2001:4860:4860::8844"
                                           prefix: 128
                                         }
-                                        is_metered: false)pb")));
+                                        is_metered: false
+                                        mtu: 1396)pb")));
 
   NetworkInfo expected_network_info;
   expected_network_info.set_network_type(NetworkType::CELLULAR);

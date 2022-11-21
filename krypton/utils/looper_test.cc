@@ -14,6 +14,9 @@
 
 #include "privacy/net/krypton/utils/looper.h"
 
+#include <memory>
+#include <thread>
+
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"

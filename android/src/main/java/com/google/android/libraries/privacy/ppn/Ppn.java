@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn;
 import android.accounts.Account;
 import android.app.Notification;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import java.time.Duration;
 import org.json.JSONObject;
 
@@ -92,6 +93,7 @@ public interface Ppn {
    *
    * <p>This is an async method, and can be called from any thread.
    */
+  @ResultIgnorabilityUnspecified
   ListenableFuture<Void> setSafeDisconnectEnabled(boolean enable);
 
   /**

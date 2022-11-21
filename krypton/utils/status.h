@@ -25,12 +25,17 @@ namespace privacy {
 namespace krypton {
 namespace utils {
 
+// Prefer these macros instead of the standard status macros for PPN code,
+// because the standard macros are not open-sourced.
+
+// Use this instead of RETURN_IF_ERROR in PPN code.
 #define PPN_RETURN_IF_ERROR(expr)                          \
   do {                                                     \
     auto _status = (expr);                                 \
     if (ABSL_PREDICT_FALSE(!_status.ok())) return _status; \
   } while (0)
 
+// Use this instead of LOG_IF_ERROR in PPN code.
 #define PPN_LOG_IF_ERROR(expr)               \
   do {                                       \
     auto _status = (expr);                   \
@@ -43,6 +48,7 @@ namespace utils {
   _PPN_STATUS_MACROS_CONCAT_IMPL(x, y)
 #define _PPN_STATUS_MACROS_CONCAT_IMPL(x, y) x##y
 
+// Use this instead of ASSIGN_OR_RETURN in PPN code.
 #define PPN_ASSIGN_OR_RETURN(lhs, rexpr) \
   _PPN_ASSIGN_OR_RETURN_IMPL(            \
       _PPN_STATUS_MACROS_CONCAT_NAME(_status_or_val, __LINE__), lhs, rexpr)

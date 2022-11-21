@@ -16,7 +16,6 @@ package com.google.android.libraries.privacy.ppn.internal;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import com.google.common.time.TimeSource;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -125,7 +124,7 @@ public final class UptimeDurationTrackerTest {
 
   /** Returns a default fixed clock to use as the starting point for tests. */
   private Clock getStartClock() {
-    Instant now = TimeSource.system().now();
+    Instant now = Instant.now();
     return Clock.fixed(now, ZoneId.systemDefault());
   }
 }

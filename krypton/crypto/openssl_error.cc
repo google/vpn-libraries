@@ -14,7 +14,9 @@
 
 #include "privacy/net/krypton/crypto/openssl_error.h"
 
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "third_party/absl/strings/substitute.h"
 #include "third_party/absl/types/optional.h"

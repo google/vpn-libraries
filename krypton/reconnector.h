@@ -206,6 +206,9 @@ class Reconnector : public Session::NotificationInterface {
   int datapath_watchdog_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int snooze_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   std::optional<NetworkInfo> active_network_info_ ABSL_GUARDED_BY(mutex_);
+  // Used to determine whether active_network == nullopt is intentional, or
+  // merely a default value.
+  std::atomic_bool set_network_called_ = false;
   // Represents the successive datapath failures after control plane is
   // connected.
   uint32_t successive_datapath_failures_ ABSL_GUARDED_BY(mutex_) = 0;

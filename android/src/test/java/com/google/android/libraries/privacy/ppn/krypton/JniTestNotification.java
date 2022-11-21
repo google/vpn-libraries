@@ -73,6 +73,9 @@ public class JniTestNotification {
   private native int createNetworkFdNative(Krypton krypton, byte[] networkInfoBytes)
       throws KryptonException;
 
+  private native int createTcpFdNative(Krypton krypton, byte[] networkInfoBytes)
+      throws KryptonException;
+
   private native boolean configureIpSecNative(Krypton krypton, byte[] ipSecTransformParamsBytes)
       throws KryptonException;
 
@@ -140,6 +143,10 @@ public class JniTestNotification {
 
   public int createNetworkFd(Krypton krypton, NetworkInfo networkInfo) throws KryptonException {
     return createNetworkFdNative(krypton, networkInfo.toByteArray());
+  }
+
+  public int createTcpFd(Krypton krypton, NetworkInfo networkInfo) throws KryptonException {
+    return createTcpFdNative(krypton, networkInfo.toByteArray());
   }
 
   public boolean configureIpSec(Krypton krypton, IpSecTransformParams params)

@@ -17,21 +17,19 @@ package com.google.android.libraries.privacy.ppn.neon;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
-import androidx.annotation.VisibleForTesting;
 import com.google.android.libraries.privacy.ppn.PpnException;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.internal.KryptonConfig;
 import com.google.android.libraries.privacy.ppn.internal.PpnStatusDetails;
-import com.google.android.libraries.privacy.ppn.internal.ReconnectorConfig;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonException;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonImpl;
 import com.google.android.libraries.privacy.ppn.krypton.OAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.proto.PpnIkeResponse;
+import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.time.Duration;
 
 /**
  * Provision manages the sequence to do IKE provisioning. This class can be used as an alternative
@@ -104,6 +102,7 @@ class Provision {
    * @param configBytes a serialized KryptonConfig proto.
    * @return a reference to the C++ object.
    */
+  @ResultIgnorabilityUnspecified
   private native long startNative(
       byte[] configBytes, HttpFetcher httpFetcher, OAuthTokenProvider tokenProvider)
       throws KryptonException;
@@ -153,79 +152,7 @@ class Provision {
     }
   }
 
-  /** Creates a KryptonConfig.Builder using the provided options. */
-  @VisibleForTesting
-  static KryptonConfig.Builder createKryptonConfigBuilder(PpnOptions options) {
-    // TODO: Unify this code with the identical code in PpnImpl.
-
-    ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
-    if (options.getReconnectorInitialTimeToReconnect().isPresent()) {
-      reconnectorBuilder.setInitialTimeToReconnectMsec(
-          (int) options.getReconnectorInitialTimeToReconnect().get().toMillis());
-    }
-    if (options.getReconnectorSessionConnectionDeadline().isPresent()) {
-      reconnectorBuilder.setSessionConnectionDeadlineMsec(
-          (int) options.getReconnectorSessionConnectionDeadline().get().toMillis());
-    }
-    ReconnectorConfig reconnectorConfig = reconnectorBuilder.build();
-
-    KryptonConfig.Builder builder =
-        KryptonConfig.newBuilder()
-            .setZincUrl(options.getZincUrl())
-            .setZincPublicSigningKeyUrl(options.getZincPublicSigningKeyUrl())
-            .setBrassUrl(options.getBrassUrl())
-            .setServiceType(options.getZincServiceType())
-            .setReconnectorConfig(reconnectorConfig);
-
-    if (options.getCopperControllerAddress().isPresent()) {
-      builder.setCopperControllerAddress(options.getCopperControllerAddress().get());
-    }
-    if (options.getCopperHostnameOverride().isPresent()) {
-      builder.setCopperHostnameOverride(options.getCopperHostnameOverride().get());
-    }
-
-    builder.addAllCopperHostnameSuffix(options.getCopperHostnameSuffix());
-
-    if (options.getDatapathProtocol().isPresent()) {
-      switch (options.getDatapathProtocol().get()) {
-        case BRIDGE:
-          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.BRIDGE);
-          break;
-        case IPSEC:
-          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.IPSEC);
-          break;
-        case IKE:
-          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.IKE);
-          break;
-      }
-    }
-
-    if (options.getBridgeKeyLength().isPresent()) {
-      builder.setCipherSuiteKeyLength(options.getBridgeKeyLength().get());
-    }
-    if (options.isBlindSigningEnabled().isPresent()) {
-      builder.setEnableBlindSigning(options.isBlindSigningEnabled().get());
-    }
-    if (options.getRekeyDuration().isPresent()) {
-      Duration duration = options.getRekeyDuration().get();
-      com.google.protobuf.Duration proto =
-          com.google.protobuf.Duration.newBuilder()
-              .setSeconds(duration.getSeconds())
-              .setNanos(duration.getNano())
-              .build();
-      builder.setRekeyDuration(proto);
-    }
-    builder.setSafeDisconnectEnabled(options.isSafeDisconnectEnabled());
-    builder.setIpv6Enabled(options.isIPv6Enabled());
-
-    if (options.getApiKey().isPresent()) {
-      builder.setApiKey(options.getApiKey().get());
-    }
-    builder.setAttachOauthTokenAsHeader(options.isAttachOauthTokenAsHeaderEnabled());
-    return builder;
-  }
-
   static KryptonConfig createKryptonConfig(PpnOptions options) {
-    return createKryptonConfigBuilder(options).build();
+    return options.createKryptonConfigBuilder().build();
   }
 }

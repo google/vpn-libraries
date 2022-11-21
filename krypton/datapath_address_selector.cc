@@ -14,11 +14,12 @@
 
 #include "privacy/net/krypton/datapath_address_selector.h"
 
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "base/logging.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
-#include "privacy/net/krypton/proto/network_type.proto.h"
 #include "privacy/net/krypton/utils/ip_range.h"
 
 namespace privacy {
@@ -64,28 +65,17 @@ void DatapathAddressSelector::Reset(const std::vector<std::string>& addresses,
     }
   }
 
-  bool prefer_ipv4 = false;
+  bool prefer_ipv4 = true;
 
-#ifdef __APPLE__
-  // iOS seems to have issues with networks that appear to support IPv6, but
-  // then don't actually work. Ideally, we would fall back to IPv4 in those
-  // cases. But currently, the IPv6 appears to work long enough that we don't
-  // properly fall back. So, for now, prefer IPv4 to IPv6 in iOS.
-  // See b/204440160 for more information.
-  prefer_ipv4 = true;
-#else
-  // If we're on Android, and on Wifi, and using the IPSEC datapath,
-  // then prefer IPv4 to IPv6. This is because many WiFi routers don't properly
-  // offload ESP packets to hardware, which reduces performance. Android IPsec
-  // on IPv6 is the only datapath that uses ESP packets (as opposed to UDP
-  // encapsulation).
-  if (config_.datapath_protocol() == KryptonConfig::IPSEC) {
-    if (network_info && network_info->network_type() == WIFI) {
-      LOG(INFO) << "Preferring IPv4, because this is IPsec on WiFi.";
-      prefer_ipv4 = true;
-    }
+  // We will prefer IPv6 when using BRIDGE, and prefer IPv4 on all platforms
+  // when using IPsec. This decision was made because, as of Oct 2022, many
+  // networks don't properly offload ESP packets to hardware, which reduces
+  // performance. IPsec on IPv6 is the only configuration that uses ESP packets
+  // (as opposed to UDP encapsulation).
+  if (config_.datapath_protocol() == KryptonConfig::BRIDGE) {
+    LOG(INFO) << "Preferring IPv6.";
+    prefer_ipv4 = false;
   }
-#endif
 
   // Then alternate between IPv6 and IPv4.
   std::vector<std::string> interlaced;

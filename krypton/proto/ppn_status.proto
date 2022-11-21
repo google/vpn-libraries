@@ -27,6 +27,8 @@ message PpnStatusDetails {
   enum DetailedErrorCode {
     ERROR_CODE_UNKNOWN = 0;
     DISALLOWED_COUNTRY = 1;
+    LIBRARY_NOT_FOUND = 2;
+    IPC_FAILURE = 3;
   }
 
   // An optional error code giving a more specific error condition than the

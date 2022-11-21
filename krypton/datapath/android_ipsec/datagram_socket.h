@@ -15,46 +15,56 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_DATAGRAM_SOCKET_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_DATAGRAM_SOCKET_H_
 
-#include <atomic>
+#include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "privacy/net/krypton/datapath/android_ipsec/event_fd.h"
 #include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
-#include "privacy/net/krypton/pal/vpn_service_interface.h"
-#include "privacy/net/krypton/utils/looper.h"
-#include "privacy/net/krypton/utils/status.h"
-#include "third_party/absl/strings/substitute.h"
+#include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/socket_interface.h"
+#include "third_party/absl/status/statusor.h"
 
 namespace privacy {
 namespace krypton {
 namespace datapath {
 namespace android {
 
-class DatagramSocket {
+class DatagramSocket : public SocketInterface {
  public:
-  explicit DatagramSocket(int fd);
-  ~DatagramSocket();
+  static absl::StatusOr<std::unique_ptr<DatagramSocket>> Create(int socket_fd);
+
+  ~DatagramSocket() override;
   DatagramSocket(const DatagramSocket&) = delete;
   DatagramSocket(DatagramSocket&&) = delete;
 
-  absl::Status WritePackets(std::vector<Packet> packets);
+  absl::Status Close() override;
 
-  absl::StatusOr<std::vector<Packet>> ReadPackets();
+  absl::StatusOr<std::vector<Packet>> ReadPackets() override;
 
-  absl::Status Close();
-
-  std::string DebugString() { return absl::StrCat("FD=", fd_); }
+  absl::Status WritePackets(std::vector<Packet> packets) override;
 
   // Connects the underlying socket fd to the given endpoint.
   // This should be called before calling WritePackets.
-  absl::Status Connect(const Endpoint& endpoint);
+  absl::Status Connect(Endpoint dest) override;
+
+  void GetDebugInfo(DatapathDebugInfo* debug_info) override {};
+
+  std::string DebugString();
 
  private:
-  absl::Status CreateCloseEvent();
+  explicit DatagramSocket(int socket_fd);
 
-  int fd_;
-  datapath::android::EventsHelper events_helper_;
-  datapath::android::EventFd shutdown_event_;
+  absl::Status Init();
+
+  std::atomic_int socket_fd_;
+
+  EventFd close_event_;
+
+  EventsHelper events_helper_;
 };
 
 }  // namespace android

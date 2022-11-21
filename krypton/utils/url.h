@@ -42,8 +42,6 @@ class URL {
   static std::string EscapeCharsIfNecessary(absl::string_view str);
 
   static bool ShouldEscape(char c);
-
-  static std::string EscapeChar(char c);
 };
 
 }  // namespace utils

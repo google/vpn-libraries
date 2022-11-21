@@ -391,26 +391,17 @@ public class NotificationTest {
 
   @Test
   public void createTunFd_callsCallback() throws Exception {
+    // TODO Update test so that it exercises the JNI interface for onKryptonNeedsTunFd
+
     // Set up a listener and condition we can wait on.
-    AtomicReference<TunFdData> tunFdDataRef = new AtomicReference<>();
-    KryptonImpl krypton =
-        createKrypton(
-            new KryptonAdapter() {
-              @Override
-              public int onKryptonNeedsTunFd(TunFdData tunFdData) {
-                tunFdDataRef.set(tunFdData);
-                return 54321;
-              }
-            });
+    KryptonImpl krypton = createKrypton(new KryptonAdapter());
 
     try {
       krypton.init();
 
       TunFdData tunFdData = TunFdData.newBuilder().setMtu(12345).build();
-      int fd = notification.createTunFd(krypton, tunFdData);
 
-      assertThat(fd).isEqualTo(54321);
-      assertThat(tunFdDataRef.get().getMtu()).isEqualTo(12345);
+      assertThat(notification.createTunFd(krypton, tunFdData)).isEqualTo(12346);
 
     } finally {
       krypton.stop();
@@ -439,6 +430,34 @@ public class NotificationTest {
 
       assertThat(fd).isEqualTo(123);
       assertThat(networkRef.get().getNetworkId()).isEqualTo(321);
+
+    } finally {
+      krypton.stop();
+    }
+  }
+
+  @Test
+  public void createTcpFd_callsCallback() throws Exception {
+    // Set up a listener and condition we can wait on.
+    AtomicReference<NetworkInfo> networkRef = new AtomicReference<>();
+    KryptonImpl krypton =
+        createKrypton(
+            new KryptonAdapter() {
+              @Override
+              public int onKryptonNeedsTcpFd(NetworkInfo network) {
+                networkRef.set(network);
+                return 456;
+              }
+            });
+
+    try {
+      krypton.init();
+
+      NetworkInfo network = NetworkInfo.newBuilder().setNetworkId(654).build();
+      int fd = notification.createTcpFd(krypton, network);
+
+      assertThat(fd).isEqualTo(456);
+      assertThat(networkRef.get().getNetworkId()).isEqualTo(654);
 
     } finally {
       krypton.stop();

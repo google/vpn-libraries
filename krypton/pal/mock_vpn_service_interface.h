@@ -18,10 +18,8 @@
 #include <memory>
 
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
-#include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "testing/base/public/gmock.h"
-#include "third_party/absl/status/statusor.h"
 
 namespace privacy {
 namespace krypton {

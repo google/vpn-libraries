@@ -18,7 +18,9 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"

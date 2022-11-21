@@ -22,17 +22,14 @@
 #include <utility>
 
 #include "base/logging.h"
-#include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
-#include "privacy/net/krypton/session.h"
 #include "privacy/net/krypton/session_manager.h"
 #include "privacy/net/krypton/tunnel_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
-#include "third_party/absl/memory/memory.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"

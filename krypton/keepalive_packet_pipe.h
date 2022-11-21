@@ -19,8 +19,9 @@
 #include <string>
 #include <thread>  // NOLINT
 #include <utility>
+#include <vector>
 
-#include "privacy/net/krypton/pal/vpn_service_interface.h"
+#include "privacy/net/krypton/pal/packet_pipe.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/synchronization/mutex.h"
 

@@ -21,12 +21,12 @@
 #include <optional>
 
 #include "privacy/net/krypton/add_egress_response.h"
-#include "privacy/net/krypton/crypto/session_crypto.h"
-#include "privacy/net/krypton/datapath/packet_forwarder.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_packet_forwarder.h"
+#include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 #include "privacy/net/krypton/datapath_interface.h"
-#include "privacy/net/krypton/fd_packet_pipe.h"
+#include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
-#include "third_party/absl/base/call_once.h"
+#include "privacy/net/krypton/socket_interface.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/synchronization/mutex.h"
@@ -39,16 +39,20 @@ namespace android {
 // Manages the Ipsec data path.
 // Class is thread safe.
 class IpSecDatapath : public DatapathInterface,
-                      public datapath::PacketForwarder::NotificationInterface {
+                      public IpSecPacketForwarder::NotificationInterface {
  public:
   // Extension to VpnService with methods needed specifically for Android IpSec.
   class IpSecVpnServiceInterface : public virtual VpnServiceInterface {
    public:
-    // Creates a UDP connection to an endpoint on the network.
-    virtual absl::StatusOr<std::unique_ptr<PacketPipe>> CreateNetworkPipe(
-        const NetworkInfo&, const Endpoint&) = 0;
+    // Creates a protected FD for the network connection.
+    virtual absl::StatusOr<int> CreateProtectedNetworkSocket(
+        const NetworkInfo& network_info) = 0;
 
-    virtual PacketPipe* GetTunnel() = 0;
+    // Configures a UDP connection using provided FD.
+    virtual absl::StatusOr<std::unique_ptr<SocketInterface>>
+    ConfigureNetworkSocket(int fd, const Endpoint& endpoint) = 0;
+
+    virtual TunnelInterface* GetTunnel() = 0;
 
     virtual absl::Status ConfigureIpSec(const IpSecTransformParams& params) = 0;
   };
@@ -75,16 +79,16 @@ class IpSecDatapath : public DatapathInterface,
   absl::Status SetKeyMaterials(const TransformParams& params) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void PacketForwarderFailed(const absl::Status&) override;
+  void IpSecPacketForwarderFailed(const absl::Status&) override;
 
-  void PacketForwarderPermanentFailure(const absl::Status&) override;
+  void IpSecPacketForwarderPermanentFailure(const absl::Status&) override;
 
-  void PacketForwarderConnected() override;
+  void IpSecPacketForwarderConnected() override;
 
   void GetDebugInfo(DatapathDebugInfo* debug_info) override;
 
  private:
-  void ShutdownPacketForwarder() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void ShutdownIpSecPacketForwarder() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   absl::Mutex mutex_;
 
@@ -92,8 +96,8 @@ class IpSecDatapath : public DatapathInterface,
   IpSecVpnServiceInterface* vpn_service_;
 
   std::optional<IpSecTransformParams> key_material_ ABSL_GUARDED_BY(mutex_);
-  std::unique_ptr<PacketForwarder> forwarder_ ABSL_GUARDED_BY(mutex_);
-  std::unique_ptr<PacketPipe> network_pipe_ ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<IpSecPacketForwarder> forwarder_ ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<SocketInterface> network_socket_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace android

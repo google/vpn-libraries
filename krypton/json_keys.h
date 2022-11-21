@@ -43,6 +43,7 @@ class JsonKeys {
   static const char kDataplaneSockAddr[];
   static const char kError[];
   static const char kApnType[];
+  static const char kDynamicMtuEnabled[];
 
   // PPN
   static const char kPpn[];

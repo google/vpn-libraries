@@ -72,6 +72,7 @@ import com.google.android.libraries.privacy.ppn.xenon.Xenon;
 import com.google.android.libraries.privacy.ppn.xenon.impl.XenonImpl;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -288,6 +289,16 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
       throw new PpnException("Unable to find network with id " + network.getNetworkId());
     }
     return vpnManager.createProtectedDatagramSocket(ppnNetwork);
+  }
+
+  @Override
+  public int onKryptonNeedsTcpFd(NetworkInfo network) throws PpnException {
+    Log.w(TAG, "Krypton requesting TCP/IP fd.");
+    PpnNetwork ppnNetwork = xenon.getNetwork(network.getNetworkId());
+    if (ppnNetwork == null) {
+      throw new PpnException("Unable to find network with id " + network.getNetworkId());
+    }
+    return vpnManager.createProtectedStreamSocket(ppnNetwork);
   }
 
   @Override
@@ -635,6 +646,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
    *
    * @return a Task that will be resolved once all of the async startup work is complete.
    */
+  @ResultIgnorabilityUnspecified
   public Task<Void> onStartService(VpnService service) {
     Log.w(TAG, "PPN Service is starting.");
 
@@ -720,79 +732,10 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     this.xenon = xenon;
   }
 
-  /** Creates a KryptonConfig.Builder using the provided options. */
-  @VisibleForTesting
-  static KryptonConfig.Builder createKryptonConfigBuilder(PpnOptions options) {
-    ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
-    if (options.getReconnectorInitialTimeToReconnect().isPresent()) {
-      reconnectorBuilder.setInitialTimeToReconnectMsec(
-          (int) options.getReconnectorInitialTimeToReconnect().get().toMillis());
-    }
-    if (options.getReconnectorSessionConnectionDeadline().isPresent()) {
-      reconnectorBuilder.setSessionConnectionDeadlineMsec(
-          (int) options.getReconnectorSessionConnectionDeadline().get().toMillis());
-    }
-    ReconnectorConfig reconnectorConfig = reconnectorBuilder.build();
-
-    KryptonConfig.Builder builder =
-        KryptonConfig.newBuilder()
-            .setZincUrl(options.getZincUrl())
-            .setZincPublicSigningKeyUrl(options.getZincPublicSigningKeyUrl())
-            .setBrassUrl(options.getBrassUrl())
-            .setServiceType(options.getZincServiceType())
-            .setReconnectorConfig(reconnectorConfig);
-
-    if (options.getCopperControllerAddress().isPresent()) {
-      builder.setCopperControllerAddress(options.getCopperControllerAddress().get());
-    }
-    if (options.getCopperHostnameOverride().isPresent()) {
-      builder.setCopperHostnameOverride(options.getCopperHostnameOverride().get());
-    }
-
-    builder.addAllCopperHostnameSuffix(options.getCopperHostnameSuffix());
-
-    if (options.getDatapathProtocol().isPresent()) {
-      switch (options.getDatapathProtocol().get()) {
-        case BRIDGE:
-          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.BRIDGE);
-          break;
-        case IPSEC:
-          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.IPSEC);
-          break;
-        case IKE:
-          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.IKE);
-          break;
-      }
-    }
-
-    if (options.getBridgeKeyLength().isPresent()) {
-      builder.setCipherSuiteKeyLength(options.getBridgeKeyLength().get());
-    }
-    if (options.isBlindSigningEnabled().isPresent()) {
-      builder.setEnableBlindSigning(options.isBlindSigningEnabled().get());
-    }
-    if (options.getRekeyDuration().isPresent()) {
-      Duration duration = options.getRekeyDuration().get();
-      com.google.protobuf.Duration proto =
-          com.google.protobuf.Duration.newBuilder()
-              .setSeconds(duration.getSeconds())
-              .setNanos(duration.getNano())
-              .build();
-      builder.setRekeyDuration(proto);
-    }
-    builder.setSafeDisconnectEnabled(options.isSafeDisconnectEnabled());
-    builder.setIpv6Enabled(options.isIPv6Enabled());
-    builder.setIntegrityAttestationEnabled(options.isIntegrityAttestationEnabled());
-    if (options.getApiKey().isPresent()) {
-      builder.setApiKey(options.getApiKey().get());
-    }
-    builder.setAttachOauthTokenAsHeader(options.isAttachOauthTokenAsHeaderEnabled());
-    return builder;
-  }
-
   /** Creates a KryptonConfig with the options and feature state of this PPN instance. */
   private KryptonConfig createKryptonConfig() {
-    return createKryptonConfigBuilder(this.options)
+    return this.options
+        .createKryptonConfigBuilder()
         .setSafeDisconnectEnabled(this.safeDisconnectEnabled)
         .build();
   }
@@ -853,6 +796,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
    *
    * @return the JSONObject that was logged.
    */
+  @ResultIgnorabilityUnspecified
   @VisibleForTesting
   Task<JSONObject> logDebugInfoAsync(Duration timeout) {
     // A task that will be resolved either when the debug info has been printed, or after timeout.
@@ -905,6 +849,14 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     }
   }
 
+  private static boolean isGlobalAddress(InetAddress address) {
+    return !(address.isLoopbackAddress()
+        || address.isMulticastAddress()
+        || address.isAnyLocalAddress()
+        || (address instanceof Inet6Address && address.isLinkLocalAddress())
+        || (address instanceof Inet6Address && address.isSiteLocalAddress()));
+  }
+
   private NetworkInfo createNetworkInfo(PpnNetwork ppnNetwork) {
     NetworkInfo.Builder builder =
         NetworkInfo.newBuilder()
@@ -917,6 +869,9 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     boolean hasIPv6 = false;
     for (LinkAddress linkAddress : linkProperties.getLinkAddresses()) {
       InetAddress address = linkAddress.getAddress();
+      if (!isGlobalAddress(address)) {
+        continue;
+      }
       if (address instanceof Inet4Address) {
         hasIPv4 = true;
       } else if (address instanceof Inet6Address) {
@@ -932,6 +887,15 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     } else {
       // The default is to just try both.
       builder.setAddressFamily(AddressFamily.V4V6);
+    }
+
+    if (options.isDynamicMtuEnabled()) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        int mtu = linkProperties.getMtu();
+        if (mtu != 0) {
+          builder.setMtu(mtu);
+        }
+      }
     }
 
     return builder.build();

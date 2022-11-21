@@ -59,6 +59,8 @@ class AddEgressRequest {
     std::string region_token_and_signature;
     // This is the APN type from Zinc and used to decide APN in bridge-proxy.
     std::string apn_type;
+    // Whether to enable dynamic mtu on the backend dataplane.
+    bool dynamic_mtu_enabled = false;
   };
 
   std::optional<HttpRequest> EncodeToProtoForPpn(

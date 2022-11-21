@@ -302,7 +302,9 @@ absl::Status Reconnector::StartReconnectorTimer() {
 
   // Create and put a Reconnecting notification on the Looper.
   ReconnectionStatus status;
-  status.set_has_available_networks(active_network_info_.has_value());
+  if (set_network_called_) {
+    status.set_has_available_networks(active_network_info_.has_value());
+  }
   status.set_is_blocking_traffic(tunnel_manager_->IsTunnelActive());
   PPN_RETURN_IF_ERROR(
       utils::ToProtoDuration(duration, status.mutable_time_to_reconnect()));
@@ -532,6 +534,7 @@ absl::Status Reconnector::ExtendSnooze(absl::Duration extend_duration) {
 
 absl::Status Reconnector::SetNetwork(std::optional<NetworkInfo> network_info) {
   absl::MutexLock l(&mutex_);
+  set_network_called_ = true;
 
   // Always Store the active network info. This could be used when
   // reconnection timer expires and we might need to restart a session.
@@ -589,6 +592,8 @@ DisconnectionStatus Reconnector::GetDisconnectionStatus(
   status.set_message(reason.message());
   status.set_has_available_networks(active_network_info_.has_value());
   status.set_is_blocking_traffic(tunnel_manager_->IsTunnelActive());
+  auto details = utils::GetPpnStatusDetails(reason);
+  *status.mutable_ppn_status_details() = details;
   return status;
 }
 

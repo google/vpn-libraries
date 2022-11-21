@@ -14,6 +14,7 @@
 
 #include "privacy/net/krypton/reconnector.h"
 
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <optional>

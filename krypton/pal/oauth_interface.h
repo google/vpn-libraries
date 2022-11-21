@@ -29,6 +29,8 @@ class OAuthInterface {
   OAuthInterface() = default;
   virtual ~OAuthInterface() = default;
 
+  // Errors will be logged in Auth::Authenticate() for debugging.
+  // Implementors should not put sensitive information in error statuses.
   virtual absl::StatusOr<std::string> GetOAuthToken() = 0;
 
   virtual absl::StatusOr<privacy::ppn::AttestationData> GetAttestationData(

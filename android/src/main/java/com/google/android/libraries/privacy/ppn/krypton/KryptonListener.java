@@ -91,4 +91,11 @@ public interface KryptonListener {
    * @param network the network the fd should be bound to.
    */
   int onKryptonNeedsNetworkFd(NetworkInfo network) throws PpnException;
+
+  /**
+   * Called by Krypton whenever it needs a new TCP/IP network fd.
+   *
+   * @param network the network the fd should be bound to.
+   */
+  int onKryptonNeedsTcpFd(NetworkInfo network) throws PpnException;
 }

@@ -18,6 +18,8 @@ import android.os.Build;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
+import com.google.android.libraries.privacy.ppn.internal.KryptonConfig;
+import com.google.android.libraries.privacy.ppn.internal.ReconnectorConfig;
 import com.google.common.collect.ImmutableList;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.time.Duration;
@@ -70,6 +72,7 @@ public class PpnOptions {
   private final Optional<Duration> rekeyDuration;
   private final Optional<Boolean> blindSigningEnabled;
   private final boolean ipv6Enabled;
+  private final boolean dynamicMtuEnabled;
 
   private final Optional<Duration> reconnectorInitialTimeToReconnect;
   private final Optional<Duration> reconnectorSessionConnectionDeadline;
@@ -89,6 +92,9 @@ public class PpnOptions {
 
   private final Optional<String> apiKey;
   private final boolean attachOauthTokenAsHeader;
+
+  private final Optional<Duration> ipv4KeepaliveInterval;
+  private final Optional<Duration> ipv6KeepaliveInterval;
 
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
@@ -116,6 +122,7 @@ public class PpnOptions {
     this.isStickyService = builder.isStickyService;
     this.safeDisconnectEnabled = builder.safeDisconnectEnabled;
     this.ipv6Enabled = builder.ipv6Enabled;
+    this.dynamicMtuEnabled = builder.dynamicMtuEnabled;
 
     this.disallowedApplications = Collections.unmodifiableSet(builder.disallowedApplications);
 
@@ -131,6 +138,9 @@ public class PpnOptions {
     this.attestationCloudProjectNumber = builder.attestationCloudProjectNumber;
     this.apiKey = builder.apiKey;
     this.attachOauthTokenAsHeader = builder.attachOauthTokenAsHeader;
+
+    this.ipv4KeepaliveInterval = builder.ipv4KeepaliveInterval;
+    this.ipv6KeepaliveInterval = builder.ipv6KeepaliveInterval;
   }
 
   public String getZincUrl() {
@@ -197,6 +207,10 @@ public class PpnOptions {
     return ipv6Enabled;
   }
 
+  public boolean isDynamicMtuEnabled() {
+    return dynamicMtuEnabled;
+  }
+
   public Optional<Duration> getReconnectorInitialTimeToReconnect() {
     return reconnectorInitialTimeToReconnect;
   }
@@ -253,6 +267,108 @@ public class PpnOptions {
     return attachOauthTokenAsHeader;
   }
 
+  public Optional<Duration> getIpv4KeepaliveInterval() {
+    return ipv4KeepaliveInterval;
+  }
+
+  public Optional<Duration> getIpv6KeepaliveInterval() {
+    return ipv6KeepaliveInterval;
+  }
+
+  /** Creates a KryptonConfig.Builder using the current options. */
+  public KryptonConfig.Builder createKryptonConfigBuilder() {
+    ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
+    if (getReconnectorInitialTimeToReconnect().isPresent()) {
+      reconnectorBuilder.setInitialTimeToReconnectMsec(
+          (int) getReconnectorInitialTimeToReconnect().get().toMillis());
+    }
+    if (getReconnectorSessionConnectionDeadline().isPresent()) {
+      reconnectorBuilder.setSessionConnectionDeadlineMsec(
+          (int) getReconnectorSessionConnectionDeadline().get().toMillis());
+    }
+    ReconnectorConfig reconnectorConfig = reconnectorBuilder.build();
+
+    KryptonConfig.Builder builder =
+        KryptonConfig.newBuilder()
+            .setZincUrl(getZincUrl())
+            .setZincPublicSigningKeyUrl(getZincPublicSigningKeyUrl())
+            .setBrassUrl(getBrassUrl())
+            .setServiceType(getZincServiceType())
+            .setReconnectorConfig(reconnectorConfig);
+
+    if (getCopperControllerAddress().isPresent()) {
+      builder.setCopperControllerAddress(getCopperControllerAddress().get());
+    }
+    if (getCopperHostnameOverride().isPresent()) {
+      builder.setCopperHostnameOverride(getCopperHostnameOverride().get());
+    }
+
+    builder.addAllCopperHostnameSuffix(getCopperHostnameSuffix());
+
+    if (getDatapathProtocol().isPresent()) {
+      switch (getDatapathProtocol().get()) {
+        case BRIDGE:
+          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.BRIDGE);
+          break;
+        case IPSEC:
+          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.IPSEC);
+          break;
+        case IKE:
+          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.IKE);
+          break;
+      }
+    }
+
+    // Default to bridge if the current Android API Level does not support IPsec
+    if (builder.getDatapathProtocol() == KryptonConfig.DatapathProtocol.IPSEC
+        && Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+      Log.w(TAG, "Android version does not support IPsec datapath. Defaulting to Bridge.");
+      builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.BRIDGE);
+    }
+
+    if (getBridgeKeyLength().isPresent()) {
+      builder.setCipherSuiteKeyLength(getBridgeKeyLength().get());
+    }
+    if (isBlindSigningEnabled().isPresent()) {
+      builder.setEnableBlindSigning(isBlindSigningEnabled().get());
+    }
+    if (getRekeyDuration().isPresent()) {
+      Duration duration = getRekeyDuration().get();
+      com.google.protobuf.Duration proto =
+          com.google.protobuf.Duration.newBuilder()
+              .setSeconds(duration.getSeconds())
+              .setNanos(duration.getNano())
+              .build();
+      builder.setRekeyDuration(proto);
+    }
+    builder.setSafeDisconnectEnabled(isSafeDisconnectEnabled());
+    builder.setIpv6Enabled(isIPv6Enabled());
+    builder.setDynamicMtuEnabled(isDynamicMtuEnabled());
+    builder.setIntegrityAttestationEnabled(isIntegrityAttestationEnabled());
+    if (getApiKey().isPresent()) {
+      builder.setApiKey(getApiKey().get());
+    }
+    builder.setAttachOauthTokenAsHeader(isAttachOauthTokenAsHeaderEnabled());
+
+    if (getIpv4KeepaliveInterval().isPresent()) {
+      Duration ipv4KeepaliveInterval = getIpv4KeepaliveInterval().get();
+      builder.setIpv4KeepaliveInterval(
+          com.google.protobuf.Duration.newBuilder()
+              .setSeconds(ipv4KeepaliveInterval.getSeconds())
+              .setNanos(ipv4KeepaliveInterval.getNano())
+              .build());
+    }
+    if (getIpv6KeepaliveInterval().isPresent()) {
+      Duration ipv6KeepaliveInterval = getIpv6KeepaliveInterval().get();
+      builder.setIpv6KeepaliveInterval(
+          com.google.protobuf.Duration.newBuilder()
+              .setSeconds(ipv6KeepaliveInterval.getSeconds())
+              .setNanos(ipv6KeepaliveInterval.getNano())
+              .build());
+    }
+    return builder;
+  }
+
   /** A Builder for creating a PpnOptions. */
   public static class Builder {
     private String zincUrl = DEFAULT_ZINC_URL;
@@ -278,6 +394,7 @@ public class PpnOptions {
     private boolean isStickyService = false;
     private boolean safeDisconnectEnabled = false;
     private boolean ipv6Enabled = true;
+    private boolean dynamicMtuEnabled = false;
 
     private Set<String> disallowedApplications = Collections.emptySet();
 
@@ -291,6 +408,9 @@ public class PpnOptions {
 
     private Optional<String> apiKey = Optional.empty();
     private boolean attachOauthTokenAsHeader = false;
+
+    private Optional<Duration> ipv4KeepaliveInterval = Optional.empty();
+    private Optional<Duration> ipv6KeepaliveInterval = Optional.empty();
 
     public Builder() {}
 
@@ -509,6 +629,13 @@ public class PpnOptions {
       return this;
     }
 
+    /** Sets whether to set MTU dynamically. */
+    @CanIgnoreReturnValue
+    public Builder setDynamicMtuEnabled(boolean dynamicMtuEnabled) {
+      this.dynamicMtuEnabled = dynamicMtuEnabled;
+      return this;
+    }
+
     /** Sets the initial time between reconnects. */
     @CanIgnoreReturnValue
     public Builder setReconnectorInitialTimeToReconnect(Duration duration) {
@@ -627,6 +754,38 @@ public class PpnOptions {
     @CanIgnoreReturnValue
     public Builder setAttachOauthTokenAsHeaderEnabled(boolean attachOauthTokenAsHeader) {
       this.attachOauthTokenAsHeader = attachOauthTokenAsHeader;
+      return this;
+    }
+
+    /**
+     * Sets how long to wait for outgoing packets on IPsec connections that are using IPv4 before
+     * sending a keepalive packet.
+     *
+     * <p>If this is not set, it will default to a reasonable value.
+     *
+     * <p>If null is passed in, it will be ignored.
+     */
+    @CanIgnoreReturnValue
+    public Builder setIpv4KeepaliveInterval(Duration interval) {
+      if (interval != null) {
+        this.ipv4KeepaliveInterval = Optional.of(interval);
+      }
+      return this;
+    }
+
+    /**
+     * Sets how long to wait for outgoing packets on IPsec connections that are using IPv6 before
+     * sending a keepalive packet.
+     *
+     * <p>If this is not set, it will default to a reasonable value.
+     *
+     * <p>If null is passed in, it will be ignored.
+     */
+    @CanIgnoreReturnValue
+    public Builder setIpv6KeepaliveInterval(Duration interval) {
+      if (interval != null) {
+        this.ipv6KeepaliveInterval = Optional.of(interval);
+      }
       return this;
     }
 

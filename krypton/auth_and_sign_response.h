@@ -16,6 +16,7 @@
 #define PRIVACY_NET_KRYPTON_AUTH_AND_SIGN_RESPONSE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>

@@ -16,6 +16,9 @@
 
 #include <cstring>
 #include <functional>
+#include <optional>
+#include <utility>
+#include <vector>
 
 namespace privacy {
 namespace krypton {
@@ -31,7 +34,7 @@ Packet CopyPacket(const Packet& packet) {
 absl::Status TestPacketPipe::WritePackets(std::vector<Packet> packets) {
   absl::MutexLock l(&mutex_);
   for (const auto& packet : packets) {
-    written_packets_.emplace_back(CopyPacket(packet));
+    outbound_packets_.emplace_back(CopyPacket(packet));
   }
   return absl::OkStatus();
 }

@@ -16,17 +16,19 @@
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "privacy/net/krypton/add_egress_response.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mock_tunnel.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
-#include "privacy/net/krypton/pal/mock_vpn_service_interface.h"
-#include "privacy/net/krypton/pal/vpn_service_interface.h"
+#include "privacy/net/krypton/mock_socket.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
-#include "privacy/net/krypton/test_packet_pipe.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/synchronization/notification.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -54,12 +56,15 @@ class MockIpSecVpnService : public IpSecDatapath::IpSecVpnServiceInterface {
                TimerManager *timer_manager),
               (override));
 
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<PacketPipe>>, CreateNetworkPipe,
-              (const NetworkInfo &, const Endpoint &), (override));
+  MOCK_METHOD(absl::StatusOr<int>, CreateProtectedNetworkSocket,
+              (const NetworkInfo &), (override));
+
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<SocketInterface>>,
+              ConfigureNetworkSocket, (int, const Endpoint &), (override));
 
   MOCK_METHOD(absl::Status, CreateTunnel, (const TunFdData &), (override));
 
-  MOCK_METHOD(PacketPipe *, GetTunnel, (), (override));
+  MOCK_METHOD(TunnelInterface *, GetTunnel, (), (override));
 
   MOCK_METHOD(void, CloseTunnel, (), (override));
 
@@ -79,7 +84,7 @@ class IpSecDatapathTest : public ::testing::Test {
     looper_.Stop();
     looper_.Join();
 
-    tunnel_.Close();
+    PPN_LOG_IF_ERROR(tunnel_.Close());
   }
 
   void SetUp() override {
@@ -120,24 +125,13 @@ class IpSecDatapathTest : public ::testing::Test {
     params->set_downlink_key("downlink_key_bytes");
   }
 
-  void WaitForNotifications() {
-    absl::Mutex lock;
-    absl::CondVar condition;
-    absl::MutexLock l(&lock);
-    looper_.Post([&lock, &condition] {
-      absl::MutexLock l(&lock);
-      condition.SignalAll();
-    });
-    condition.Wait(&lock);
-  }
-
   AddEgressResponse fake_add_egress_response_;
   utils::LooperThread looper_{"Krypton Looper"};
   IpSecDatapath datapath_{&looper_, &vpn_service_};
   NetworkInfo network_info_;
   MockIpSecVpnService vpn_service_;
   MockNotification notification_;
-  TestPacketPipe tunnel_{1002};
+  MockTunnel tunnel_;
   TransformParams params_;
   Endpoint endpoint_{"192.0.2.0:8080", "192.0.2.0", 8080, IPProtocol::kIPv4};
 };
@@ -165,32 +159,108 @@ TEST_F(IpSecDatapathTest, SwitchNetworkAndNoKeyMaterial) {
 }
 
 TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
-  auto pipe_ptr = std::make_unique<TestPacketPipe>(30);
-  auto pipe = pipe_ptr.get();
-  EXPECT_CALL(vpn_service_, CreateNetworkPipe(_, _))
-      .WillOnce(::testing::Return(testing::ByMove(std::move(pipe_ptr))));
+  auto socket_ptr = std::make_unique<MockSocket>();
+
+  // add the FD information of network & tunnel.
+  params_.mutable_ipsec()->set_network_id(100);
+  params_.mutable_ipsec()->set_network_fd(1);
+
+  // Need to keep a reference to the socket to simulate data being sent.
+  MockSocket *socket = socket_ptr.get();
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_))
+      .Times(1)
+      .WillOnce(Return(1));
+  EXPECT_CALL(vpn_service_, ConfigureNetworkSocket(_, _))
+      .WillOnce(Return(std::move(socket_ptr)));
 
   EXPECT_CALL(notification_, DatapathFailed).Times(0);
   EXPECT_CALL(notification_, DatapathPermanentFailure).Times(0);
 
-  // add the FD information of network & tunnel.
-  params_.mutable_ipsec()->set_network_id(100);
-  params_.mutable_ipsec()->set_network_fd(30);
   EXPECT_CALL(vpn_service_,
               ConfigureIpSec(testing::EqualsProto(params_.ipsec())));
+
+  std::vector<Packet> packets;
+  packets.emplace_back("foo", 3, IPProtocol::kIPv6, [] {});
+
+  absl::Notification established;
+  absl::Notification socket_closed;
+  absl::Notification tunnel_closed;
+
+  EXPECT_CALL(notification_, DatapathEstablished).WillOnce([&established]() {
+    established.Notify();
+  });
+
+  // Simulate some network traffic, so that we know everything is running.
+  EXPECT_CALL(*socket, ReadPackets())
+      .WillOnce(testing::Return(std::move(packets)))
+      .WillOnce([&socket_closed]() {
+        socket_closed.WaitForNotification();
+        return std::vector<Packet>();
+      });
+
+  // Closed by both the packet forwarder and the datapath.
+  EXPECT_CALL(*socket, Close())
+      .WillOnce([&socket_closed]() {
+        socket_closed.Notify();
+        return absl::OkStatus();
+      })
+      .WillOnce(Return(absl::OkStatus()));
+
+  EXPECT_CALL(tunnel_, ReadPackets()).WillOnce([&tunnel_closed]() {
+    tunnel_closed.WaitForNotification();
+    return std::vector<Packet>();
+  });
+
+  EXPECT_CALL(tunnel_, CancelReadPackets()).WillOnce([&tunnel_closed]() {
+    tunnel_closed.Notify();
+    return absl::OkStatus();
+  });
 
   EXPECT_OK(datapath_.Start(fake_add_egress_response_, params_));
   EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel_));
   EXPECT_OK(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1));
 
-  // Simulate some network traffic, so that we know everything is running.
-  EXPECT_CALL(notification_, DatapathEstablished);
-  Packet packet("foo", 3, IPProtocol::kIPv4, [] {});
-  std::vector<Packet> packets;
-  packets.emplace_back(std::move(packet));
-  ASSERT_OK_AND_ASSIGN(auto handler, pipe->GetReadHandler());
-  EXPECT_TRUE(handler(absl::OkStatus(), std::move(packets)));
-  WaitForNotifications();
+  EXPECT_TRUE(
+      established.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
+
+  datapath_.Stop();
+}
+
+TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkFd) {
+  // add the FD information of network & tunnel.
+  params_.mutable_ipsec()->set_network_id(100);
+  params_.mutable_ipsec()->set_network_fd(1);
+
+  // create failure to create network fd.
+  EXPECT_CALL(notification_, DatapathFailed).Times(1);
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_))
+      .Times(1)
+      .WillOnce(Return(absl::InternalError("Failure")));
+
+  EXPECT_OK(datapath_.Start(fake_add_egress_response_, params_));
+  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel_));
+  EXPECT_OK(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1));
+
+  datapath_.Stop();
+}
+
+TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
+  // add the FD information of network & tunnel.
+  params_.mutable_ipsec()->set_network_id(100);
+  params_.mutable_ipsec()->set_network_fd(1);
+
+  // create failure to create network socket.
+  EXPECT_CALL(notification_, DatapathFailed).Times(1);
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_))
+      .Times(1)
+      .WillOnce(Return(1));
+  EXPECT_CALL(vpn_service_, ConfigureNetworkSocket(_, _))
+      .Times(1)
+      .WillOnce(Return(absl::InternalError("Failure")));
+
+  EXPECT_OK(datapath_.Start(fake_add_egress_response_, params_));
+  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel_));
+  EXPECT_OK(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1));
 
   datapath_.Stop();
 }

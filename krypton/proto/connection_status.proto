@@ -19,6 +19,7 @@ package privacy.krypton;
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "privacy/net/krypton/proto/network_type.proto";
+import "privacy/net/krypton/proto/ppn_status.proto";
 
 option cc_api_version = 2;
 option java_outer_classname = "ConnectionStatusProto";
@@ -63,6 +64,8 @@ message DisconnectionStatus {
   optional string message = 2;
   optional bool is_blocking_traffic = 3;
   optional bool has_available_networks = 4;
+  // The error code when there is permanent failure.
+  optional PpnStatusDetails ppn_status_details = 5;
 }
 
 /** The status of Krypton, while waiting to reconnect. */

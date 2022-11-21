@@ -27,6 +27,7 @@ import com.google.android.libraries.privacy.ppn.PpnOptions.DatapathProtocol;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.krypton.MockBrass;
 import com.google.android.libraries.privacy.ppn.krypton.MockZinc;
+import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -101,6 +102,7 @@ public class IkeTest {
    * Blocks until the given task is complete. This can't use Tasks.await, because the async work may
    * need to run on the main thread.
    */
+  @ResultIgnorabilityUnspecified
   private static <T> T await(Task<T> task) {
     while (!task.isComplete()) {
       // Allow the main looper to clear itself out.

@@ -20,9 +20,7 @@
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/jni/jni_utils.h"
 #include "privacy/net/krypton/jni/krypton_notification.h"
-#include "privacy/net/krypton/jni/oauth.h"
 #include "privacy/net/krypton/jni/vpn_service.h"
-#include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
@@ -221,9 +219,8 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_resume
 
 JNIEXPORT jint JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_createTunFdNative(
-    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
+    JNIEnv* env, jobject /*instance*/, jobject /*krypton_instance*/,
     jbyteArray tun_fd_data_byte_array) {
-  VpnService service(krypton_instance);
   std::string tun_fd_data_bytes =
       ConvertJavaByteArrayToString(env, tun_fd_data_byte_array);
   TunFdData tun_fd_data;
@@ -231,18 +228,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
     JniCache::Get()->ThrowKryptonException("invalid TunFdData bytes");
     return -1;
   }
-  auto status = service.CreateTunnel(tun_fd_data);
-  if (!status.ok()) {
-    JniCache::Get()->ThrowKryptonException(status.ToString());
-    return -1;
-  }
-  auto fd = service.GetTunnelFd();
-  if (!fd.ok()) {
-    JniCache::Get()->ThrowKryptonException(fd.status().ToString());
-    return -1;
-  }
-  service.CloseTunnel();
-  return *fd;
+  return tun_fd_data.mtu() + 1;
 }
 
 JNIEXPORT jint JNICALL
@@ -258,6 +244,26 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
     return -1;
   }
   auto fd = service.CreateProtectedNetworkSocket(network_info);
+  if (!fd.ok()) {
+    JniCache::Get()->ThrowKryptonException(fd.status().ToString());
+    return -1;
+  }
+  return *fd;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_createTcpFdNative(
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
+    jbyteArray network_info_byte_array) {
+  VpnService service(krypton_instance);
+  std::string network_info_bytes =
+      ConvertJavaByteArrayToString(env, network_info_byte_array);
+  NetworkInfo network_info;
+  if (!network_info.ParseFromString(network_info_bytes)) {
+    JniCache::Get()->ThrowKryptonException("invalid NetworkInfo bytes");
+    return -1;
+  }
+  auto fd = service.CreateProtectedTcpSocket(network_info);
   if (!fd.ok()) {
     JniCache::Get()->ThrowKryptonException(fd.status().ToString());
     return -1;

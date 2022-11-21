@@ -87,7 +87,7 @@ TEST_F(StatusTest, TestPpnStatusDetails) {
 TEST_F(StatusTest, TestHttpStatus412) {
   absl::Status status = GetStatusForHttpStatus(412, "disallowed country");
   EXPECT_EQ(absl::StatusCode::kFailedPrecondition, status.code());
-  EXPECT_EQ("disallowed country", status.message());
+  EXPECT_EQ("Disallowed country: disallowed country", status.message());
 
   PpnStatusDetails details = GetPpnStatusDetails(status);
   EXPECT_EQ(PpnStatusDetails::DISALLOWED_COUNTRY,

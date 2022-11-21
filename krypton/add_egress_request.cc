@@ -67,6 +67,9 @@ Json::Value AddEgressRequest::BuildBodyJson(
   ppn[JsonKeys::kClientNonce] = my_keys.nonce;
   ppn[JsonKeys::kDownlinkSpi] = params.crypto->downlink_spi();
   ppn[JsonKeys::kApnType] = params.apn_type;
+  if (params.dynamic_mtu_enabled) {
+    ppn[JsonKeys::kDynamicMtuEnabled] = params.dynamic_mtu_enabled;
+  }
   ppn[JsonKeys::kDataplaneProtocol] =
       KryptonConfig::DatapathProtocol_Name(params.dataplane_protocol);
   ppn[JsonKeys::kSuite] =

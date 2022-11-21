@@ -39,6 +39,7 @@ inline ::absl::Status ValidateDuration(const google::protobuf::Duration& d) {
   }
   return ::absl::OkStatus();
 }
+
 }  // namespace
 
 absl::Status ToProtoDuration(absl::Duration d,
@@ -65,9 +66,8 @@ absl::Status ToProtoTime(absl::Time t, google::protobuf::Timestamp* proto) {
 
 absl::StatusOr<absl::Duration> DurationFromProto(
     const google::protobuf::Duration& proto) {
-  auto seconds = absl::Seconds(proto.seconds());
-  auto nanos = absl::Nanoseconds(proto.nanos());
-  return seconds + nanos;
+  PPN_RETURN_IF_ERROR(ValidateDuration(proto));
+  return absl::Seconds(proto.seconds()) + absl::Nanoseconds(proto.nanos());
 }
 
 absl::StatusOr<absl::Time> TimeFromProto(

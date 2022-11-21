@@ -21,11 +21,12 @@
 
 #include "base/logging.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_tunnel.h"
 
 #include "privacy/net/krypton/jni/jni_cache.h"
-#include "privacy/net/krypton/pal/packet_pipe.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
+#include "privacy/net/krypton/socket_interface.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/statusor.h"
@@ -40,7 +41,10 @@ class VpnService
  {
  public:
   explicit VpnService(jobject krypton_instance)
-      : krypton_instance_(std::make_unique<JavaObject>(krypton_instance)) {}
+      : krypton_instance_(std::make_unique<JavaObject>(krypton_instance)),
+        tunnel_fd_(-1),
+        keepalive_interval_ipv4_(absl::ZeroDuration()),
+        keepalive_interval_ipv6_(absl::ZeroDuration()) {}
 
   DatapathInterface* BuildDatapath(const KryptonConfig& config,
                                    utils::LooperThread* looper,
@@ -48,16 +52,18 @@ class VpnService
 
   // TUN fd creation
   absl::Status CreateTunnel(const TunFdData& tun_fd_data) override;
-  PacketPipe* GetTunnel() override;
+  datapath::android::TunnelInterface* GetTunnel() override;
   absl::StatusOr<int> GetTunnelFd() override;
   void CloseTunnel() override;
 
   // Network fd creation
   absl::StatusOr<int> CreateProtectedNetworkSocket(
       const NetworkInfo& network_info) override;
+  absl::StatusOr<int> CreateProtectedTcpSocket(
+      const NetworkInfo& network_info) override;
 
-  absl::StatusOr<std::unique_ptr<PacketPipe>> CreateNetworkPipe(
-      const NetworkInfo& network_info, const Endpoint&) override;
+  absl::StatusOr<std::unique_ptr<SocketInterface>> ConfigureNetworkSocket(
+      int fd, const Endpoint& endpoint) override;
 
   absl::Status ConfigureIpSec(const IpSecTransformParams& params) override;
 
@@ -65,7 +71,12 @@ class VpnService
   std::unique_ptr<JavaObject> krypton_instance_;
 
   absl::Mutex mutex_;
-  std::unique_ptr<PacketPipe> tunnel_ ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<datapath::android::IpSecTunnel> tunnel_
+      ABSL_GUARDED_BY(mutex_);
+  int tunnel_fd_ ABSL_GUARDED_BY(mutex_);
+
+  absl::Duration keepalive_interval_ipv4_;
+  absl::Duration keepalive_interval_ipv6_;
 };
 
 }  // namespace jni

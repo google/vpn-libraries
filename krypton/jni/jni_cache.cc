@@ -125,8 +125,8 @@ constexpr char kKryptonCreateTunFdMethodSignature[] = "([B)I";
 
 constexpr char kKryptonCreateNetworkFdMethod[] = "createNetworkFd";
 constexpr char kKryptonCreateNetworkFdMethodSignature[] = "([B)I";
-constexpr char kKryptonGetOAuthTokenMethod[] = "getOAuthToken";
-constexpr char kKryptonGetOAuthTokenMethodSignature[] = "()Ljava/lang/String;";
+constexpr char kKryptonCreateTcpFdMethod[] = "createTcpFd";
+constexpr char kKryptonCreateTcpFdMethodSignature[] = "([B)I";
 
 constexpr char kKryptonConfigureIpSecMethod[] = "configureIpSec";
 constexpr char kKryptonConfigureIpSecMethodSignature[] = "([B)Z";
@@ -157,14 +157,6 @@ absl::StatusOr<jmethodID> GetMethod(JNIEnv* env, jclass klass,
         absl::StrCat("unable to find method: ", method, signature));
   }
   return m;
-}
-
-absl::StatusOr<jclass> GetObjectClass(JNIEnv* env, jobject obj) {
-  jclass c = env->GetObjectClass(obj);
-  if (c == nullptr) {
-    return absl::NotFoundError("unable to get object class");
-  }
-  return c;
 }
 
 absl::StatusOr<jclass> FindClass(JNIEnv* env, const char* path) {
@@ -402,6 +394,10 @@ absl::Status JniCache::InitializeVpnServiceMethods(JNIEnv* env,
       krypton_create_network_fd_method_,
       GetMethod(env, krypton_class, kKryptonCreateNetworkFdMethod,
                 kKryptonCreateNetworkFdMethodSignature));
+
+  PPN_ASSIGN_OR_RETURN(krypton_create_tcp_fd_method_,
+                       GetMethod(env, krypton_class, kKryptonCreateTcpFdMethod,
+                                 kKryptonCreateTcpFdMethodSignature));
 
   PPN_ASSIGN_OR_RETURN(
       krypton_configure_ipsec_method_,

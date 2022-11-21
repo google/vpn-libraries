@@ -50,6 +50,7 @@ import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkCallback;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener.NetworkUnavailableReason;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkManager;
+import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.time.Duration;
@@ -935,6 +936,7 @@ public final class PpnNetworkManagerImplTest {
    * Blocks until the given task is complete. This can't use Tasks.await, because the async work may
    * need to run on the main thread.
    */
+  @ResultIgnorabilityUnspecified
   private static <T> T await(Task<T> task) {
     while (!task.isComplete()) {
       // Allow the main looper to clear itself out.

@@ -16,14 +16,10 @@
 #define PRIVACY_NET_KRYPTON_PAL_VPN_SERVICE_INTERFACE_H_
 
 #include "privacy/net/krypton/datapath_interface.h"
-#include "privacy/net/krypton/endpoint.h"
-#include "privacy/net/krypton/pal/packet_pipe.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
-#include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
-#include "third_party/absl/status/statusor.h"
 
 // Interface for Krypton to interact with the system-level VPN service API.
 namespace privacy {

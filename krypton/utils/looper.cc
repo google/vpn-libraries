@@ -18,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 
 #include "base/logging.h"

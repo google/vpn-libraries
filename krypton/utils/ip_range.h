@@ -22,6 +22,7 @@
 #include <sys/socket.h>
 #endif
 
+#include <optional>
 #include <string>
 
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"

@@ -248,6 +248,7 @@ void Session::PpnDataplaneRequest(bool is_rekey) {
   params.region_token_and_signature =
       auth_response.region_token_and_signatures();
   params.apn_type = auth_response.apn_type();
+  params.dynamic_mtu_enabled = config_.dynamic_mtu_enabled();
   if (config_.enable_blind_signing()) {
     params.blind_token_enabled = true;
     params.blind_message = key_material_->original_message();
@@ -315,6 +316,11 @@ absl::Status Session::BuildTunFdData(TunFdData* tun_fd_data) const {
   PPN_ASSIGN_OR_RETURN(auto egress_data,
                        egress_manager_->GetEgressSessionDetails());
 
+  tun_fd_data->set_is_metered(false);
+  if (config_.dynamic_mtu_enabled()) {
+    tun_fd_data->set_mtu(1396);
+  }
+
   // Explicitly set the IPv4 DNS
   AddDns("8.8.8.8", TunFdData::IpRange::IPV4, 32,
          tun_fd_data->add_tunnel_dns_addresses());
@@ -351,7 +357,6 @@ absl::Status Session::CreateTunnelIfNeeded() {
   auto active_network_info = active_network_info_;
   DCHECK(active_network_info);
 
-  tun_fd_data.set_is_metered(false);
   auto build_tun_status = BuildTunFdData(&tun_fd_data);
   if (!build_tun_status.ok()) {
     SetState(State::kSessionError, build_tun_status);
@@ -479,6 +484,9 @@ void Session::StartDatapath() {
   if (!datapath_status.ok()) {
     LOG(ERROR) << "Datapath initialization failed with status:"
                << datapath_status;
+    if (utils::IsPermanentError(datapath_status)) {
+      SetState(State::kPermanentError, datapath_status);
+    }
     SetState(State::kSessionError, datapath_status);
     return;
   }
@@ -630,6 +638,7 @@ void Session::DatapathFailed(const absl::Status& status) {
   LOG(ERROR) << "Datapath Failed with status:" << status;
   datapath_connected_ = false;
   latest_datapath_status_ = status;
+
   // For failures on datapath, see if we can reattempt.
   // Check if there are more datapaths.
   if (datapath_address_selector_.HasMoreAddresses()) {

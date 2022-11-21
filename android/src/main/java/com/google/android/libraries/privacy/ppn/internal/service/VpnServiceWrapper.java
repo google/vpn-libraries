@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn.internal.service;
 import android.net.Network;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
+import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import java.net.DatagramSocket;
 import java.net.Socket;
 
@@ -41,14 +42,17 @@ class VpnServiceWrapper {
     service.stopSelf();
   }
 
+  @ResultIgnorabilityUnspecified
   public boolean setUnderlyingNetworks(Network[] networks) {
     return service.setUnderlyingNetworks(networks);
   }
 
+  @ResultIgnorabilityUnspecified
   public boolean protect(DatagramSocket socket) {
     return service.protect(socket);
   }
 
+  @ResultIgnorabilityUnspecified
   public boolean protect(Socket socket) {
     return service.protect(socket);
   }
@@ -61,5 +65,11 @@ class VpnServiceWrapper {
   // method to make it mockable.
   public ParcelFileDescriptor parcelSocket(DatagramSocket socket) {
     return ParcelFileDescriptor.fromDatagramSocket(socket);
+  }
+
+  // ParcelFileDescriptor.fromSocket does not work in robolectric tests, so we use this
+  // method to make it mockable.
+  public ParcelFileDescriptor parcelSocket(Socket socket) {
+    return ParcelFileDescriptor.fromSocket(socket);
   }
 }

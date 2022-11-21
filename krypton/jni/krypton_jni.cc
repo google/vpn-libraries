@@ -29,14 +29,11 @@
 #include "privacy/net/krypton/jni/oauth.h"
 #include "privacy/net/krypton/jni/vpn_service.h"
 #include "privacy/net/krypton/krypton.h"
-#include "privacy/net/krypton/proto/connection_status.proto.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
-#include "privacy/net/krypton/proto/network_type.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/time/time.h"
 
 using privacy::krypton::Krypton;

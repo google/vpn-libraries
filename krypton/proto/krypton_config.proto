@@ -102,4 +102,14 @@ message KryptonConfig {
   // If true, attaches the OAuth token as the "Authorization" header.
   // If false, OAuth token is passed in the json body.
   optional bool attach_oauth_token_as_header = 26 [default = false];
+
+  // Whether to enable dynamic mtu features.
+  optional bool dynamic_mtu_enabled = 27 [default = false];
+
+  // Duration of inactivity after which we will send a keepalive packet when
+  // connected with IPsec on IPv4.
+  optional google.protobuf.Duration ipv4_keepalive_interval = 28;
+  // Duration of inactivity after which we will send a keepalive packet when
+  // connected with IPsec on IPv6.
+  optional google.protobuf.Duration ipv6_keepalive_interval = 29;
 }

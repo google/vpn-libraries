@@ -132,6 +132,9 @@ class JniCache {
   jmethodID GetKryptonCreateNetworkFdMethod() const {
     return krypton_create_network_fd_method_;
   }
+  jmethodID GetKryptonCreateTcpFdMethod() const {
+    return krypton_create_tcp_fd_method_;
+  }
   jmethodID GetKryptonConfigureIpSecMethod() const {
     return krypton_configure_ipsec_method_;
   }
@@ -197,6 +200,7 @@ class JniCache {
   jmethodID krypton_waiting_to_reconnect_method_ = nullptr;
   jmethodID krypton_create_tun_fd_method_ = nullptr;
   jmethodID krypton_create_network_fd_method_ = nullptr;
+  jmethodID krypton_create_tcp_fd_method_ = nullptr;
   jmethodID krypton_configure_ipsec_method_ = nullptr;
   jmethodID krypton_snoozed_method_ = nullptr;
   jmethodID krypton_resumed_method_ = nullptr;

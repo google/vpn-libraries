@@ -20,26 +20,56 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "base/logging.h"
+#include "google/protobuf/duration.proto.h"
+#include "privacy/net/krypton/datapath/android_ipsec/datagram_socket.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_tunnel.h"
 
-#include "privacy/net/krypton/fd_packet_pipe.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
-#include "privacy/net/krypton/jni/jni_utils.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
+#include "privacy/net/krypton/utils/status.h"
+#include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
 namespace jni {
 
+constexpr absl::Duration kDefaultIpv4KeepaliveInterval = absl::Seconds(20);
+constexpr absl::Duration kDefaultIpv6KeepaliveInterval = absl::Hours(1);
+
 DatapathInterface* VpnService::BuildDatapath(const KryptonConfig& config,
                                              utils::LooperThread* looper,
                                              TimerManager* /*timer_manager*/) {
+  keepalive_interval_ipv4_ = kDefaultIpv4KeepaliveInterval;
+  if (config.has_ipv4_keepalive_interval()) {
+    auto keepalive = utils::DurationFromProto(config.ipv4_keepalive_interval());
+    if (keepalive.ok()) {
+      keepalive_interval_ipv4_ = *keepalive;
+    } else {
+      LOG(ERROR) << "Failed to convert IPv4 keepalive interval: "
+                 << keepalive.status();
+    }
+  }
+
+  keepalive_interval_ipv6_ = kDefaultIpv6KeepaliveInterval;
+  if (config.has_ipv6_keepalive_interval()) {
+    auto keepalive = utils::DurationFromProto(config.ipv6_keepalive_interval());
+    if (keepalive.ok()) {
+      keepalive_interval_ipv6_ = *keepalive;
+    } else {
+      LOG(ERROR) << "Failed to convert IPv6 keepalive interval: "
+                 << keepalive.status();
+    }
+  }
+
   if (config.datapath_protocol() == KryptonConfig::IPSEC) {
     return new datapath::android::IpSecDatapath(looper, this);
   }
@@ -71,23 +101,33 @@ absl::Status VpnService::CreateTunnel(const TunFdData& tun_fd_data) {
   absl::MutexLock l(&mutex_);
   if (tunnel_ != nullptr) {
     LOG(WARNING) << "Old tunnel was still open. Closing now.";
-    tunnel_->Close();
+    PPN_LOG_IF_ERROR(tunnel_->Close());
+    tunnel_.reset();
+    tunnel_fd_ = -1;
   }
-  tunnel_ = std::make_unique<FdPacketPipe>(fd);
+
+  auto tunnel = datapath::android::IpSecTunnel::Create(fd);
+  if (!tunnel.ok()) {
+    close(tunnel_fd_);
+    tunnel_fd_ = -1;
+    return tunnel.status();
+  }
+  tunnel_ = *std::move(tunnel);
+  tunnel_fd_ = fd;
   return absl::OkStatus();
 }
 
-PacketPipe* VpnService::GetTunnel() {
+datapath::android::TunnelInterface* VpnService::GetTunnel() {
   absl::MutexLock l(&mutex_);
   return tunnel_.get();
 }
 
 absl::StatusOr<int> VpnService::GetTunnelFd() {
-  auto tunnel = GetTunnel();
-  if (tunnel == nullptr) {
-    return absl::InternalError("tunnel is null");
+  absl::MutexLock l(&mutex_);
+  if (tunnel_fd_ < 0) {
+    return absl::InternalError("Tunnel is closed");
   }
-  return tunnel->GetFd();
+  return tunnel_fd_;
 }
 
 void VpnService::CloseTunnel() {
@@ -95,8 +135,9 @@ void VpnService::CloseTunnel() {
   if (tunnel_ == nullptr) {
     return;
   }
-  tunnel_->Close();
+  PPN_LOG_IF_ERROR(tunnel_->Close());
   tunnel_.reset();
+  tunnel_fd_ = -1;
 }
 
 absl::StatusOr<int> VpnService::CreateProtectedNetworkSocket(
@@ -126,17 +167,54 @@ absl::StatusOr<int> VpnService::CreateProtectedNetworkSocket(
   return fd;
 }
 
-absl::StatusOr<std::unique_ptr<PacketPipe>> VpnService::CreateNetworkPipe(
-    const NetworkInfo& network_info, const Endpoint& endpoint) {
-  PPN_ASSIGN_OR_RETURN(int fd, CreateProtectedNetworkSocket(network_info));
+absl::StatusOr<int> VpnService::CreateProtectedTcpSocket(
+    const NetworkInfo& network_info) {
+  LOG(INFO) << "Requesting TCP fd from Java with network info "
+            << network_info.DebugString();
 
-  auto pipe = std::make_unique<FdPacketPipe>(fd);
-  auto status = pipe->Connect(endpoint);
+  auto jni_cache = JniCache::Get();
+  auto env = jni_cache->GetJavaEnv();
+  if (!env) {
+    LOG(ERROR) << "Cannot find JavaEnv to request TCP fd";
+    return absl::Status(absl::StatusCode::kInternal, "Unable to get Java Env");
+  }
+
+  std::string network_info_bytes;
+  network_info.SerializeToString(&network_info_bytes);
+
+  jint fd = env.value()->CallIntMethod(
+      krypton_instance_->get(), jni_cache->GetKryptonCreateTcpFdMethod(),
+      JavaByteArray(env.value(), network_info_bytes).get());
+
+  if (fd < 0) {
+    return absl::Status(absl::StatusCode::kUnavailable,
+                        absl::StrCat("Unable to create TCP fd: ", fd));
+  }
+
+  return fd;
+}
+
+absl::StatusOr<std::unique_ptr<SocketInterface>>
+VpnService::ConfigureNetworkSocket(int fd, const Endpoint& endpoint) {
+  PPN_ASSIGN_OR_RETURN(auto socket,
+                       datapath::android::DatagramSocket::Create(fd));
+  auto status = socket->Connect(endpoint);
+
+  {
+    absl::MutexLock l(&mutex_);
+    if (endpoint.ip_protocol() == IPProtocol::kIPv4) {
+      tunnel_->SetKeepaliveInterval(keepalive_interval_ipv4_);
+    } else {
+      tunnel_->SetKeepaliveInterval(keepalive_interval_ipv6_);
+    }
+  }
+
   if (!status.ok()) {
-    pipe->Close();
+    LOG(ERROR) << "Socket connect failed: " << status;
+    PPN_LOG_IF_ERROR(socket->Close());
     return status;
   }
-  return pipe;
+  return socket;
 }
 
 absl::Status VpnService::ConfigureIpSec(const IpSecTransformParams& params) {

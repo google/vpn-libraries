@@ -19,6 +19,7 @@ import android.net.NetworkCapabilities;
 import androidx.annotation.Nullable;
 import com.google.android.gms.tasks.Task;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo;
+import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import java.util.List;
 import org.json.JSONObject;
 
@@ -42,6 +43,7 @@ public interface PpnNetworkManager {
    * The result of the Task indicates whether this event caused the network to be marked as
    * available.
    */
+  @ResultIgnorabilityUnspecified
   Task<Boolean> handleNetworkAvailable(PpnNetwork ppnNetwork);
 
   /**
@@ -58,6 +60,7 @@ public interface PpnNetworkManager {
    * The result of the Task indicates whether this event caused the network to be marked as
    * available.
    */
+  @ResultIgnorabilityUnspecified
   Task<Boolean> handleNetworkCapabilitiesChanged(
       PpnNetwork ppnNetwork, NetworkCapabilities networkCapabilities);
 
@@ -69,6 +72,7 @@ public interface PpnNetworkManager {
    * The result of the Task indicates whether this event caused the network to be marked as
    * available.
    */
+  @ResultIgnorabilityUnspecified
   Task<Boolean> handleNetworkLinkPropertiesChanged(
       PpnNetwork ppnNetwork, LinkProperties linkProperties);
 

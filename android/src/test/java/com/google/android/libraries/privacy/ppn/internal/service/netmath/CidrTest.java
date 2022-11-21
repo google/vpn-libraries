@@ -14,9 +14,9 @@
 
 package com.google.android.libraries.privacy.ppn.internal.service.netmath;
 
-import static junit.framework.TestCase.fail;
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 
 import com.google.android.libraries.privacy.ppn.internal.service.netmath.IpRange.NumBits;
 import java.math.BigInteger;
@@ -95,12 +95,7 @@ public class CidrTest {
     // Test data structure: invalid CIDR string.
     String[] tests = {"192.0.2.0/35", "foo", "::/-1", "::abcd", "::/129"};
     for (String cidr : tests) {
-      try {
-        Cidr.parseFrom(cidr);
-        fail("expected IllegalArgumentException");
-      } catch (IllegalArgumentException e) {
-        // expected
-      }
+      assertThrows(IllegalArgumentException.class, () -> Cidr.parseFrom(cidr));
     }
   }
 

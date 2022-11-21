@@ -16,6 +16,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_type.proto.h"
@@ -42,6 +43,7 @@ TEST_F(DatapathAddressSelectorTest, V6BeforeV4Test) {
 
   KryptonConfig config;
   config.set_ipv6_enabled(true);
+  config.set_datapath_protocol(KryptonConfig::BRIDGE);
   DatapathAddressSelector selector(config);
   selector.Reset(input, std::nullopt);
 
@@ -50,6 +52,27 @@ TEST_F(DatapathAddressSelectorTest, V6BeforeV4Test) {
                 IsOkAndHolds(EndpointTo("[2001:db8::]:80")));
     EXPECT_THAT(selector.SelectDatapathAddress(),
                 IsOkAndHolds(EndpointTo("192.168.1.1:80")));
+  }
+  EXPECT_THAT(selector.SelectDatapathAddress(),
+              StatusIs(absl::StatusCode::kResourceExhausted));
+}
+
+TEST_F(DatapathAddressSelectorTest, V4BeforeV6Test) {
+  std::vector<std::string> input = {
+      "192.168.1.1:80",
+      "[2001:db8::]:80",
+  };
+
+  KryptonConfig config;
+  config.set_ipv6_enabled(true);
+  DatapathAddressSelector selector(config);
+  selector.Reset(input, std::nullopt);
+
+  for (int i = 0; i < 2; i++) {
+    EXPECT_THAT(selector.SelectDatapathAddress(),
+                IsOkAndHolds(EndpointTo("192.168.1.1:80")));
+    EXPECT_THAT(selector.SelectDatapathAddress(),
+                IsOkAndHolds(EndpointTo("[2001:db8::]:80")));
   }
   EXPECT_THAT(selector.SelectDatapathAddress(),
               StatusIs(absl::StatusCode::kResourceExhausted));
@@ -89,13 +112,13 @@ TEST_F(DatapathAddressSelectorTest, BackoffAddressTest) {
 
   for (int i = 0; i < 2; i++) {
     EXPECT_THAT(selector.SelectDatapathAddress(),
-                IsOkAndHolds(EndpointTo("[2001:db8::]:80")));
-    EXPECT_THAT(selector.SelectDatapathAddress(),
                 IsOkAndHolds(EndpointTo("192.168.1.1:80")));
     EXPECT_THAT(selector.SelectDatapathAddress(),
-                IsOkAndHolds(EndpointTo("[2001:db8::1]:80")));
+                IsOkAndHolds(EndpointTo("[2001:db8::]:80")));
     EXPECT_THAT(selector.SelectDatapathAddress(),
                 IsOkAndHolds(EndpointTo("192.168.1.2:80")));
+    EXPECT_THAT(selector.SelectDatapathAddress(),
+                IsOkAndHolds(EndpointTo("[2001:db8::1]:80")));
   }
 
   EXPECT_THAT(selector.SelectDatapathAddress(),
@@ -120,13 +143,13 @@ TEST_F(DatapathAddressSelectorTest, V4V6NetworkTest) {
 
   for (int i = 0; i < 2; i++) {
     EXPECT_THAT(selector.SelectDatapathAddress(),
-                IsOkAndHolds(EndpointTo("[2001:db8::]:80")));
-    EXPECT_THAT(selector.SelectDatapathAddress(),
                 IsOkAndHolds(EndpointTo("192.168.1.1:80")));
     EXPECT_THAT(selector.SelectDatapathAddress(),
-                IsOkAndHolds(EndpointTo("[2001:db8::1]:80")));
+                IsOkAndHolds(EndpointTo("[2001:db8::]:80")));
     EXPECT_THAT(selector.SelectDatapathAddress(),
                 IsOkAndHolds(EndpointTo("192.168.1.2:80")));
+    EXPECT_THAT(selector.SelectDatapathAddress(),
+                IsOkAndHolds(EndpointTo("[2001:db8::1]:80")));
   }
 
   EXPECT_THAT(selector.SelectDatapathAddress(),
