@@ -19,14 +19,10 @@
 #include <utility>
 
 #include "base/logging.h"
-#include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/utils/ip_range.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/status/statusor.h"
-#include "third_party/absl/strings/escaping.h"
-#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/jsoncpp/reader.h"
 #include "third_party/jsoncpp/value.h"
@@ -54,7 +50,6 @@ Json::Value AddEgressRequest::BuildBodyJson(
   Json::Value ppn;
 
   // Add blind stuff.
-  json_body[JsonKeys::kIsUnblindedToken] = true;
   json_body[JsonKeys::kUnblindedToken] = params.blind_message;
   json_body[JsonKeys::kUnblindedTokenSignature] =
       params.unblinded_token_signature;

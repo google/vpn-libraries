@@ -60,7 +60,6 @@ const char JsonKeys::kPem[] = "pem";
 const char JsonKeys::kBlindedTokenSignature[] = "blinded_token_signature";
 const char JsonKeys::kCopperControllerHostname[] = "copper_controller_hostname";
 const char JsonKeys::kRegionTokenAndSignature[] = "region_token_and_signature";
-const char JsonKeys::kIsUnblindedToken[] = "is_unblinded_token";
 const char JsonKeys::kUnblindedTokenSignature[] = "unblinded_token_signature";
 const char JsonKeys::kPublicKeyHash[] = "public_key_hash";
 

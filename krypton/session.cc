@@ -30,7 +30,6 @@
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
-#include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
@@ -237,7 +236,6 @@ void Session::PpnDataplaneRequest(bool is_rekey) {
   auto copper_address_ = *resolved_address;
   LOG(INFO) << "Copper server address:" << copper_address_;
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.auth_response = auth_response;
   params.copper_control_plane_address = copper_address_;
   params.is_rekey = is_rekey;
   params.suite = config_.cipher_suite_key_length() == 256
@@ -250,7 +248,6 @@ void Session::PpnDataplaneRequest(bool is_rekey) {
   params.apn_type = auth_response.apn_type();
   params.dynamic_mtu_enabled = config_.dynamic_mtu_enabled();
   if (config_.enable_blind_signing()) {
-    params.blind_token_enabled = true;
     params.blind_message = key_material_->original_message();
     std::string blinded_signature;
     if (auth_->auth_response().blinded_token_signatures().empty()) {

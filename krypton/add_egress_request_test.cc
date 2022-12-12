@@ -19,10 +19,8 @@
 #include <optional>
 #include <string>
 
-#include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
-#include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/jsoncpp/reader.h"
 #include "third_party/jsoncpp/value.h"
@@ -53,17 +51,13 @@ TEST_F(PpnAddEgressRequest, TestPpnRequest) {
   response.set_json_body(R"json({})json");
   KryptonConfig config;
   config.add_copper_hostname_suffix("g-tun.com");
-  ASSERT_OK_AND_ASSIGN(auto auth_response,
-                       AuthAndSignResponse::FromProto(response, config));
 
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.auth_response = auth_response;
   params.crypto = &crypto;
   params.copper_control_plane_address = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;
-  params.blind_token_enabled = true;
   params.blind_message = "raw message";
   params.unblinded_token_signature = "raw message signature";
   params.region_token_and_signature = "raw region and sig";
@@ -80,7 +74,6 @@ TEST_F(PpnAddEgressRequest, TestPpnRequest) {
   // or uint, so we need to test each value separately.
   EXPECT_EQ(actual["unblinded_token"], "raw message");
   EXPECT_EQ(actual["unblinded_token_signature"], "raw message signature");
-  EXPECT_EQ(actual["is_unblinded_token"], true);
   EXPECT_EQ(actual["region_token_and_signature"], "raw region and sig");
   EXPECT_EQ(actual["ppn"]["apn_type"], "ppn");
   EXPECT_EQ(actual["ppn"]["client_public_value"], keys.public_value);
@@ -107,17 +100,13 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestWithDynamicMtu) {
   response.set_json_body(R"json({})json");
   KryptonConfig config;
   config.add_copper_hostname_suffix("g-tun.com");
-  ASSERT_OK_AND_ASSIGN(auto auth_response,
-                       AuthAndSignResponse::FromProto(response, config));
 
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.auth_response = auth_response;
   params.crypto = &crypto;
   params.copper_control_plane_address = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;
-  params.blind_token_enabled = true;
   params.blind_message = "raw message";
   params.unblinded_token_signature = "raw message signature";
   params.region_token_and_signature = "raw region and sig";
@@ -135,7 +124,6 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestWithDynamicMtu) {
   // or uint, so we need to test each value separately.
   EXPECT_EQ(actual["unblinded_token"], "raw message");
   EXPECT_EQ(actual["unblinded_token_signature"], "raw message signature");
-  EXPECT_EQ(actual["is_unblinded_token"], true);
   EXPECT_EQ(actual["region_token_and_signature"], "raw region and sig");
   EXPECT_EQ(actual["ppn"]["apn_type"], "ppn");
   EXPECT_EQ(actual["ppn"]["client_public_value"], keys.public_value);
@@ -156,8 +144,6 @@ TEST_F(AddEgressRequestTest, TestRekeyParameters) {
 
   AddEgressRequest request;
   AddEgressRequest::PpnDataplaneRequestParams params;
-  AuthAndSignResponse auth_response;
-  params.auth_response = auth_response;
   params.crypto = &crypto;
   params.copper_control_plane_address = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
@@ -195,8 +181,6 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
 
   AddEgressRequest request;
   AddEgressRequest::PpnDataplaneRequestParams params;
-  AuthAndSignResponse auth_response;
-  params.auth_response = auth_response;
   params.crypto = &crypto;
   params.copper_control_plane_address = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;

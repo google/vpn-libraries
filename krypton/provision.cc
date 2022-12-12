@@ -24,7 +24,6 @@
 #include <utility>
 
 #include "base/logging.h"
-#include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
@@ -38,8 +37,6 @@
 #include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
-#include "third_party/absl/time/clock.h"
-#include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 
 namespace privacy {
@@ -109,7 +106,6 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
   auto copper_address_ = *resolved_address;
   LOG(INFO) << "Copper server address:" << copper_address_;
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.auth_response = auth_response;
   params.copper_control_plane_address = copper_address_;
   params.is_rekey = is_rekey;
   params.suite = config_.cipher_suite_key_length() == 256
@@ -121,7 +117,6 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
       auth_response.region_token_and_signatures();
   params.apn_type = auth_response.apn_type();
   if (config_.enable_blind_signing()) {
-    params.blind_token_enabled = true;
     params.blind_message = key_material_->original_message();
     std::string blinded_signature;
     if (auth_->auth_response().blinded_token_signatures().empty()) {

@@ -21,8 +21,8 @@
 #include <string>
 
 #include "privacy/net/brass/rpc/brass.proto.h"
-#include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
@@ -41,7 +41,6 @@ class AddEgressRequest {
   // Parameters needed for PpnDataplane.
   struct PpnDataplaneRequestParams {
    public:
-    AuthAndSignResponse auth_response;
     const crypto::SessionCrypto* crypto;  // Not owned.
     std::string copper_control_plane_address;
     ppn::PpnDataplaneRequest::CryptoSuite suite;
@@ -49,7 +48,6 @@ class AddEgressRequest {
     bool is_rekey;
     std::string signature;
     uint32_t uplink_spi;
-    bool blind_token_enabled = true;
     // Raw text that was sent to Zinc also needs to be sent to Brass.
     std::string blind_message;
     // This is the unblinded signature after receiving the blinding signature
