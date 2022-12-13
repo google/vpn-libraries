@@ -1,0 +1,97 @@
+/*
+ * Copyright (C) 2022 Google Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto2";
+
+package privacy.krypton.desktop;
+
+import "google/protobuf/timestamp.proto";
+
+option cc_api_version = 2;
+
+// OAuth 2.0 Configuration.
+message OAuthConfig {
+  // PPN Desktop client id.
+  optional string client_id = 1;
+
+  // Redirect URI.
+  optional string client_secret = 2;
+
+  // OAuth 2.0 Token endpoint.
+  optional string token_endpoint = 5;
+
+  // OAuth 2.0 scopes.
+  repeated string scopes = 6;
+
+  // OAuth 2.0 UserInfo endpoint.
+  optional string userinfo_endpoint = 7;
+
+  // OAuth 2.0 refresh token.
+  optional string refresh_token = 8;
+
+  reserved 3, 4;
+}
+
+message OAuthTokenRequest {
+  // OAuth 2.0 authorization code.
+  optional string code = 1;
+
+  // OAuth 2.0 code_verifier used as part of PKCE.
+  optional string code_verifier = 2;
+}
+
+message OAuthTokenRefreshRequest {
+  // OAuth 2.0 refresh token.
+  optional string refresh_token = 1;
+}
+
+// Proto representation of OAuth 2.0 Response.
+// Fields with json_name annotation correspond to their respective fields
+// defined in
+// https://developers.google.com/identity/protocols/oauth2/native-app#exchange-authorization-code.
+message OAuthTokenResponse {
+  // Access token returned as part of either initial token request or refresh
+  // token request.
+  optional string access_token = 1 [json_name = "access_token"];
+
+  // Seconds until access_token expires.
+  optional int64 expires_in = 2 [json_name = "expires_in"];
+
+  // Refresh token used to get new access_tokens. Only returned by initial
+  // token request.
+  optional string refresh_token = 3 [json_name = "refresh_token"];
+
+  // Should be Bearer.
+  optional string token_type = 4 [json_name = "token_type"];
+
+  // Space-delimited list of scopes for this particular access_token.
+  optional string scope = 5 [json_name = "scope"];
+
+  // Expiration timestamp. This is manually populated.
+  optional google.protobuf.Timestamp expires_at = 6;
+
+  // JSON Web Token (JWT) that contains digitally signed identity information
+  // about the user.
+  optional string id_token = 7 [json_name = "id_token"];
+}
+
+// Selected fields contained in UserInfo JSON that are of interest to us.
+// The fields and their descriptions are detailed in the Identity Platform
+// Documentation:
+// https://cloud.google.com/identity-platform/docs/reference/rest/v1/UserInfo
+message UserInfo {
+  optional string email = 1 [json_name = "email"];
+}

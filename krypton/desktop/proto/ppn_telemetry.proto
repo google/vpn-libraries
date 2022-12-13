@@ -1,0 +1,67 @@
+/*
+ * Copyright (C) 2022 Google Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto2";
+
+package privacy.krypton.desktop;
+
+import "google/protobuf/duration.proto";
+
+option cc_api_version = 2;
+
+// Collection of metrics for how PPN is running.
+// This proto is currently used only for PPN Windows client.
+// TODO: Consider using this proto for other PPN clients as well.
+message PpnTelemetry {
+  // Duration for how long some network was available since the last time
+  // telemetry was collected.
+  optional google.protobuf.Duration network_uptime = 1;
+
+  // Cumulative duration for how long PPN was fully connected since the last
+  // time telemetry was collected.
+  optional google.protobuf.Duration ppn_connection_uptime = 2;
+
+  // Cumulative duration for how long the VPN was turned on since the last time.
+  optional google.protobuf.Duration ppn_service_uptime = 3;
+
+  // Amount of time it took for auth to finish, every time it connected.
+  repeated google.protobuf.Duration auth_latency = 4;
+
+  // Amount of time it took for egress to be established, every time it
+  // connected.
+  repeated google.protobuf.Duration egress_latency = 5;
+
+  // Amount of time it took for oauth token to be generated during auth request,
+  // every time it connected.
+  repeated google.protobuf.Duration oauth_latency = 6;
+
+  // Amount of time it took for the token to be checked by zinc during auth
+  // request, every time it connected.
+  repeated google.protobuf.Duration zinc_latency = 7;
+
+  // Number of successful rekeys since the last time telemetry was collected.
+  optional uint32 successful_rekeys = 8;
+
+  // Number of network switches since the last time telemetry was collected.
+  optional uint32 network_switches = 9;
+
+  // List of all disconnection durations since the last time telemetry was
+  // collected.
+  repeated google.protobuf.Duration disconnection_durations = 10;
+
+  // Number of disconnections since the last time telemetry was collected.
+  optional uint32 disconnection_count = 11;
+}
