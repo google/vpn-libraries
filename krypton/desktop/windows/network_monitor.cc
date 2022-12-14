@@ -15,6 +15,8 @@
 #include "privacy/net/krypton/desktop/windows/network_monitor.h"
 
 #include <cstdint>
+#include <memory>
+#include <optional>
 
 #include "base/logging.h"
 #include "privacy/net/krypton/desktop/windows/utils/error.h"
@@ -33,6 +35,8 @@
 namespace privacy {
 namespace krypton {
 namespace windows {
+
+// TODO: add automated tests for NetworkMonitor logic
 
 // Tells the global network context monitor context that this reference to the
 // monitor is no longer needed.
@@ -492,17 +496,17 @@ void NetworkMonitor::SelectBestNetwork() {
     }
   }
 
-  if (best_index == current_index_) {
+  if (best_index == current_index_ && initial_network_set_) {
     if (best_index == std::nullopt) {
-      LOG(INFO) << "There is still no usable network.";
+      LOG(INFO) << "Xenon: There is still no usable network.";
     } else {
-      LOG(INFO) << "The best network interface has not changed.";
+      LOG(INFO) << "Xenon: The best network interface has not changed.";
     }
     return;
   }
 
   std::optional<NetworkInfo> best_network;
-  if (!best_index) {
+  if (best_index == std::nullopt) {
     LOG(INFO) << "Xenon: Switching to no network.";
   } else {
     best_network = network_info_[*best_index];
@@ -517,6 +521,10 @@ void NetworkMonitor::SelectBestNetwork() {
     notification_looper_->Post([notification, best_network] {
       notification->BestNetworkChanged(best_network);
     });
+  }
+
+  if (!initial_network_set_) {
+    initial_network_set_ = true;
   }
 }
 

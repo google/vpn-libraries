@@ -15,12 +15,16 @@
 #ifndef PRIVACY_NET_KRYPTON_DESKTOP_WINDOWS_NETWORK_MONITOR_H_
 #define PRIVACY_NET_KRYPTON_DESKTOP_WINDOWS_NETWORK_MONITOR_H_
 
+// Include order matters for Windows.
+// clang-format off
 #include <winsock2.h>
 #include <windows.h>
 #include <ws2ipdef.h>
 #include <iphlpapi.h>
+// clang-format on
 
 #include <cstdint>
+#include <map>
 #include <optional>
 
 #include "privacy/net/krypton/proto/network_info.proto.h"
@@ -100,6 +104,7 @@ class NetworkMonitor {
   // These should only be accessed from the looper_.
   std::optional<int64_t> current_index_;
   std::map<int64_t, NetworkInfo> network_info_;
+  bool initial_network_set_ = false;
 
   // Windows calls the interface changed callback from multiple different
   // threads, and sometimes calls it multiple times simultaneously. So, by
