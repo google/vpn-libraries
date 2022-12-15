@@ -65,11 +65,6 @@ class IpSecPacket {
   /** Returns a pointer to the header section of this packet. */
   EspHeader *header() { return reinterpret_cast<EspHeader *>(buffer_); }
 
-  /** Returns a pointer to the header section of this packet. */
-  const EspHeader *header() const {
-    return reinterpret_cast<const EspHeader *>(buffer_);
-  }
-
   /** Returns the current size of the data section of this packet. */
   size_t data_size() const { return data_size_; }
 
