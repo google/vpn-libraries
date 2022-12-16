@@ -202,14 +202,10 @@ void PpnService::StopWithKryptonService(const absl::Status& status) {
     LOG(ERROR) << "PpnService(C++): Failed to stop Krypton service.";
     return;
   }
-  // Send the stop notification if PPN stop ipc call failed earlier and krypton
-  // service is stopped.
-  if (!response_status.ok() ||
-      response_status->response().status().code() != google::rpc::Code::OK) {
-    ppn_notification_looper_->Post([ppn_notification, stop_status] {
-      ppn_notification->PpnStopped(stop_status);
-    });
-  }
+
+  ppn_notification_looper_->Post([ppn_notification, stop_status] {
+    ppn_notification->PpnStopped(stop_status);
+  });
 }
 
 absl::StatusOr<desktop::PpnTelemetry> PpnService::CollectTelemetry() {
