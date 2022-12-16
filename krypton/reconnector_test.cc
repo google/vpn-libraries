@@ -51,12 +51,6 @@ using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::status::StatusIs;
 
-constexpr char kExpectedConfig[] = R"pb(
-  zinc_url: "https://autopush.zinc"
-  brass_url: "https://autopush.brass"
-  service_type: "g1"
-)pb";
-
 class MockSessionNotification : public Session::NotificationInterface {
  public:
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
