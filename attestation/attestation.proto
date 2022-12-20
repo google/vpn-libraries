@@ -76,13 +76,6 @@ message VerdictBreakdown {
   Verdict device_properties_verdict = 3;
 }
 
-message PrepareAttestationData {
-  bytes attestation_nonce = 2 [
-
-    json_name = "attestation_nonce"
-  ];
-}
-
 message AndroidAttestationData {
   // Play IntegrityToken returned by Play Integrity API is detailed in
   // https://developer.android.com/google/play/integrity/verdict.
