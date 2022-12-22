@@ -15,6 +15,7 @@
 package com.google.android.libraries.privacy.ppn.xenon.impl;
 
 import static com.google.common.truth.Truth.assertThat;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.stream.Collectors.toList;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -58,6 +59,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.Before;
@@ -144,7 +146,7 @@ public final class PpnNetworkManagerImplTest {
             .map(networkCallback -> ((PpnNetworkCallback) networkCallback).getNetworkType())
             .collect(toList());
 
-    // Note: ContainsExactly is NOT order dependent, which we are not gauaranteed.
+    // Note: ContainsExactly is NOT order dependent, which we are not guaranteed.
     assertThat(networkTypes).containsExactly(NetworkType.WIFI, NetworkType.CELLULAR);
   }
 
@@ -163,7 +165,7 @@ public final class PpnNetworkManagerImplTest {
             .map(networkCallback -> ((PpnNetworkCallback) networkCallback).getNetworkType())
             .collect(toList());
 
-    // Note: ContainsExactly is NOT order dependent, which we are not gauaranteed.
+    // Note: ContainsExactly is NOT order dependent, which we are not guaranteed.
     assertThat(networkTypes).containsExactly(NetworkType.WIFI, NetworkType.CELLULAR);
   }
 
@@ -183,7 +185,7 @@ public final class PpnNetworkManagerImplTest {
 
   @Test
   public void testStopNetworkRequests_clearsState() throws Exception {
-    // Add a new avaiable Network.
+    // Add a new available Network.
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
     await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
@@ -205,7 +207,7 @@ public final class PpnNetworkManagerImplTest {
     Set<NetworkCallback> networkCallbacksBefore = shadowConnectivityManager.getNetworkCallbacks();
     assertThat(networkCallbacksBefore).hasSize(2);
 
-    // Add a new avaiable Network.
+    // Add a new available Network.
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
     await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
@@ -388,13 +390,12 @@ public final class PpnNetworkManagerImplTest {
 
     // Mock the connectivity check to be false.
     ConditionVariable checkGetStarted1 = new ConditionVariable(false);
-    doAnswer(
+    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork))
+        .thenAnswer(
             invocation -> {
               checkGetStarted1.open();
               return false;
-            })
-        .when(mockHttpFetcher)
-        .checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork);
+            });
 
     // Make sure the connectivity test fails once.
     Task<Boolean> handleTask = ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
@@ -404,20 +405,22 @@ public final class PpnNetworkManagerImplTest {
     assertThat(ppnNetworkManager.getAllNetworks()).isEmpty();
 
     // Mock the connectivity check to be true now.
-    ConditionVariable checkGetStarted2 = new ConditionVariable(false);
-    doAnswer(
+    Semaphore checkGetStarted2 = new Semaphore(0);
+    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork))
+        .thenAnswer(
             invocation -> {
-              checkGetStarted2.open();
+              checkGetStarted2.release();
               return true;
-            })
-        .when(mockHttpFetcher)
-        .checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork);
+            });
 
-    // Idle the Looper long enough for it to retry the connectivity check.
-    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(16));
-
-    // Wait for the second network check to complete.
-    assertThat(checkGetStarted2.block(1000)).isTrue();
+    // Idle the Looper long enough for it to retry the connectivity check and wait for the second
+    // network check to complete.
+    boolean success = false;
+    for (int attempt = 0; attempt < 3 && !success; ++attempt) {
+      shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(8));
+      success |= checkGetStarted2.tryAcquire(100, MILLISECONDS);
+    }
+    assertThat(success).isTrue();
     verify(mockHttpFetcher, times(2)).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork);
 
     // Verify that the WifiNetwork is now available.
@@ -797,7 +800,7 @@ public final class PpnNetworkManagerImplTest {
 
     ((PpnNetworkManagerImpl) ppnNetworkManager).cleanUpNetworkMaps();
 
-    // Verify that no networks were removed from the avaiable network map.
+    // Verify that no networks were removed from the available network map.
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(2);
   }
 
@@ -814,7 +817,7 @@ public final class PpnNetworkManagerImplTest {
 
     ((PpnNetworkManagerImpl) ppnNetworkManager).cleanUpNetworkMaps();
 
-    // Verify that all networks were removed from the avaiable network map.
+    // Verify that all networks were removed from the available network map.
     assertThat(ppnNetworkManager.getAllNetworks()).isEmpty();
   }
 
