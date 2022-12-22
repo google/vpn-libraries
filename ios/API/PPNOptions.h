@@ -170,4 +170,14 @@ FOUNDATION_EXTERN PPNOptionKey const PPNOptionRefreshToken;
  */
 FOUNDATION_EXTERN PPNOptionKey const PPNOptionCountryCode;
 
+/**
+ * Indicates whether the network extension crash reporting is enabled;
+ */
+FOUNDATION_EXTERN PPNOptionKey const PPNOptionNetworkExtensionCrashReportingEnabled;
+
+/**
+ * Indicates whether uploading network extension crash report is enabled.
+ */
+FOUNDATION_EXTERN PPNOptionKey const PPNOptionNetworkExtensionUploadCrashReportEnabled;
+
 NS_ASSUME_NONNULL_END

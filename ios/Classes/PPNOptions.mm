@@ -83,6 +83,12 @@ PPNOptionKey const PPNOptionRefreshToken = @"refreshToken";
 
 PPNOptionKey const PPNOptionCountryCode = @"countryCode";
 
+PPNOptionKey const PPNOptionNetworkExtensionCrashReportingEnabled =
+    @"networkExtensionCrashReportingEnabled";
+
+PPNOptionKey const PPNOptionNetworkExtensionUploadCrashReportEnabled =
+    @"networkExtensionUploadCrashReportEnabled";
+
 #pragma mark - Default Option Values
 
 static PPNOptionKey const PPNOptionDefaultZincURLString =
