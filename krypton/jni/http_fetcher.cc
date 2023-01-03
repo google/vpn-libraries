@@ -24,8 +24,6 @@
 #include "privacy/net/krypton/jni/jni_utils.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "third_party/absl/strings/string_view.h"
-#include "third_party/jsoncpp/value.h"
-#include "third_party/jsoncpp/writer.h"
 
 namespace privacy {
 namespace krypton {

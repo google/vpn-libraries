@@ -32,8 +32,6 @@
 #include "third_party/absl/cleanup/cleanup.h"
 #include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
-#include "third_party/jsoncpp/value.h"
-#include "third_party/jsoncpp/writer.h"
 
 namespace privacy {
 namespace krypton {
@@ -62,8 +60,8 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
   // If dwUrlLength is set to zero, WinHttpCrackUrl assumes that the pwszUrl
   // string is null terminated
   std::wstring url = utils::CharToWstring(request.url());
-  if (!WinHttpCrackUrl(url.data(), url.size(),
-                       /* dwFlags= */ 0, &url_server_components)) {
+  if (WinHttpCrackUrl(url.data(), url.size(),
+                      /* dwFlags= */ 0, &url_server_components) == 0) {
     return CreateErrorResponse(
         absl::StrCat("WinHttpCrackUrl unable to parse URL: ", request.url()));
   }
@@ -79,7 +77,7 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
       /* pszAgentW= */ L"PPN HttpFetcher", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
       WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS,
       /* dwFlags= */ 0);
-  if (!session_handle) {
+  if (session_handle == nullptr) {
     return CreateErrorResponse("WinHttpOpen failed");
   }
   auto session_handle_cleanup = absl::MakeCleanup(
@@ -90,7 +88,7 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
       session_handle, (LPCWSTR)hostname.c_str(), url_server_components.nPort,
       /* dwReserved= */ 0);
 
-  if (!connect_handle) {
+  if (connect_handle == nullptr) {
     return CreateErrorResponse("WinHttpConnect failed");
   }
   auto connect_handle_cleanup = absl::MakeCleanup(
@@ -99,12 +97,13 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
   // Use WinHttpOpenRequest to obtain a HINTERNET request handle.
   HINTERNET request_handle = WinHttpOpenRequest(
       connect_handle, /* pwszVerb= */ L"POST", (LPCWSTR)url_path.c_str(),
-      /* pwszVersion= */ NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+      /* pwszVersion= */ nullptr, WINHTTP_NO_REFERER,
+      WINHTTP_DEFAULT_ACCEPT_TYPES,
       url_server_components.nScheme == INTERNET_SCHEME_HTTPS
           ? WINHTTP_FLAG_SECURE
           : 0);
 
-  if (!request_handle) {
+  if (request_handle == nullptr) {
     return CreateErrorResponse("WinHttpOpenRequest failed");
   }
   auto request_handle_cleanup = absl::MakeCleanup(
@@ -127,23 +126,23 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
     }
   }
 
-  if (!WinHttpAddRequestHeaders(request_handle, headers,
-                                /* dwHeadersLength= */ -1,
-                                WINHTTP_ADDREQ_FLAG_ADD)) {
+  if (WinHttpAddRequestHeaders(request_handle, headers,
+                               /* dwHeadersLength= */ -1,
+                               WINHTTP_ADDREQ_FLAG_ADD) == 0) {
     return CreateErrorResponse("WinHttpAddRequestHeaders failed");
   }
 
   const char* post_data = request.json_body().c_str();
   int post_data_length = strlen(post_data);
 
-  if (!WinHttpSendRequest(request_handle, WINHTTP_NO_ADDITIONAL_HEADERS,
-                          /* dwHeadersLength= */ 0, (LPVOID)post_data,
-                          post_data_length, post_data_length,
-                          /* dwContext= */ 0)) {
+  if (WinHttpSendRequest(request_handle, WINHTTP_NO_ADDITIONAL_HEADERS,
+                         /* dwHeadersLength= */ 0, (LPVOID)post_data,
+                         post_data_length, post_data_length,
+                         /* dwContext= */ 0) == 0) {
     return CreateErrorResponse("WinHttpSendRequest failed");
   }
 
-  if (!WinHttpReceiveResponse(request_handle, /* lpReserved= */ NULL)) {
+  if (WinHttpReceiveResponse(request_handle, /* lpReserved= */ nullptr) == 0) {
     return CreateErrorResponse("WinHttpReceiveResponse failed");
   }
 
@@ -152,13 +151,15 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
   DWORD status_code_length = sizeof(status_code);
   WCHAR status_message[128];
   ULONG status_message_length = sizeof(status_message);
-  if (!WinHttpQueryHeaders(
-          request_handle, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-          /* pwszName= */ NULL, &status_code, &status_code_length,
-          /* lpdwIndex= */ NULL) ||
-      !WinHttpQueryHeaders(request_handle, WINHTTP_QUERY_STATUS_TEXT,
-                           /* pwszName= */ NULL, &status_message,
-                           &status_message_length, /* lpdwIndex= */ NULL)) {
+  if ((WinHttpQueryHeaders(
+           request_handle,
+           WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+           /* pwszName= */ nullptr, &status_code, &status_code_length,
+           /* lpdwIndex= */ nullptr) == 0) ||
+      (WinHttpQueryHeaders(request_handle, WINHTTP_QUERY_STATUS_TEXT,
+                           /* pwszName= */ nullptr, &status_message,
+                           &status_message_length,
+                           /* lpdwIndex= */ nullptr) == 0)) {
     return CreateErrorResponse("WinHttpQueryHeaders failed");
   }
 
@@ -172,22 +173,22 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
   }
 
   // Read response
-  std::string json_result = "";
+  std::string json_result;
   DWORD available_data_size = 0;
   while (true) {
-    if (!WinHttpQueryDataAvailable(request_handle, &available_data_size)) {
+    if (WinHttpQueryDataAvailable(request_handle, &available_data_size) == 0) {
       return CreateErrorResponse("WinHttpQueryDataAvailable failed");
     }
     if (available_data_size == 0) break;
 
     // Allocate space for the buffer.
-    std::string temp = "";
+    std::string temp;
     temp.resize(available_data_size);
 
     // Read the data.
     DWORD bytes_read = 0;
-    if (!WinHttpReadData(request_handle, (LPVOID)(&temp[0]),
-                         available_data_size, &bytes_read)) {
+    if (WinHttpReadData(request_handle, (LPVOID)(&temp[0]), available_data_size,
+                        &bytes_read) == 0) {
       return CreateErrorResponse("WinHttpReadData failed");
     }
     if (bytes_read != available_data_size) {
