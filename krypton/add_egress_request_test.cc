@@ -20,11 +20,12 @@
 #include <string>
 
 #include "privacy/net/krypton/crypto/session_crypto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/utils/json_util.h"
+#include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
-#include "third_party/jsoncpp/reader.h"
-#include "third_party/jsoncpp/value.h"
-#include "third_party/jsoncpp/writer.h"
+#include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -64,11 +65,9 @@ TEST_F(PpnAddEgressRequest, TestPpnRequest) {
   params.apn_type = "ppn";
 
   auto http_request = request.EncodeToProtoForPpn(params);
-  EXPECT_TRUE(http_request);
 
-  Json::Value actual;
-  Json::Reader reader;
-  reader.parse(http_request.value().json_body(), actual);
+  ASSERT_OK_AND_ASSIGN(auto actual,
+                       utils::StringToJson(http_request.json_body()));
 
   // Round-tripping through serialization causes int values to randomly be int
   // or uint, so we need to test each value separately.
@@ -80,12 +79,12 @@ TEST_F(PpnAddEgressRequest, TestPpnRequest) {
   EXPECT_EQ(actual["ppn"]["client_nonce"], keys.nonce);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
             absl::StrCat(kCopperControlPlaneAddress, ":1849"));
-  EXPECT_EQ(actual["ppn"]["downlink_spi"].asUInt(), crypto.downlink_spi());
+  EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
   EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
             crypto.GetRekeyVerificationKey().ValueOrDie());
-  EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"].isNull());
+  EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"].is_null());
 }
 
 TEST_F(PpnAddEgressRequest, TestPpnRequestWithDynamicMtu) {
@@ -114,11 +113,9 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestWithDynamicMtu) {
   params.dynamic_mtu_enabled = true;
 
   auto http_request = request.EncodeToProtoForPpn(params);
-  EXPECT_TRUE(http_request);
 
-  Json::Value actual;
-  Json::Reader reader;
-  reader.parse(http_request.value().json_body(), actual);
+  ASSERT_OK_AND_ASSIGN(auto actual,
+                       utils::StringToJson(http_request.json_body()));
 
   // Round-tripping through serialization causes int values to randomly be int
   // or uint, so we need to test each value separately.
@@ -130,12 +127,12 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestWithDynamicMtu) {
   EXPECT_EQ(actual["ppn"]["client_nonce"], keys.nonce);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
             absl::StrCat(kCopperControlPlaneAddress, ":1849"));
-  EXPECT_EQ(actual["ppn"]["downlink_spi"].asUInt(), crypto.downlink_spi());
+  EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
   EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
             crypto.GetRekeyVerificationKey().ValueOrDie());
-  EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"].asBool());
+  EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"]);
 }
 
 TEST_F(AddEgressRequestTest, TestRekeyParameters) {
@@ -152,11 +149,9 @@ TEST_F(AddEgressRequestTest, TestRekeyParameters) {
   params.signature = "some_signature";
   params.uplink_spi = 1234;
   auto http_request = request.EncodeToProtoForPpn(params);
-  EXPECT_TRUE(http_request);
 
-  Json::Value actual;
-  Json::Reader reader;
-  reader.parse(http_request.value().json_body(), actual);
+  ASSERT_OK_AND_ASSIGN(auto actual,
+                       utils::StringToJson(http_request.json_body()));
 
   // Round-tripping through serialization causes int values to randomly be int
   // or uint, so we need to test each value separately.
@@ -165,14 +160,14 @@ TEST_F(AddEgressRequestTest, TestRekeyParameters) {
   EXPECT_EQ(actual["ppn"]["client_nonce"], keys.nonce);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
             absl::StrCat(kCopperControlPlaneAddress, ":1849"));
-  EXPECT_EQ(actual["ppn"]["downlink_spi"].asUInt(), crypto.downlink_spi());
+  EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
   EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
             crypto.GetRekeyVerificationKey().ValueOrDie());
   EXPECT_EQ(actual["ppn"]["rekey_signature"], params.signature);
-  EXPECT_EQ(actual["ppn"]["previous_uplink_spi"].asUInt(), params.uplink_spi);
-  EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"].isNull());
+  EXPECT_EQ(actual["ppn"]["previous_uplink_spi"], params.uplink_spi);
+  EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"].is_null());
 }
 
 TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
@@ -190,12 +185,9 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   params.uplink_spi = 1234;
   params.dynamic_mtu_enabled = true;
   auto http_request = request.EncodeToProtoForPpn(params);
-  EXPECT_TRUE(http_request);
 
-  Json::Value actual;
-  Json::Reader reader;
-  reader.parse(http_request.value().json_body(), actual);
-
+  ASSERT_OK_AND_ASSIGN(auto actual,
+                       utils::StringToJson(http_request.json_body()));
   // Round-tripping through serialization causes int values to randomly be int
   // or uint, so we need to test each value separately.
   EXPECT_EQ(actual["unblinded_token"], "");
@@ -203,14 +195,14 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   EXPECT_EQ(actual["ppn"]["client_nonce"], keys.nonce);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
             absl::StrCat(kCopperControlPlaneAddress, ":1849"));
-  EXPECT_EQ(actual["ppn"]["downlink_spi"].asUInt(), crypto.downlink_spi());
+  EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
   EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
             crypto.GetRekeyVerificationKey().ValueOrDie());
   EXPECT_EQ(actual["ppn"]["rekey_signature"], params.signature);
-  EXPECT_EQ(actual["ppn"]["previous_uplink_spi"].asUInt(), params.uplink_spi);
-  EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"].asBool());
+  EXPECT_EQ(actual["ppn"]["previous_uplink_spi"], params.uplink_spi);
+  EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"]);
 }
 
 }  // namespace krypton

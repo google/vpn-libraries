@@ -22,6 +22,7 @@
 #include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
+#include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/status/status.h"
@@ -31,8 +32,7 @@
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
-#include "third_party/jsoncpp/reader.h"
-#include "third_party/jsoncpp/value.h"
+#include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -43,26 +43,26 @@ using privacy::ppn::PpnIkeResponse;
 namespace {
 
 // Fill proto repeated field containing string values from a json array.
-absl::Status CopyStringArray(Json::Value object, const std::string& key,
+absl::Status CopyStringArray(nlohmann::json object, const std::string& key,
                              ::proto2::RepeatedPtrField<std::string>* output) {
   output->Clear();
-  if (!object.isMember(key)) {
+  if (!object.contains(key)) {
     // Proto 3 doesn't distinguish between a missing field and an empty field,
     // so if it's missing, we won't count that as an error.
     return absl::OkStatus();
   }
   auto array = object[key];
-  if (!array.isArray()) {
+  if (!array.is_array()) {
     return absl::InvalidArgumentError(
         absl::StrCat(key, " is not of array type"));
   }
 
   for (const auto& element : array) {
-    if (!element.isString()) {
+    if (!element.is_string()) {
       return absl::InvalidArgumentError(
           absl::StrCat(key, " element is not of type string"));
     }
-    output->Add(element.asString());
+    output->Add(element);
   }
   return absl::OkStatus();
 }
@@ -76,35 +76,38 @@ absl::Status CopyStringArray(Json::Value object, const std::string& key,
 // Proto 3 doesn't distinguish between a missing field and a default value, so
 // if it's missing, leave it as the default value.
 #define COPY_SCALAR_VALUE(json_obj, json_key, proto, proto_field, type_check, \
-                          type_cast)                                          \
+                          type)                                               \
   do {                                                                        \
-    if (!json_obj.isMember(JsonKeys::json_key)) {                             \
+    if (!json_obj.contains(JsonKeys::json_key)) {                             \
       break;                                                                  \
     }                                                                         \
     if (!json_obj[JsonKeys::json_key].type_check()) {                         \
       return absl::InvalidArgumentError(                                      \
           absl::StrCat(JsonKeys::json_key, " value is incorrect type"));      \
     }                                                                         \
-    proto.set_##proto_field(json_obj[JsonKeys::json_key].type_cast());        \
+    type value = json_obj[JsonKeys::json_key];                                \
+    proto.set_##proto_field(value);                                           \
   } while (0)
 
-#define COPY_INT_VALUE(json_obj, json_key, proto, proto_field) \
-  COPY_SCALAR_VALUE(json_obj, json_key, proto, proto_field, isIntegral, asInt)
+#define COPY_INT_VALUE(json_obj, json_key, proto, proto_field)                 \
+  COPY_SCALAR_VALUE(json_obj, json_key, proto, proto_field, is_number_integer, \
+                    int)
 
-#define COPY_STRING_VALUE(json_obj, json_key, proto, proto_field) \
-  COPY_SCALAR_VALUE(json_obj, json_key, proto, proto_field, isString, asString)
+#define COPY_STRING_VALUE(json_obj, json_key, proto, proto_field)      \
+  COPY_SCALAR_VALUE(json_obj, json_key, proto, proto_field, is_string, \
+                    std::string)
 
 // Similar to COPY_STRING_VALUE, but decodes base64 strings as bytes.
 #define COPY_BYTES_VALUE(json_obj, json_key, proto, proto_field)           \
   do {                                                                     \
-    if (!json_obj.isMember(JsonKeys::json_key)) {                          \
+    if (!json_obj.contains(JsonKeys::json_key)) {                          \
       break;                                                               \
     }                                                                      \
-    if (!json_obj[JsonKeys::json_key].isString()) {                        \
+    if (!json_obj[JsonKeys::json_key].is_string()) {                       \
       return absl::InvalidArgumentError(                                   \
           absl::StrCat(JsonKeys::json_key, " value is not a string"));     \
     }                                                                      \
-    std::string encoded = json_obj[JsonKeys::json_key].asString();         \
+    std::string encoded = json_obj[JsonKeys::json_key];                    \
     std::string decoded;                                                   \
     if (!absl::Base64Unescape(encoded, &decoded)) {                        \
       return absl::InvalidArgumentError(                                   \
@@ -114,25 +117,25 @@ absl::Status CopyStringArray(Json::Value object, const std::string& key,
   } while (0)
 
 absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
-    Json::Value json) {
+    nlohmann::json json) {
   PpnDataplaneResponse response;
 
   // We can't use the macros above to copy the user private IPs, because the
   // types in the protos don't example match the JSON.
-  if (json.isMember(JsonKeys::kUserPrivateIp)) {
-    if (!json[JsonKeys::kUserPrivateIp].isArray()) {
+  if (json.contains(JsonKeys::kUserPrivateIp)) {
+    if (!json[JsonKeys::kUserPrivateIp].is_array()) {
       return absl::InvalidArgumentError(
           "user_private_ip field was not an array");
     }
 
     for (const auto& private_ip : json[JsonKeys::kUserPrivateIp]) {
-      if (private_ip.isMember(JsonKeys::kIpv4)) {
-        response.add_user_private_ip()->set_ipv4_range(
-            private_ip[JsonKeys::kIpv4].asString());
+      if (private_ip.contains(JsonKeys::kIpv4)) {
+        std::string value = private_ip[JsonKeys::kIpv4];
+        response.add_user_private_ip()->set_ipv4_range(value);
       }
-      if (private_ip.isMember(JsonKeys::kIpv6)) {
-        response.add_user_private_ip()->set_ipv6_range(
-            private_ip[JsonKeys::kIpv6].asString());
+      if (private_ip.contains(JsonKeys::kIpv6)) {
+        std::string value = private_ip[JsonKeys::kIpv6];
+        response.add_user_private_ip()->set_ipv6_range(value);
       }
     }
   }
@@ -152,12 +155,12 @@ absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
   COPY_INT_VALUE(json, kUplinkSpi, response, uplink_spi);
 
   // This is the only Timestamp value, so there's no need for a helper macro.
-  if (json.isMember(JsonKeys::kExpiry)) {
-    if (!json[JsonKeys::kExpiry].isString()) {
+  if (json.contains(JsonKeys::kExpiry)) {
+    if (!json[JsonKeys::kExpiry].is_string()) {
       return absl::InvalidArgumentError("expiry timestamp is not a string");
     }
-    PPN_ASSIGN_OR_RETURN(
-        auto expiry, utils::ParseTimestamp(json[JsonKeys::kExpiry].asString()));
+    std::string value = json[JsonKeys::kExpiry];
+    PPN_ASSIGN_OR_RETURN(auto expiry, utils::ParseTimestamp(value));
 
     PPN_RETURN_IF_ERROR(utils::ToProtoTime(expiry, response.mutable_expiry()));
   }
@@ -165,7 +168,7 @@ absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
   return response;
 }
 
-absl::StatusOr<PpnIkeResponse> ParseIkeResponse(Json::Value json) {
+absl::StatusOr<PpnIkeResponse> ParseIkeResponse(nlohmann::json json) {
   PpnIkeResponse response;
 
   COPY_BYTES_VALUE(json, kClientId, response, client_id);
@@ -191,17 +194,14 @@ absl::Status AddEgressResponse::DecodeFromProto(const HttpResponse& response) {
                "No datapath found in the AddEgressResponse.");
   }
 
-  Json::Reader reader;
-  Json::Value body_root;
-  auto parsing_status = reader.parse(response.json_body(), body_root);
-  if (!parsing_status) {
-    parsing_status_ = absl::FailedPreconditionError(
-        "Cannot parse AddEgressResponse response");
+  auto json_obj = utils::StringToJson(response.json_body());
+  if (!json_obj.ok()) {
+    parsing_status_ = json_obj.status();
     LOG(ERROR) << parsing_status_;
     return parsing_status_;
   }
 
-  parsing_status_ = DecodeJsonBody(body_root);
+  parsing_status_ = DecodeJsonBody(*json_obj);
   if (!parsing_status_.ok()) {
     LOG(ERROR) << parsing_status_;
     return parsing_status_;
@@ -209,19 +209,19 @@ absl::Status AddEgressResponse::DecodeFromProto(const HttpResponse& response) {
   return parsing_status_ = absl::OkStatus();
 }
 
-absl::Status AddEgressResponse::DecodeJsonBody(Json::Value value) {
-  if (!value.isObject()) {
+absl::Status AddEgressResponse::DecodeJsonBody(nlohmann::json json_obj) {
+  if (!json_obj.is_object()) {
     return absl::InvalidArgumentError("JSON body was not a JSON object.");
   }
-  if (value.isMember(JsonKeys::kPpnDataplane)) {
+  if (json_obj.contains(JsonKeys::kPpnDataplane)) {
     PPN_ASSIGN_OR_RETURN(
         ppn_dataplane_response_,
-        ParsePpnDataplaneResponse(value[JsonKeys::kPpnDataplane]));
+        ParsePpnDataplaneResponse(json_obj[JsonKeys::kPpnDataplane]));
     return absl::OkStatus();
   }
-  if (value.isMember(JsonKeys::kIkeDataplane)) {
+  if (json_obj.contains(JsonKeys::kIkeDataplane)) {
     PPN_ASSIGN_OR_RETURN(ike_response_,
-                         ParseIkeResponse(value[JsonKeys::kIkeDataplane]));
+                         ParseIkeResponse(json_obj[JsonKeys::kIkeDataplane]));
     return absl::OkStatus();
   }
   return absl::InvalidArgumentError(

@@ -15,18 +15,13 @@
 #ifndef PRIVACY_NET_KRYPTON_ADD_EGRESS_REQUEST_H_
 #define PRIVACY_NET_KRYPTON_ADD_EGRESS_REQUEST_H_
 
-#include <cstdint>
-#include <memory>
-#include <optional>
 #include <string>
 
 #include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
-#include "third_party/absl/strings/string_view.h"
-#include "third_party/absl/types/optional.h"
-#include "third_party/jsoncpp/value.h"
+#include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -61,11 +56,10 @@ class AddEgressRequest {
     bool dynamic_mtu_enabled = false;
   };
 
-  std::optional<HttpRequest> EncodeToProtoForPpn(
-      const PpnDataplaneRequestParams& params);
+  HttpRequest EncodeToProtoForPpn(const PpnDataplaneRequestParams& params);
 
  private:
-  Json::Value BuildBodyJson(const PpnDataplaneRequestParams& params);
+  nlohmann::json BuildBodyJson(const PpnDataplaneRequestParams& params);
 };
 }  // namespace krypton
 }  // namespace privacy

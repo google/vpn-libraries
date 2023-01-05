@@ -26,7 +26,6 @@
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
-#include "third_party/jsoncpp/value.h"
 
 namespace privacy {
 namespace krypton {

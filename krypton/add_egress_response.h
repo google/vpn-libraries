@@ -27,7 +27,7 @@
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
-#include "third_party/jsoncpp/value.h"
+#include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -65,7 +65,7 @@ class AddEgressResponse {
   absl::Status DecodeFromProto(const HttpResponse& response);
 
   // Decode AddEgressResponse specific parameters
-  absl::Status DecodeJsonBody(Json::Value value);
+  absl::Status DecodeJsonBody(nlohmann::json json_obj);
 
   // PPN data plane response.
   std::optional<::privacy::ppn::PpnDataplaneResponse> ppn_dataplane_response_;

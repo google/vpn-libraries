@@ -16,17 +16,18 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "base/logging.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/utils/ip_range.h"
+#include "privacy/net/krypton/utils/json_util.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
-#include "third_party/jsoncpp/reader.h"
-#include "third_party/jsoncpp/value.h"
-#include "third_party/jsoncpp/writer.h"
+#include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -36,18 +37,17 @@ constexpr int kCopperPort = 1849;
 
 }  // namespace
 
-std::optional<HttpRequest> AddEgressRequest::EncodeToProtoForPpn(
+HttpRequest AddEgressRequest::EncodeToProtoForPpn(
     const PpnDataplaneRequestParams& params) {
   HttpRequest request;
-  Json::FastWriter writer;
-  request.set_json_body(writer.write(BuildBodyJson(params)));
+  request.set_json_body(utils::JsonToString(BuildBodyJson(params)));
   return request;
 }
 
-Json::Value AddEgressRequest::BuildBodyJson(
+nlohmann::json AddEgressRequest::BuildBodyJson(
     const PpnDataplaneRequestParams& params) {
-  Json::Value json_body;
-  Json::Value ppn;
+  nlohmann::json json_body;
+  nlohmann::json ppn;
 
   // Add blind stuff.
   json_body[JsonKeys::kUnblindedToken] = params.blind_message;

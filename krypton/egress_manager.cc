@@ -28,12 +28,9 @@
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
-#include "privacy/net/krypton/auth_and_sign_response.h"
-#include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/http_fetcher.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
-#include "privacy/net/krypton/utils/ip_range.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
@@ -45,7 +42,6 @@
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/clock.h"
 #include "third_party/absl/types/optional.h"
-#include "third_party/jsoncpp/writer.h"
 
 namespace privacy {
 namespace krypton {
@@ -221,15 +217,9 @@ absl::Status EgressManager::GetEgressNodeForPpnIpSec(
   request_time_ = absl::Now();
 
   auto add_egress_http_request = add_egress_request.EncodeToProtoForPpn(params);
-  if (!add_egress_http_request) {
-    LOG(ERROR) << "Cannot build AddEgressRequest for PPN IpSec";
-    return absl::FailedPreconditionError(
-        "Cannot build AddEgressRequest for PPN IPSec");
-  }
-
-  add_egress_http_request->set_url(brass_url_);
+  add_egress_http_request.set_url(brass_url_);
   http_fetcher_.PostJsonAsync(
-      add_egress_http_request.value(),
+      add_egress_http_request,
       absl::bind_front(&EgressManager::DecodeAddEgressResponse, this,
                        params.is_rekey));
 

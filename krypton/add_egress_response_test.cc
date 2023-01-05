@@ -106,5 +106,16 @@ TEST(AddEgressResponse, TestAddEgressIkeResponse) {
               )pb"));
 }
 
+TEST(AddEgressResponse, TestAddEgressMalformedJsonBody) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(R"string(
+  {}})string");
+
+  EXPECT_THAT(AddEgressResponse::FromProto(proto),
+              testing::status::StatusIs(absl::StatusCode::kInternal));
+}
+
 }  // namespace krypton
 }  // namespace privacy

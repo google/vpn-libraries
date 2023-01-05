@@ -26,7 +26,6 @@
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
-#include "third_party/jsoncpp/value.h"
 
 namespace privacy {
 namespace krypton {
