@@ -23,6 +23,7 @@ import android.net.Network;
 import android.util.Log;
 import com.google.android.libraries.privacy.ppn.internal.HttpRequest;
 import com.google.android.libraries.privacy.ppn.internal.HttpResponse;
+import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.internal.json.Json;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
@@ -425,6 +426,36 @@ public class HttpFetcherTest {
   }
 
   @Test
+  public void testCheckGetIpv4() throws Exception {
+    MockWebServer mockWebServer = new MockWebServer();
+    mockWebServer.start();
+    mockWebServer.enqueue(buildPositiveMockResponse());
+
+    boolean got = checkGet(mockWebServer.url("/").toString(), AddressFamily.V4);
+
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(0);
+    assertThat(got).isFalse();
+
+    mockWebServer.shutdown();
+  }
+
+  @Test
+  public void testCheckGetIpv6() throws Exception {
+    MockWebServer mockWebServer = new MockWebServer();
+    mockWebServer.start();
+    mockWebServer.enqueue(buildPositiveMockResponse());
+
+    boolean got = checkGet(mockWebServer.url("/").toString(), AddressFamily.V6);
+
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    assertThat(request.getMethod()).isEqualTo("GET");
+    assertThat(got).isTrue();
+
+    mockWebServer.shutdown();
+  }
+
+  @Test
   public void testLookupDns() throws Exception {
     Dns mockDns = (hostname) -> Arrays.asList(address);
     httpFetcher.setDns(mockDns);
@@ -462,6 +493,22 @@ public class HttpFetcherTest {
         .then(invocation -> InetAddress.getAllByName(invocation.getArgument(0)));
     PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
     FutureTask<Boolean> future = new FutureTask<>(() -> httpFetcher.checkGet(url, ppnNetwork));
+    new Thread(future).start();
+    return future.get();
+  }
+
+  /**
+   * Runs a checkGet request in the background and blocks until it returns. This is needed because
+   * the synchronous checkGet method cannot be called on the main thread. The IP version used for
+   * checkGet can be restricted with addressFamily.
+   */
+  private boolean checkGet(String url, AddressFamily addressFamily) throws Exception {
+    // Override the multinetwork DNS lookup, since the test framework doesn't support it.
+    when(mockNetwork.getAllByName(anyString()))
+        .then(invocation -> InetAddress.getAllByName(invocation.getArgument(0)));
+    PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
+    FutureTask<Boolean> future =
+        new FutureTask<>(() -> httpFetcher.checkGet(url, ppnNetwork, addressFamily));
     new Thread(future).start();
     return future.get();
   }

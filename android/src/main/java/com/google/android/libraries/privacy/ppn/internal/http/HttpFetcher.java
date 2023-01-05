@@ -24,6 +24,7 @@ import com.google.android.gms.tasks.Tasks;
 import com.google.android.libraries.privacy.ppn.internal.HttpRequest;
 import com.google.android.libraries.privacy.ppn.internal.HttpResponse;
 import com.google.android.libraries.privacy.ppn.internal.HttpStatus;
+import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.protobuf.ByteString;
@@ -164,10 +165,11 @@ public class HttpFetcher {
   /**
    * Performs a GET request to the given URL on the given network and verifies it is successful. It
    * only checks whether the response was successful or not, aka response code [200, 300). This is a
-   * synchronous API and is blocking.
+   * synchronous API and is blocking. The address family used for the check can be controlled with
+   * the addressFamily argument.
    */
-  public boolean checkGet(String url, PpnNetwork ppnNetwork) {
-    Log.w(TAG, "HTTP GET (checkGet) to " + url);
+  public boolean checkGet(String url, PpnNetwork ppnNetwork, AddressFamily addressFamily) {
+    Log.w(TAG, "HTTP GET (checkGet) to " + url + " (" + addressFamily.name() + ")");
     Request req;
     try {
       req = buildCheckGetRequest(url);
@@ -178,11 +180,21 @@ public class HttpFetcher {
     }
 
     // Set the timeout to be a very short time period for checkGet calls.
-    HttpResponse response = doRequest(req, CHECK_GET_TIMEOUT, false, Optional.of(ppnNetwork));
+    HttpResponse response =
+        doRequest(req, CHECK_GET_TIMEOUT, false, Optional.of(ppnNetwork), addressFamily);
 
     // Whether the response has response code [200, 300).
     int status = response.getStatus().getCode();
     return status >= 200 && status < 300;
+  }
+
+  /**
+   * Performs a GET request to the given URL on the given network and verifies it is successful. It
+   * only checks whether the response was successful or not, aka response code [200, 300). This is a
+   * synchronous API and is blocking.
+   */
+  public boolean checkGet(String url, PpnNetwork ppnNetwork) {
+    return checkGet(url, ppnNetwork, AddressFamily.V4V6);
   }
 
   HttpResponse buildHttpResponse(int code, String message) {
@@ -235,12 +247,16 @@ public class HttpFetcher {
    * @param network optional network to perform the request on. If empty, uses the current network.
    */
   private HttpResponse doRequest(
-      Request request, Duration timeout, boolean parseJsonBody, Optional<PpnNetwork> network) {
+      Request request,
+      Duration timeout,
+      boolean parseJsonBody,
+      Optional<PpnNetwork> network,
+      AddressFamily addressFamily) {
     try {
       // Add a higher-level timeout to the await, in case okhttp's timeout fails.
       Duration awaitTimeout = timeout.plus(FALLBACK_TIMEOUT);
       return Tasks.await(
-          doRequestAsync(request, timeout, parseJsonBody, network),
+          doRequestAsync(request, timeout, parseJsonBody, network, addressFamily),
           awaitTimeout.toMillis(),
           MILLISECONDS);
     } catch (TimeoutException e) {
@@ -257,6 +273,20 @@ public class HttpFetcher {
   }
 
   /**
+   * Executes the given okhttp Request synchronously and returns an HttpResponse once the request is
+   * complete. The HttpResponse's HTTP status will indicate success or failure.
+   *
+   * @param request the okhttp request to perform.
+   * @param timeout the call timeout to use for okhttp.
+   * @param parseJsonBody whether to try to parse the body as JSON and validate it.
+   * @param network optional network to perform the request on. If empty, uses the current network.
+   */
+  private HttpResponse doRequest(
+      Request request, Duration timeout, boolean parseJsonBody, Optional<PpnNetwork> network) {
+    return doRequest(request, timeout, parseJsonBody, network, AddressFamily.V4V6);
+  }
+
+  /**
    * Executes the given okhttp Request asynchronously and returns a Task that will be resolved with
    * a result once the request is complete. The task should never fail. If the request failed, the
    * task will be completed with an HttpResponse whose HTTP status will indicate success or failure.
@@ -265,9 +295,14 @@ public class HttpFetcher {
    * @param timeout the call timeout to use for okhttp.
    * @param parseJsonBody whether to try to parse the body as JSON and validate it.
    * @param network optional network to perform the request on. If empty, uses the current network.
+   * @param addressFamily Address family to use for the request.
    */
   private Task<HttpResponse> doRequestAsync(
-      Request request, Duration timeout, boolean parseJsonBody, Optional<PpnNetwork> network) {
+      Request request,
+      Duration timeout,
+      boolean parseJsonBody,
+      Optional<PpnNetwork> network,
+      AddressFamily addressFamily) {
     SocketFactory factory =
         network.isPresent()
             ? socketFactory.withNetwork(network.get())
@@ -276,7 +311,7 @@ public class HttpFetcher {
     OkHttpClient.Builder builder = new OkHttpClient().newBuilder();
     Dns requestDns = dns;
     if (network.isPresent()) {
-      requestDns = new NetworkBoundDns(network.get());
+      requestDns = new NetworkBoundDns(network.get(), addressFamily);
     }
     OkHttpClient client =
         builder.callTimeout(timeout).dns(requestDns).socketFactory(factory).build();

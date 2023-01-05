@@ -16,6 +16,7 @@ package com.google.android.libraries.privacy.ppn.xenon;
 
 import android.net.Network;
 import android.os.Build;
+import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import java.util.concurrent.atomic.AtomicLong;
 import org.joda.time.DateTime;
@@ -29,12 +30,14 @@ public final class PpnNetwork {
   private final Network network;
   private final DateTime creationTime;
   private final long networkId;
+  private AddressFamily connectivity;
 
   public PpnNetwork(Network network, NetworkType networkType) {
     this.network = network;
     this.networkType = networkType;
     this.creationTime = DateTime.now();
     this.networkId = generateNetworkId(network);
+    this.connectivity = AddressFamily.V4V6;
   }
 
   /** Getter method for the Network. */
@@ -60,6 +63,14 @@ public final class PpnNetwork {
   /** Gets a unique, opaque ID associated with the network. */
   public long getNetworkId() {
     return networkId;
+  }
+
+  public AddressFamily getAddressFamily() {
+    return connectivity;
+  }
+
+  public void setConnectivity(AddressFamily connectivity) {
+    this.connectivity = connectivity;
   }
 
   @Override

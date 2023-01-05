@@ -22,7 +22,6 @@ import android.app.Notification;
 import android.content.Context;
 import android.content.Intent;
 import android.net.ConnectivityManager;
-import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
 import android.net.VpnService;
@@ -49,7 +48,6 @@ import com.google.android.libraries.privacy.ppn.PpnSnoozeStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
 import com.google.android.libraries.privacy.ppn.PpnTelemetry;
-import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
 import com.google.android.libraries.privacy.ppn.internal.http.CachedDns;
 import com.google.android.libraries.privacy.ppn.internal.http.Dns;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
@@ -73,9 +71,6 @@ import com.google.android.libraries.privacy.ppn.xenon.impl.XenonImpl;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
-import java.net.Inet4Address;
-import java.net.Inet6Address;
-import java.net.InetAddress;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
@@ -849,48 +844,17 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     }
   }
 
-  private static boolean isGlobalAddress(InetAddress address) {
-    return !(address.isLoopbackAddress()
-        || address.isMulticastAddress()
-        || address.isAnyLocalAddress()
-        || (address instanceof Inet6Address && address.isLinkLocalAddress())
-        || (address instanceof Inet6Address && address.isSiteLocalAddress()));
-  }
-
   private NetworkInfo createNetworkInfo(PpnNetwork ppnNetwork) {
     NetworkInfo.Builder builder =
         NetworkInfo.newBuilder()
             .setNetworkType(ppnNetwork.getNetworkType())
-            .setNetworkId(ppnNetwork.getNetworkId());
-
-    ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
-    LinkProperties linkProperties = manager.getLinkProperties(ppnNetwork.getNetwork());
-    boolean hasIPv4 = false;
-    boolean hasIPv6 = false;
-    for (LinkAddress linkAddress : linkProperties.getLinkAddresses()) {
-      InetAddress address = linkAddress.getAddress();
-      if (!isGlobalAddress(address)) {
-        continue;
-      }
-      if (address instanceof Inet4Address) {
-        hasIPv4 = true;
-      } else if (address instanceof Inet6Address) {
-        hasIPv6 = true;
-      }
-    }
-    if (hasIPv4 && hasIPv6) {
-      builder.setAddressFamily(AddressFamily.V4V6);
-    } else if (hasIPv4 && !hasIPv6) {
-      builder.setAddressFamily(AddressFamily.V4);
-    } else if (!hasIPv4 && hasIPv6) {
-      builder.setAddressFamily(AddressFamily.V6);
-    } else {
-      // The default is to just try both.
-      builder.setAddressFamily(AddressFamily.V4V6);
-    }
+            .setNetworkId(ppnNetwork.getNetworkId())
+            .setAddressFamily(ppnNetwork.getAddressFamily());
 
     if (options.isDynamicMtuEnabled()) {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
+        LinkProperties linkProperties = manager.getLinkProperties(ppnNetwork.getNetwork());
         int mtu = linkProperties.getMtu();
         if (mtu != 0) {
           builder.setMtu(mtu);

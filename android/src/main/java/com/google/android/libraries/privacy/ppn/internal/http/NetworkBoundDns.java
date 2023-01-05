@@ -16,9 +16,13 @@ package com.google.android.libraries.privacy.ppn.internal.http;
 
 import android.net.Network;
 import android.util.Log;
+import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -27,14 +31,31 @@ public class NetworkBoundDns implements Dns {
   private static final String TAG = "NetworkBoundDns";
 
   private final Network network;
+  private final AddressFamily addressFamily;
 
-  NetworkBoundDns(PpnNetwork ppnNetwork) {
+  NetworkBoundDns(PpnNetwork ppnNetwork, AddressFamily addressFamily) {
     this.network = ppnNetwork.getNetwork();
+    this.addressFamily = addressFamily;
   }
 
   @Override
   public List<InetAddress> lookup(String host) throws UnknownHostException {
     Log.w(TAG, "Doing DNS lookup on network " + network + " for host: " + host);
-    return Arrays.asList(network.getAllByName(host));
+
+    List<InetAddress> addresses = Arrays.asList(network.getAllByName(host));
+
+    if (addressFamily == AddressFamily.V4V6) {
+      return addresses;
+    }
+
+    List<InetAddress> matchingAddresses = new ArrayList<>();
+    for (InetAddress address : addresses) {
+      if ((addressFamily == AddressFamily.V4 && address instanceof Inet4Address)
+          || (addressFamily == AddressFamily.V6 && address instanceof Inet6Address)) {
+        matchingAddresses.add(address);
+      }
+    }
+
+    return matchingAddresses;
   }
 }
