@@ -17,16 +17,14 @@
 #include <optional>
 #include <string>
 
-#include "google/protobuf/any.proto.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
+#include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/zinc/rpc/zinc.proto.h"
-#include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
-#include "third_party/jsoncpp/value.h"
-#include "third_party/jsoncpp/writer.h"
+#include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -54,7 +52,7 @@ std::optional<HttpRequest> AuthAndSignRequest::EncodeToProto() const {
   if (attestation_data_) {
     http_request.set_proto_body(BuildBodyProto().SerializeAsString());
   } else {
-    http_request.set_json_body(BuildBody());
+    http_request.set_json_body(utils::JsonToString(BuildBodyJson()));
   }
   if (attach_oauth_as_header_) {
     (*http_request.mutable_headers())["Authorization"] =
@@ -63,25 +61,17 @@ std::optional<HttpRequest> AuthAndSignRequest::EncodeToProto() const {
   return http_request;
 }
 
-std::string AuthAndSignRequest::BuildBody() const {
-  Json::FastWriter writer;
-  return writer.write(BuildBodyJson());
-}
-
-Json::Value AuthAndSignRequest::BuildBodyJson() const {
+nlohmann::json AuthAndSignRequest::BuildBodyJson() const {
   // We have to manually build the json, because the standard proto->JSON
   // converter doesn't work with protolite protos used in Android.
-  Json::Value json_body;
+  nlohmann::json json_body;
   if (!attach_oauth_as_header_) {
     json_body[JsonKeys::kAuthTokenKey] = auth_token_;
   }
   json_body[JsonKeys::kServiceTypeKey] = service_type_;
   if (blinded_token_) {
-    Json::Value blinded_tokens_json_array =
-        Json::Value(Json::ValueType::arrayValue);
-    blinded_tokens_json_array.append(blinded_token_.value());
-
-    json_body[JsonKeys::kBlindedTokensKey] = blinded_tokens_json_array;
+    json_body[JsonKeys::kBlindedTokensKey] =
+        nlohmann::json::array({blinded_token_.value()});
   }
   if (public_key_hash_) {
     json_body[JsonKeys::kPublicKeyHash] = public_key_hash_.value();
@@ -107,16 +97,15 @@ ppn::AuthAndSignRequest AuthAndSignRequest::BuildBodyProto() const {
   return request;
 }
 
-std::optional<HttpRequest> PublicKeyRequest::EncodeToProto() const {
+HttpRequest PublicKeyRequest::EncodeToProto() const {
   HttpRequest request;
 
-  Json::Value json_body;
-  json_body["get_public_key"] = true;
+  nlohmann::json json_obj;
+  json_obj["get_public_key"] = true;
   if (request_nonce_) {
-    json_body["request_nonce"] = true;
+    json_obj["request_nonce"] = true;
   }
-  Json::FastWriter writer;
-  request.set_json_body(writer.write(json_body));
+  request.set_json_body(utils::JsonToString(json_obj));
   if (api_key_) {
     (*request.mutable_headers())["X-Goog-Api-Key"] = api_key_.value();
   }

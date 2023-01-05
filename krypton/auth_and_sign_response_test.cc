@@ -34,7 +34,7 @@ constexpr char kGoldenZincResponse[] = R"string(
   {"blinded_token_signature":["token1","token2"],"session_manager_ips":[""],"copper_controller_hostname":"test.b.g-tun.com","region_token_and_signature":"US123.sig","apn_type":"ppn"})string";
 
 constexpr char kGoldenPublicKeyResponse[] =
-    R"string({"pem": "some_pem"}})string";
+    R"string({"pem": "some_pem"})string";
 
 TEST(AuthAndSignResponse, TestAuthParameter) {
   HttpResponse proto;
@@ -177,6 +177,18 @@ TEST(AuthAndSignResponse, TestSuffixListMultipleElements) {
   EXPECT_EQ(auth_response.copper_controller_hostname(), "na.ppn-test");
 }
 
+TEST(AuthAndSignResponse, TestMalformedJsonBody) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body("{}}");
+
+  KryptonConfig config{};
+  EXPECT_THAT(AuthAndSignResponse::FromProto(proto, config),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Error parsing json body")));
+}
+
 TEST(PublicKeyResponse, TestSuccessful) {
   HttpResponse proto;
   proto.mutable_status()->set_code(200);
@@ -237,6 +249,18 @@ TEST(PublicKeyResponse, TestAttestationNonce) {
   EXPECT_EQ(response.pem(), "some-pem");
   ASSERT_TRUE(response.nonce().has_value());
   EXPECT_THAT(response.nonce(), testing::Optional(std::string("some-nonce")));
+}
+
+TEST(PublicKeyResponse, TestMalformedJsonBody) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body("{}}");
+
+  PublicKeyResponse response;
+  EXPECT_THAT(response.DecodeFromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Error parsing json body")));
 }
 
 }  // namespace

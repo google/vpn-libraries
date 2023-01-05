@@ -23,7 +23,7 @@
 #include "privacy/net/zinc/rpc/zinc.proto.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
-#include "third_party/jsoncpp/value.h"
+#include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -35,7 +35,7 @@ class PublicKeyRequest {
                             std::optional<std::string> api_key)
       : request_nonce_(request_nonce), api_key_(api_key) {}
   ~PublicKeyRequest() = default;
-  std::optional<HttpRequest> EncodeToProto() const;
+  HttpRequest EncodeToProto() const;
 
  private:
   HttpRequest http_request_;
@@ -58,8 +58,7 @@ class AuthAndSignRequest {
   std::optional<HttpRequest> EncodeToProto() const;
 
  private:
-  std::string BuildBody() const;
-  Json::Value BuildBodyJson() const;
+  nlohmann::json BuildBodyJson() const;
   ppn::AuthAndSignRequest BuildBodyProto() const;
 
   const std::string auth_token_;

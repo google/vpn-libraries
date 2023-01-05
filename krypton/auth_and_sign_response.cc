@@ -21,14 +21,14 @@
 #include "base/logging.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
+#include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/zinc/rpc/zinc.proto.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/match.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
-#include "third_party/jsoncpp/reader.h"
-#include "third_party/jsoncpp/value.h"
+#include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -48,16 +48,14 @@ absl::Status AuthAndSignResponse::DecodeFromProto(const HttpResponse& response,
     return parsing_status_ = absl::InvalidArgumentError("missing json body");
   }
 
-  Json::Reader reader;
-  Json::Value body_root;
-  auto parsing_status = reader.parse(response.json_body(), body_root);
-  if (!parsing_status) {
+  auto body_root = utils::StringToJson(response.json_body());
+  if (!body_root.ok()) {
     parsing_status_ = absl::InvalidArgumentError("Error parsing json body");
     LOG(ERROR) << parsing_status_;
     return parsing_status_;
   }
 
-  parsing_status_ = DecodeJsonBody(body_root, config);
+  parsing_status_ = DecodeJsonBody(*body_root, config);
   if (!parsing_status_.ok()) {
     LOG(ERROR) << parsing_status_;
     return parsing_status_;
@@ -111,13 +109,13 @@ absl::Status AuthAndSignResponse::DecodeProtoBody(absl::string_view bytes,
   return absl::OkStatus();
 }
 
-absl::Status AuthAndSignResponse::DecodeJsonBody(Json::Value value,
+absl::Status AuthAndSignResponse::DecodeJsonBody(nlohmann::json value,
                                                  const KryptonConfig& config) {
-  if (!value.isObject()) {
+  if (!value.is_object()) {
     return absl::InvalidArgumentError("JSON body is not of type JSON object");
   }
 
-  if (value.isMember("jwt")) {
+  if (value.contains("jwt")) {
     return absl::InvalidArgumentError("jwt response is not supported");
   }
 
@@ -125,15 +123,15 @@ absl::Status AuthAndSignResponse::DecodeJsonBody(Json::Value value,
   // blind token signatures.
 
   blinded_token_signatures_.clear();
-  if (value.isMember(JsonKeys::kBlindedTokenSignature)) {
+  if (value.contains(JsonKeys::kBlindedTokenSignature)) {
     auto signature_array = value[JsonKeys::kBlindedTokenSignature];
-    if (!signature_array.isArray()) {
+    if (!signature_array.is_array()) {
       return absl::InvalidArgumentError(
           "blinded_token_signature is not an array");
     }
     for (const auto& i : signature_array) {
-      if (i.isString()) {
-        blinded_token_signatures_.push_back(i.asString());
+      if (i.is_string()) {
+        blinded_token_signatures_.push_back(i);
       } else {
         return absl::InvalidArgumentError(
             "blinded_token_signature value is not a string");
@@ -141,13 +139,13 @@ absl::Status AuthAndSignResponse::DecodeJsonBody(Json::Value value,
     }
   }
 
-  if (value.isMember(JsonKeys::kCopperControllerHostname)) {
+  if (value.contains(JsonKeys::kCopperControllerHostname)) {
     auto hostname_string = value[JsonKeys::kCopperControllerHostname];
-    if (!hostname_string.isString()) {
+    if (!hostname_string.is_string()) {
       return absl::InvalidArgumentError(
           "copper_controller_hostname is not a string");
     }
-    const std::string hostname = hostname_string.asString();
+    const std::string hostname = hostname_string;
     if (!hostname.empty()) {
       bool matched = false;
       // If zinc provides a hostname,
@@ -169,20 +167,20 @@ absl::Status AuthAndSignResponse::DecodeJsonBody(Json::Value value,
     }
   }
 
-  if (value.isMember(JsonKeys::kRegionTokenAndSignature)) {
+  if (value.contains(JsonKeys::kRegionTokenAndSignature)) {
     auto region_token_and_sig = value[JsonKeys::kRegionTokenAndSignature];
-    if (!region_token_and_sig.isString()) {
+    if (!region_token_and_sig.is_string()) {
       return absl::InvalidArgumentError("region_token_and_sig is not a string");
     }
-    region_token_and_signatures_ = region_token_and_sig.asString();
+    region_token_and_signatures_ = region_token_and_sig;
   }
 
-  if (value.isMember(JsonKeys::kApnType)) {
+  if (value.contains(JsonKeys::kApnType)) {
     const auto apn_type = value[JsonKeys::kApnType];
-    if (!apn_type.isString()) {
+    if (!apn_type.is_string()) {
       return absl::InvalidArgumentError("apn_type is not a string");
     }
-    const std::string type = apn_type.asString();
+    const std::string type = apn_type;
     if (type != "ppn" && type != "bridge") {
       return absl::InvalidArgumentError("unexpected apn_type");
     }
@@ -199,36 +197,34 @@ absl::Status PublicKeyResponse::DecodeFromProto(const HttpResponse& response) {
   }
 
   // Try to parse the JSON in the body.
-  Json::Reader reader;
-  Json::Value body_root;
-  auto parsing_status = reader.parse(response.json_body(), body_root);
-  if (!parsing_status) {
-    parsing_status_ = absl::InvalidArgumentError("error parsing json body");
+  auto body_root = utils::StringToJson(response.json_body());
+  if (!body_root.ok()) {
+    parsing_status_ = absl::InvalidArgumentError("Error parsing json body");
     LOG(ERROR) << parsing_status_;
     return parsing_status_;
   }
 
-  PPN_RETURN_IF_ERROR(parsing_status_ = DecodeJsonBody(body_root));
+  PPN_RETURN_IF_ERROR(parsing_status_ = DecodeJsonBody(*body_root));
 
   return parsing_status_ = absl::OkStatus();
 }
 
-absl::Status PublicKeyResponse::DecodeJsonBody(Json::Value value) {
-  if (!value.isObject()) {
+absl::Status PublicKeyResponse::DecodeJsonBody(nlohmann::json value) {
+  if (!value.is_object()) {
     return absl::InvalidArgumentError("JSON body is not a JSON object");
   }
-  if (!value.isMember(JsonKeys::kPem)) {
+  if (!value.contains(JsonKeys::kPem)) {
     return absl::InvalidArgumentError("missing pem");
   }
-  if (!value[JsonKeys::kPem].isString()) {
+  if (!value[JsonKeys::kPem].is_string()) {
     return absl::InvalidArgumentError("pem is not a string");
   }
-  pem_ = value[JsonKeys::kPem].asString();
-  if (value.isMember(JsonKeys::kAttestationNonce)) {
-    if (!value[JsonKeys::kAttestationNonce].isString()) {
+  pem_ = value[JsonKeys::kPem];
+  if (value.contains(JsonKeys::kAttestationNonce)) {
+    if (!value[JsonKeys::kAttestationNonce].is_string()) {
       return absl::InvalidArgumentError("nonce is not a string");
     }
-    nonce_ = value[JsonKeys::kAttestationNonce].asString();
+    nonce_ = value[JsonKeys::kAttestationNonce];
   }
   return absl::OkStatus();
 }

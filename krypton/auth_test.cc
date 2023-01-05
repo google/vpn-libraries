@@ -21,7 +21,6 @@
 #include <string>
 
 #include "google/protobuf/duration.proto.h"
-#include "net/proto2/util/public/json_util.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/krypton/auth_and_sign_request.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
@@ -31,6 +30,7 @@
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
@@ -38,9 +38,7 @@
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
-#include "third_party/jsoncpp/reader.h"
-#include "third_party/jsoncpp/value.h"
-#include "third_party/jsoncpp/writer.h"
+#include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -58,15 +56,17 @@ MATCHER_P(PartiallyMatchHttpRequest, other_req,
   if (arg.has_json_body() || other_req.has_json_body()) {
     auto json1 = arg.json_body();
     auto json2 = other_req.json_body();
-    Json::Value json1_root;
-    Json::Value json2_root;
-    Json::Reader reader;
-    if (!reader.parse(json1, json1_root) || !reader.parse(json2, json2_root)) {
+
+    auto json1_obj = utils::StringToJson(json1);
+    auto json2_obj = utils::StringToJson(json2);
+
+    if (!json1_obj.ok() || !json2_obj.ok()) {
       return false;
     }
 
-    for (auto const& key : json1_root.getMemberNames()) {
-      if (json2_root.isMember(key) && json2_root[key] != json1_root[key]) {
+    for (auto const& item : json1_obj->items()) {
+      if (json2_obj->contains(item.key()) &&
+          item.value() != json2_obj.value()[item.key()]) {
         return false;
       }
     }
@@ -108,17 +108,15 @@ class AuthTest : public ::testing::Test {
   HttpRequest buildAuthRequest() {
     HttpRequest request;
     request.set_url("http://www.example.com/auth");
-    Json::FastWriter writer;
-    request.set_json_body(writer.write(buildJsonBodyForAuth()));
+    request.set_json_body(utils::JsonToString(buildJsonBodyForAuth()));
     return request;
   }
 
   // Request from Auth.
-  Json::Value buildJsonBodyForAuth() {
-    Json::Value json_body;
+  nlohmann::json buildJsonBodyForAuth() {
+    nlohmann::json json_body;
     json_body[JsonKeys::kAuthTokenKey] = "some_token";
     json_body[JsonKeys::kServiceTypeKey] = "service_type";
-
     return json_body;
   }
 
@@ -131,7 +129,7 @@ class AuthTest : public ::testing::Test {
     response.mutable_status()->set_code(200);
     response.mutable_status()->set_message("OK");
 
-    Json::Value json_body;
+    nlohmann::json json_body;
     // Some random public string.
     const std::string rsa_pem = absl::StrCat(
         "-----BEGIN PUBLIC KEY-----\n",
@@ -146,8 +144,7 @@ class AuthTest : public ::testing::Test {
     if (include_nonce) {
       json_body[JsonKeys::kAttestationNonce] = "some_nonce";
     }
-    Json::FastWriter writer;
-    response.set_json_body(writer.write(json_body));
+    response.set_json_body(utils::JsonToString(json_body));
 
     return response;
   }
@@ -320,11 +317,10 @@ TEST_P(AuthParamsTest, AuthWithAttestation) {
   PublicKeyRequest keyRequest(/*request_nonce=*/true, std::nullopt);
 
   auto httpKeyRequest = keyRequest.EncodeToProto();
-  httpKeyRequest->set_url("http://www.example.com/publickey");
+  httpKeyRequest.set_url("http://www.example.com/publickey");
 
   // Step 0: PublicKeyRequest with nonce_request
-  EXPECT_CALL(http_fetcher_,
-              PostJson(Partially(EqualsProto(httpKeyRequest.value()))))
+  EXPECT_CALL(http_fetcher_, PostJson(Partially(EqualsProto(httpKeyRequest))))
       .WillOnce(::testing::Return(
           buildPublicKeyResponseWithNonce(/*include_nonce=*/true)));
 
@@ -378,11 +374,10 @@ TEST_P(AuthParamsTest, AuthWithApiKey) {
                               std::optional("testApiKey"));
 
   auto httpKeyRequest = keyRequest.EncodeToProto();
-  httpKeyRequest->set_url("http://www.example.com/publickey");
+  httpKeyRequest.set_url("http://www.example.com/publickey");
 
   // Step 0: PublicKeyRequest with nonce_request
-  EXPECT_CALL(http_fetcher_,
-              PostJson(Partially(EqualsProto(httpKeyRequest.value()))))
+  EXPECT_CALL(http_fetcher_, PostJson(Partially(EqualsProto(httpKeyRequest))))
       .WillOnce(::testing::Return(
           buildPublicKeyResponseWithNonce(/*include_nonce=*/true)));
 

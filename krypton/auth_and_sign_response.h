@@ -29,7 +29,7 @@
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
-#include "third_party/jsoncpp/value.h"
+#include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -51,7 +51,7 @@ class PublicKeyResponse {
  private:
   std::string pem_;
   std::optional<std::string> nonce_;
-  absl::Status DecodeJsonBody(Json::Value value);
+  absl::Status DecodeJsonBody(nlohmann::json value);
   absl::Status parsing_status_ = absl::InternalError("Not initialized");
 };
 
@@ -85,7 +85,8 @@ class AuthAndSignResponse {
                                const KryptonConfig& config);
 
   // Decode Auth specific parameters
-  absl::Status DecodeJsonBody(Json::Value value, const KryptonConfig& config);
+  absl::Status DecodeJsonBody(nlohmann::json value,
+                              const KryptonConfig& config);
 
   // Decode from AuthAndSignResponse proto;
   absl::Status DecodeProtoBody(absl::string_view bytes,

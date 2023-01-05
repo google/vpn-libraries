@@ -29,7 +29,6 @@
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/http_fetcher.h"
-#include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
@@ -38,7 +37,6 @@
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/functional/bind_front.h"
-#include "third_party/absl/memory/memory.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
@@ -46,8 +44,6 @@
 #include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
-#include "third_party/jsoncpp/reader.h"
-#include "third_party/jsoncpp/value.h"
 
 namespace privacy {
 namespace krypton {
@@ -214,18 +210,9 @@ void Auth::RequestKeyForBlindSigning(bool is_rekey) {
   PublicKeyRequest request(
       /*request_nonce*/ config_.integrity_attestation_enabled(), api_key);
   auto public_key_proto = request.EncodeToProto();
-  if (!public_key_proto) {
-    LOG(ERROR) << "Cannot build PublicKeyRequest";
-    SetState(State::kUnauthenticated);
-    RaiseAuthFailureNotification(
-        absl::PermissionDeniedError("Cannot build PublicKeyRequest"));
-    return;
-  }
-
-  public_key_proto->set_url(config_.zinc_public_signing_key_url());
-
+  public_key_proto.set_url(config_.zinc_public_signing_key_url());
   http_fetcher_.PostJsonAsync(
-      public_key_proto.value(),
+      public_key_proto,
       absl::bind_front(&Auth::HandlePublicKeyResponse, this, is_rekey));
 }
 
