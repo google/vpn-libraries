@@ -83,11 +83,9 @@ PPNOptionKey const PPNOptionRefreshToken = @"refreshToken";
 
 PPNOptionKey const PPNOptionCountryCode = @"countryCode";
 
-PPNOptionKey const PPNOptionNetworkExtensionCrashReportingEnabled =
-    @"networkExtensionCrashReportingEnabled";
+PPNOptionKey const PPNOptionNetworkExtensionCrashReportingEnabled = @"crashReportingEnabled";
 
-PPNOptionKey const PPNOptionNetworkExtensionUploadCrashReportEnabled =
-    @"networkExtensionUploadCrashReportEnabled";
+PPNOptionKey const PPNOptionNetworkExtensionUploadCrashReportEnabled = @"uploadCrashReportEnabled";
 
 #pragma mark - Default Option Values
 
