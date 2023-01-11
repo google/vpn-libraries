@@ -112,4 +112,8 @@ message KryptonConfig {
   // Duration of inactivity after which we will send a keepalive packet when
   // connected with IPsec on IPv6.
   optional google.protobuf.Duration ipv6_keepalive_interval = 29;
+
+  // Enabling public metadata determines use of GetInitialData vs PublicKey RPC
+  // in session auth, as well as which fields are populated in AddEgressRequest.
+  optional bool public_metadata_enabled = 30 [default = false];
 }
