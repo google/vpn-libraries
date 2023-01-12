@@ -58,12 +58,14 @@ class EgressManagerTest : public ::testing::Test {
   void SetUp() override {
     config_.set_brass_url("http://www.example.com/addegress");
     config_.add_copper_hostname_suffix("g-tun.com");
+    config_.set_api_key("testApiKey");
   }
 
   absl::StatusOr<HttpRequest> BuildAddEgressRequestPpnIpSec(
       absl::string_view url, uint32_t spi) {
     HttpRequest request;
     request.set_url(url);
+    (*request.mutable_headers())["X-Goog-Api-Key"] = "testApiKey";
     PPN_ASSIGN_OR_RETURN(auto json_body,
                          BuildJsonBodyForAddEgressRequestPpnIpSec(spi));
     request.set_json_body(json_body);

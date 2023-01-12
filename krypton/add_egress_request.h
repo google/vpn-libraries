@@ -15,6 +15,7 @@
 #ifndef PRIVACY_NET_KRYPTON_ADD_EGRESS_REQUEST_H_
 #define PRIVACY_NET_KRYPTON_ADD_EGRESS_REQUEST_H_
 
+#include <optional>
 #include <string>
 
 #include "privacy/net/brass/rpc/brass.proto.h"
@@ -30,7 +31,8 @@ namespace krypton {
 // Proto definition is brass.proto
 class AddEgressRequest {
  public:
-  AddEgressRequest() = default;
+  explicit AddEgressRequest(std::optional<std::string> api_key)
+      : api_key_(api_key) {}
   ~AddEgressRequest() = default;
 
   // Parameters needed for PpnDataplane.
@@ -60,6 +62,7 @@ class AddEgressRequest {
 
  private:
   nlohmann::json BuildBodyJson(const PpnDataplaneRequestParams& params);
+  std::optional<std::string> api_key_;
 };
 }  // namespace krypton
 }  // namespace privacy

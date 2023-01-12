@@ -41,6 +41,9 @@ HttpRequest AddEgressRequest::EncodeToProtoForPpn(
     const PpnDataplaneRequestParams& params) {
   HttpRequest request;
   request.set_json_body(utils::JsonToString(BuildBodyJson(params)));
+  if (api_key_) {
+    (*request.mutable_headers())["X-Goog-Api-Key"] = api_key_.value();
+  }
   return request;
 }
 

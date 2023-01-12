@@ -41,7 +41,7 @@ class PpnAddEgressRequest : public AddEgressRequestTest,
                             public ::testing::WithParamInterface<bool> {};
 
 TEST_F(PpnAddEgressRequest, TestPpnRequest) {
-  AddEgressRequest request;
+  AddEgressRequest request(std::optional("apiKey"));
 
   // Use the actual crypto utils to ensure the base64 encoded strings are sent
   // in Json requests.
@@ -66,6 +66,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequest) {
 
   auto http_request = request.EncodeToProtoForPpn(params);
 
+  EXPECT_EQ(http_request.headers().find("X-Goog-Api-Key")->second, "apiKey");
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
 
@@ -88,7 +89,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequest) {
 }
 
 TEST_F(PpnAddEgressRequest, TestPpnRequestWithDynamicMtu) {
-  AddEgressRequest request;
+  AddEgressRequest request(std::optional("apiKey"));
 
   // Use the actual crypto utils to ensure the base64 encoded strings are sent
   // in Json requests.
@@ -114,6 +115,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestWithDynamicMtu) {
 
   auto http_request = request.EncodeToProtoForPpn(params);
 
+  EXPECT_EQ(http_request.headers().find("X-Goog-Api-Key")->second, "apiKey");
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
 
@@ -139,7 +141,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParameters) {
   crypto::SessionCrypto crypto(config_);
   auto keys = crypto.GetMyKeyMaterial();
 
-  AddEgressRequest request;
+  AddEgressRequest request(std::optional("apiKey"));
   AddEgressRequest::PpnDataplaneRequestParams params;
   params.crypto = &crypto;
   params.copper_control_plane_address = kCopperControlPlaneAddress;
@@ -150,6 +152,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParameters) {
   params.uplink_spi = 1234;
   auto http_request = request.EncodeToProtoForPpn(params);
 
+  EXPECT_EQ(http_request.headers().find("X-Goog-Api-Key")->second, "apiKey");
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
 
@@ -174,7 +177,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   crypto::SessionCrypto crypto(config_);
   auto keys = crypto.GetMyKeyMaterial();
 
-  AddEgressRequest request;
+  AddEgressRequest request(std::optional("apiKey"));
   AddEgressRequest::PpnDataplaneRequestParams params;
   params.crypto = &crypto;
   params.copper_control_plane_address = kCopperControlPlaneAddress;
@@ -186,6 +189,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   params.dynamic_mtu_enabled = true;
   auto http_request = request.EncodeToProtoForPpn(params);
 
+  EXPECT_EQ(http_request.headers().find("X-Goog-Api-Key")->second, "apiKey");
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
   // Round-tripping through serialization causes int values to randomly be int

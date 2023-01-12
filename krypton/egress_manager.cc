@@ -213,7 +213,10 @@ absl::Status EgressManager::GetEgressNodeForPpnIpSec(
   absl::MutexLock l(&mutex_);
 
   DCHECK(notification_);
-  AddEgressRequest add_egress_request;
+  auto api_key = config_.has_api_key()
+                     ? std::optional<std::string>(config_.api_key())
+                     : std::nullopt;
+  AddEgressRequest add_egress_request(api_key);
   request_time_ = absl::Now();
 
   auto add_egress_http_request = add_egress_request.EncodeToProtoForPpn(params);
