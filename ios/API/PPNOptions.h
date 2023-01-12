@@ -180,4 +180,9 @@ FOUNDATION_EXTERN PPNOptionKey const PPNOptionNetworkExtensionCrashReportingEnab
  */
 FOUNDATION_EXTERN PPNOptionKey const PPNOptionNetworkExtensionUploadCrashReportEnabled;
 
+/**
+ * Indicates whether to use Public Metadata RPCs.
+ */
+FOUNDATION_EXTERN PPNOptionKey const PPNPublicMetadataEnabled;
+
 NS_ASSUME_NONNULL_END

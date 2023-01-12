@@ -535,6 +535,7 @@ public class PpnOptionsTest {
             .setAttachOauthTokenAsHeaderEnabled(true)
             .setIpv4KeepaliveInterval(Duration.ofMillis(8))
             .setIpv6KeepaliveInterval(Duration.ofMillis(16))
+            .setPublicMetadataEnabled(true)
             .build();
 
     KryptonConfig config = options.createKryptonConfigBuilder().build();
@@ -569,6 +570,7 @@ public class PpnOptionsTest {
     assertThat(config.hasIpv6KeepaliveInterval()).isTrue();
     assertThat(config.getIpv6KeepaliveInterval().getSeconds()).isEqualTo(0);
     assertThat(config.getIpv6KeepaliveInterval().getNanos()).isEqualTo(16000000);
+    assertThat(config.getPublicMetadataEnabled()).isTrue();
   }
 
   @Test
@@ -599,6 +601,7 @@ public class PpnOptionsTest {
     assertThat(config.getAttachOauthTokenAsHeader()).isFalse();
     assertThat(config.hasIpv4KeepaliveInterval()).isFalse();
     assertThat(config.hasIpv6KeepaliveInterval()).isFalse();
+    assertThat(config.getPublicMetadataEnabled()).isFalse();
   }
 
   @Test
@@ -621,5 +624,17 @@ public class PpnOptionsTest {
 
     assertThat(config.hasDatapathProtocol()).isTrue();
     assertThat(config.getDatapathProtocol()).isEqualTo(KryptonConfig.DatapathProtocol.BRIDGE);
+  }
+
+  @Test
+  public void setPublicMetadataEnabled_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.isPublicMetadataEnabled()).isEmpty();
+  }
+
+  @Test
+  public void setPublicMetadataEnabled_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setPublicMetadataEnabled(true).build();
+    assertThat(options.isPublicMetadataEnabled().get()).isTrue();
   }
 }

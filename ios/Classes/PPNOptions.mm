@@ -39,6 +39,8 @@ PPNOptionKey const PPNIPv6Enabled = @"IPv6Enabled";
 
 PPNOptionKey const PPNOptionCrashDebugLoggingEnabled = @"crashDebugLoggingEnabled";
 
+PPNOptionKey const PPNPublicMetadataEnabled = @"publicMetadataEnabled";
+
 #pragma mark - Optional Options
 
 PPNOptionKey const PPNOptionZincOAuthScope = @"zincOAuthScope";
@@ -209,6 +211,11 @@ privacy::krypton::KryptonConfig PPNKryptonConfigFromOptions(
   NSNumber *uplinkParallelismEnabled = options[PPNUplinkParallelismEnabled];
   if (uplinkParallelismEnabled != nullptr) {
     kryptonConfig.set_ios_uplink_parallelism_enabled(uplinkParallelismEnabled.boolValue);
+  }
+
+  NSNumber *publicMetadataEnabled = options[PPNPublicMetadataEnabled];
+  if (publicMetadataEnabled != nullptr) {
+    kryptonConfig.set_public_metadata_enabled(publicMetadataEnabled.boolValue);
   }
 
   return kryptonConfig;

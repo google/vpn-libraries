@@ -60,6 +60,7 @@
       [[NSString alloc] initWithUTF8String:kryptonConfig.copper_hostname_suffix(0).c_str()];
   XCTAssertEqualObjects(copperHostnameSuffixElem, @"g-tun.com");
   XCTAssertTrue(kryptonConfig.ipv6_enabled());
+  XCTAssertFalse(kryptonConfig.public_metadata_enabled());
 }
 
 - (void)testKryptonConfigFromOptions {
@@ -77,6 +78,7 @@
     PPNOptionReconnectorSessionConnectionDeadline : @60,
     PPNCopperHostnameOverride : @"copper_hostname_override",
     PPNIPv6Enabled : @NO,
+    PPNPublicMetadataEnabled : @YES,
   };
   privacy::krypton::KryptonConfig kryptonConfig = PPNKryptonConfigFromOptions(options);
 
@@ -108,6 +110,7 @@
   XCTAssertEqual(kryptonConfig.reconnector_config().datapath_watchdog_timer_msec(), 2000u);
   XCTAssertEqual(kryptonConfig.copper_hostname_suffix(0), "copperHostnameSuffix");
   XCTAssertFalse(kryptonConfig.ipv6_enabled());
+  XCTAssertTrue(kryptonConfig.public_metadata_enabled());
 }
 
 @end

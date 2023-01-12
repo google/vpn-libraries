@@ -96,6 +96,8 @@ public class PpnOptions {
   private final Optional<Duration> ipv4KeepaliveInterval;
   private final Optional<Duration> ipv6KeepaliveInterval;
 
+  private final Optional<Boolean> publicMetadataEnabled;
+
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
     this.zincPublicSigningKeyUrl = builder.zincPublicSigningKeyUrl;
@@ -141,6 +143,8 @@ public class PpnOptions {
 
     this.ipv4KeepaliveInterval = builder.ipv4KeepaliveInterval;
     this.ipv6KeepaliveInterval = builder.ipv6KeepaliveInterval;
+
+    this.publicMetadataEnabled = builder.publicMetadataEnabled;
   }
 
   public String getZincUrl() {
@@ -275,6 +279,10 @@ public class PpnOptions {
     return ipv6KeepaliveInterval;
   }
 
+  public Optional<Boolean> isPublicMetadataEnabled() {
+    return publicMetadataEnabled;
+  }
+
   /** Creates a KryptonConfig.Builder using the current options. */
   public KryptonConfig.Builder createKryptonConfigBuilder() {
     ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
@@ -366,6 +374,9 @@ public class PpnOptions {
               .setNanos(ipv6KeepaliveInterval.getNano())
               .build());
     }
+    if (isPublicMetadataEnabled().isPresent()) {
+      builder.setPublicMetadataEnabled(isPublicMetadataEnabled().get());
+    }
     return builder;
   }
 
@@ -411,6 +422,8 @@ public class PpnOptions {
 
     private Optional<Duration> ipv4KeepaliveInterval = Optional.empty();
     private Optional<Duration> ipv6KeepaliveInterval = Optional.empty();
+
+    private Optional<Boolean> publicMetadataEnabled = Optional.empty();
 
     public Builder() {}
 
@@ -786,6 +799,13 @@ public class PpnOptions {
       if (interval != null) {
         this.ipv6KeepaliveInterval = Optional.of(interval);
       }
+      return this;
+    }
+
+    /** Sets whether to use Public Metadata in session. */
+    @CanIgnoreReturnValue
+    public Builder setPublicMetadataEnabled(boolean publicMetadataEnabled) {
+      this.publicMetadataEnabled = Optional.of(publicMetadataEnabled);
       return this;
     }
 
