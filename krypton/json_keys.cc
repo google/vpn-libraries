@@ -23,17 +23,7 @@ const char JsonKeys::kBlindedTokensKey[] = "blinded_token";
 
 // Egress
 const char JsonKeys::kUnblindedToken[] = "unblinded_token";
-const char JsonKeys::kBridge[] = "bridge";
-const char JsonKeys::kOperation[] = "operation";
 const char JsonKeys::kControlPlaneSockAddr[] = "control_plane_sock_addr";
-const char JsonKeys::kControlPlaneSockAddresses[] = "control_plane_sock_addrs";
-const char JsonKeys::kSessionId[] = "session_id";
-const char JsonKeys::kSessionToken[] = "session_token";
-const char JsonKeys::kClientCryptoKey[] = "client_crypto_key";
-const char JsonKeys::kServerCryptoKey[] = "server_crypto_key";
-const char JsonKeys::kIpRanges[] = "ip_ranges";
-const char JsonKeys::kDataplaneSockAddr[] = "data_plane_sock_addrs";
-const char JsonKeys::kError[] = "error";
 const char JsonKeys::kApnType[] = "apn_type";
 const char JsonKeys::kDynamicMtuEnabled[] = "dynamic_mtu_enabled";
 
@@ -71,8 +61,6 @@ const char JsonKeys::kServerAddress[] = "server_address";
 
 // Attestation
 const char JsonKeys::kAttestationNonce[] = "attestation_nonce";
-const char JsonKeys::kAttestation[] = "attestation";
-const char JsonKeys::kAttestationData[] = "attestation_data";
 
 }  // namespace krypton
 }  // namespace privacy

@@ -24,24 +24,11 @@ class JsonKeys {
   // static const char kJsonBodyKey[];
   static const char kAuthTokenKey[];
   static const char kServiceTypeKey[];
-  static const char kPreviousSessionManagerIpKey[];
-  static const char kSelectedSessionManagerIpKey[];
-  static const char kJwtTokenKey[];
   static const char kBlindedTokensKey[];
 
   // Egress
   static const char kUnblindedToken[];
-  static const char kBridge[];
-  static const char kOperation[];
   static const char kControlPlaneSockAddr[];
-  static const char kControlPlaneSockAddresses[];  // Multiple addresses
-  static const char kSessionId[];
-  static const char kSessionToken[];
-  static const char kClientCryptoKey[];
-  static const char kServerCryptoKey[];
-  static const char kIpRanges[];
-  static const char kDataplaneSockAddr[];
-  static const char kError[];
   static const char kApnType[];
   static const char kDynamicMtuEnabled[];
 
@@ -79,8 +66,6 @@ class JsonKeys {
 
   // Attestation
   static const char kAttestationNonce[];
-  static const char kAttestation[];
-  static const char kAttestationData[];
 
  private:
   JsonKeys() = default;
