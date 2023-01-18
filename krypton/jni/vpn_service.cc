@@ -71,7 +71,7 @@ DatapathInterface* VpnService::BuildDatapath(const KryptonConfig& config,
   }
 
   if (config.datapath_protocol() == KryptonConfig::IPSEC) {
-    return new datapath::android::IpSecDatapath(looper, this);
+    return new datapath::android::IpSecDatapath(config, looper, this);
   }
 }
 
@@ -239,6 +239,14 @@ absl::Status VpnService::ConfigureIpSec(const IpSecTransformParams& params) {
       absl::StatusCode::kUnavailable,
       absl::StrCat("Error encountered when applying transform to fd: ",
                    params.network_fd()));
+}
+
+void VpnService::DisableKeepalive() {
+  absl::MutexLock l(&mutex_);
+  if (tunnel_ == nullptr) {
+    return;
+  }
+  tunnel_->SetKeepaliveInterval(absl::ZeroDuration());
 }
 
 }  // namespace jni

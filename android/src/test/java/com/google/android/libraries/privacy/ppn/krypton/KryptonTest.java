@@ -401,6 +401,38 @@ public class KryptonTest {
   }
 
   @Test
+  public void start_disableNativeKeepalive() throws Exception {
+    Krypton krypton = createKrypton();
+    final ConditionVariable condition = new ConditionVariable(false);
+
+    mockZinc.start();
+    mockZinc.enqueuePositivePublicKeyResponse();
+    mockZinc.enqueuePositiveAuthResponse();
+
+    mockBrass.start();
+    mockBrass.enqueuePositiveResponse();
+
+    doReturn(0xbeef).when(kryptonListener).onKryptonNeedsTunFd(any(TunFdData.class));
+
+    doAnswer(
+            invocation -> {
+              condition.open();
+              return null;
+            })
+        .when(kryptonListener)
+        .onKryptonControlPlaneConnected();
+
+    try {
+      krypton.start(createConfig(mockZinc.url(), mockBrass.url()));
+      assertThat(condition.block(1000)).isTrue();
+
+      krypton.disableKryptonKeepalive();
+    } finally {
+      krypton.stop();
+    }
+  }
+
+  @Test
   public void debugInfo_isPopulated() throws Exception {
     Krypton krypton = createKrypton();
     mockZinc.start();

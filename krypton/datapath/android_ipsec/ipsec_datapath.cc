@@ -22,6 +22,7 @@
 #include <utility>
 
 #include "base/logging.h"
+#include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
@@ -116,8 +117,16 @@ absl::Status IpSecDatapath::SwitchNetwork(
   key_material_->set_destination_port(endpoint.port());
   if (endpoint.ip_protocol() == IPProtocol::kIPv4) {
     key_material_->set_destination_address_family(NetworkInfo::V4);
+    if (config_.has_ipv4_keepalive_interval()) {
+      key_material_->set_keepalive_interval_seconds(
+          config_.ipv4_keepalive_interval().seconds());
+    }
   } else if (endpoint.ip_protocol() == IPProtocol::kIPv6) {
     key_material_->set_destination_address_family(NetworkInfo::V6);
+    if (config_.has_ipv6_keepalive_interval()) {
+      key_material_->set_keepalive_interval_seconds(
+          config_.ipv6_keepalive_interval().seconds());
+    }
   } else {
     return absl::InternalError("unsupported address family for endpoint");
   }

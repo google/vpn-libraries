@@ -20,13 +20,13 @@ import com.google.android.libraries.privacy.ppn.internal.IpSecTransformParams;
 public interface KryptonIpSecHelper {
 
   /** Constructs and applies an IPSecTransform. */
-  void transformFd(IpSecTransformParams params) throws KryptonException;
+  void transformFd(IpSecTransformParams params, Runnable keepaliveStartCallback)
+      throws KryptonException;
 
   /**
    * Removes the transforms that were applied to the file descriptor.
    *
-   * @param networkFd  a network file descriptor
+   * @param networkFd a network file descriptor
    */
   void removeTransformFromFd(int networkFd) throws KryptonException;
-
 }

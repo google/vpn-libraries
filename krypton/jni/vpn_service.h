@@ -67,6 +67,8 @@ class VpnService
 
   absl::Status ConfigureIpSec(const IpSecTransformParams& params) override;
 
+  void DisableKeepalive() override;
+
  private:
   std::unique_ptr<JavaObject> krypton_instance_;
 

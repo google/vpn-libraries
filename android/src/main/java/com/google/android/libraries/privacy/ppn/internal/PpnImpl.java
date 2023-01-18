@@ -304,7 +304,15 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
       }
     }
     try {
-      ipSecHelper.transformFd(params);
+      ipSecHelper.transformFd(
+          params,
+          () -> {
+            try {
+              krypton.disableKryptonKeepalive();
+            } catch (KryptonException e) {
+              Log.e(TAG, "Failed to disable the legacy keepalive.", e);
+            }
+          });
     } catch (KryptonException e) {
       throw new PpnException("Unable to configure IpSec.", e);
     }

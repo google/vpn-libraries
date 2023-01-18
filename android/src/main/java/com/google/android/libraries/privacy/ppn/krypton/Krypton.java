@@ -85,4 +85,6 @@ public interface Krypton {
   KryptonTelemetry collectTelemetry() throws KryptonException;
 
   JSONObject getDebugJson() throws KryptonException;
+
+  void disableKryptonKeepalive() throws KryptonException;
 }

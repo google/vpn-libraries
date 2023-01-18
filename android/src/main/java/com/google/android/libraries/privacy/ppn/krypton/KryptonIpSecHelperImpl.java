@@ -21,6 +21,7 @@ import android.net.IpSecManager.ResourceUnavailableException;
 import android.net.IpSecManager.SecurityParameterIndex;
 import android.net.IpSecManager.SpiUnavailableException;
 import android.net.IpSecTransform;
+import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import androidx.annotation.Nullable;
@@ -48,6 +49,7 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
   @Nullable private IpSecTransform inTransform = null;
   @Nullable private IpSecTransform outTransform = null;
   @Nullable private IpSecManager.UdpEncapsulationSocket encapsulationSocket = null;
+  @Nullable private KryptonKeepaliveHelper keepaliveHelper = null;
 
   // A lock guarding all of the mutable state of this class.
   private final Object lock = new Object();
@@ -77,6 +79,9 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
         outTransform.close();
         outTransform = null;
       }
+      if (keepaliveHelper != null) {
+        keepaliveHelper.stopKeepalive();
+      }
       if (encapsulationSocket != null) {
         try {
           encapsulationSocket.close();
@@ -89,7 +94,8 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
   }
 
   @Override
-  public void transformFd(IpSecTransformParams params) throws KryptonException {
+  public void transformFd(IpSecTransformParams params, Runnable keepaliveStartCallback)
+      throws KryptonException {
     Log.w(TAG, "Setting up transformFd for network = " + params.getNetworkId());
     PpnNetwork ppnNetwork = xenon.getNetwork(params.getNetworkId());
     if (ppnNetwork == null) {
@@ -157,6 +163,19 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
         ipSecManager.applyTransportModeTransform(
             fd.getFileDescriptor(), IpSecManager.DIRECTION_OUT, outTransform);
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && encapsulationSocket != null) {
+          if (keepaliveHelper == null) {
+            keepaliveHelper = new KryptonKeepaliveHelperImpl(context);
+          }
+
+          keepaliveHelper.startKeepalive(
+              ppnNetwork.getNetwork(),
+              encapsulationSocket,
+              localAddress,
+              destinationAddress,
+              params.getKeepaliveIntervalSeconds(),
+              keepaliveStartCallback);
+        }
       } catch (Exception e) {
         close();
         throw new KryptonException("Unable to apply IpSec transforms to fd.", e);

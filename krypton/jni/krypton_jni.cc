@@ -122,6 +122,11 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_collectTelemet
 JNIEXPORT jbyteArray JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_getDebugInfoNative(
     JNIEnv* env, jobject krypton_instance);
+
+// DisableKeepalive
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_disableKryptonKeepaliveNative(
+    JNIEnv* env, jobject krypton_instance);
 }
 // LINT.ThenChange(//depot/google3/java/com/google/android/libraries/privacy/ppn/krypton/KryptonImpl.java)
 
@@ -413,4 +418,14 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_getDebugInfoNa
   env->SetByteArrayRegion(array, 0, bytes.size(),
                           reinterpret_cast<const jbyte*>(bytes.data()));
   return array;
+}
+
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_disableKryptonKeepaliveNative(
+    JNIEnv* /*env*/, jobject /*krypton_instance*/) {
+  if (krypton_cache == nullptr || krypton_cache->vpn_service == nullptr) {
+    JniCache::Get()->ThrowKryptonException("Krypton is not running");
+    return;
+  }
+  krypton_cache->vpn_service->DisableKeepalive();
 }

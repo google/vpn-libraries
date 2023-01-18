@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "privacy/net/krypton/add_egress_response.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mock_ipsec_vpn_service.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mock_tunnel.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
@@ -47,29 +48,6 @@ class MockNotification : public DatapathInterface::NotificationInterface {
   MOCK_METHOD(void, DatapathPermanentFailure, (const absl::Status &),
               (override));
   MOCK_METHOD(void, DoRekey, (), (override));
-};
-
-class MockIpSecVpnService : public IpSecDatapath::IpSecVpnServiceInterface {
- public:
-  MOCK_METHOD(DatapathInterface *, BuildDatapath,
-              (const KryptonConfig &, utils::LooperThread *,
-               TimerManager *timer_manager),
-              (override));
-
-  MOCK_METHOD(absl::StatusOr<int>, CreateProtectedNetworkSocket,
-              (const NetworkInfo &), (override));
-
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<SocketInterface>>,
-              ConfigureNetworkSocket, (int, const Endpoint &), (override));
-
-  MOCK_METHOD(absl::Status, CreateTunnel, (const TunFdData &), (override));
-
-  MOCK_METHOD(TunnelInterface *, GetTunnel, (), (override));
-
-  MOCK_METHOD(void, CloseTunnel, (), (override));
-
-  MOCK_METHOD(absl::Status, ConfigureIpSec, (const IpSecTransformParams &),
-              (override));
 };
 
 class IpSecDatapathTest : public ::testing::Test {
@@ -123,11 +101,14 @@ class IpSecDatapathTest : public ::testing::Test {
     params->set_uplink_spi(1234);
     params->set_uplink_key("uplink_key_bytes");
     params->set_downlink_key("downlink_key_bytes");
+    params->set_network_id(100);
+    params->set_network_fd(1);
   }
 
   AddEgressResponse fake_add_egress_response_;
   utils::LooperThread looper_{"Krypton Looper"};
-  IpSecDatapath datapath_{&looper_, &vpn_service_};
+  KryptonConfig config_;
+  IpSecDatapath datapath_{config_, &looper_, &vpn_service_};
   NetworkInfo network_info_;
   MockIpSecVpnService vpn_service_;
   MockNotification notification_;
@@ -160,10 +141,6 @@ TEST_F(IpSecDatapathTest, SwitchNetworkAndNoKeyMaterial) {
 
 TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
   auto socket_ptr = std::make_unique<MockSocket>();
-
-  // add the FD information of network & tunnel.
-  params_.mutable_ipsec()->set_network_id(100);
-  params_.mutable_ipsec()->set_network_fd(1);
 
   // Need to keep a reference to the socket to simulate data being sent.
   MockSocket *socket = socket_ptr.get();
@@ -227,10 +204,6 @@ TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
 }
 
 TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkFd) {
-  // add the FD information of network & tunnel.
-  params_.mutable_ipsec()->set_network_id(100);
-  params_.mutable_ipsec()->set_network_fd(1);
-
   // create failure to create network fd.
   EXPECT_CALL(notification_, DatapathFailed).Times(1);
   EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_))
@@ -245,10 +218,6 @@ TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkFd) {
 }
 
 TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
-  // add the FD information of network & tunnel.
-  params_.mutable_ipsec()->set_network_id(100);
-  params_.mutable_ipsec()->set_network_fd(1);
-
   // create failure to create network socket.
   EXPECT_CALL(notification_, DatapathFailed).Times(1);
   EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_))

@@ -191,10 +191,12 @@ public class KryptonImpl implements Krypton, TimerListener {
    */
   private native byte[] getDebugInfoNative() throws KryptonException;
 
+  /** Native method for disabling the keepalive in native code. */
+  private native void disableKryptonKeepaliveNative() throws KryptonException;
+
   // LINT.ThenChange(//depot/google3/privacy/net/krypton/jni/krypton_jni.cc)
 
   // Java methods, called using jni_cache.cc
-  // LINT.IfChange
 
   // Android implementation for HTTP fetch.
   private HttpFetcher getHttpFetcher() {
@@ -470,5 +472,10 @@ public class KryptonImpl implements Krypton, TimerListener {
     } catch (InvalidProtocolBufferException e) {
       throw new KryptonException("Invalid debug info proto bytes from Krypton.", e);
     }
+  }
+
+  @Override
+  public void disableKryptonKeepalive() throws KryptonException {
+    disableKryptonKeepaliveNative();
   }
 }

@@ -55,11 +55,16 @@ class IpSecDatapath : public DatapathInterface,
     virtual TunnelInterface* GetTunnel() = 0;
 
     virtual absl::Status ConfigureIpSec(const IpSecTransformParams& params) = 0;
+
+    virtual void DisableKeepalive() = 0;
   };
 
-  explicit IpSecDatapath(utils::LooperThread* looper,
+  explicit IpSecDatapath(const KryptonConfig& config,
+                         utils::LooperThread* looper,
                          IpSecVpnServiceInterface* vpn_service)
-      : notification_thread_(looper), vpn_service_(vpn_service) {}
+      : config_(config),
+        notification_thread_(looper),
+        vpn_service_(vpn_service) {}
   ~IpSecDatapath() override = default;
 
   // Initialize the Ipsec data path.
@@ -91,6 +96,8 @@ class IpSecDatapath : public DatapathInterface,
   void ShutdownIpSecPacketForwarder() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   absl::Mutex mutex_;
+
+  KryptonConfig config_;
 
   utils::LooperThread* notification_thread_;
   IpSecVpnServiceInterface* vpn_service_;

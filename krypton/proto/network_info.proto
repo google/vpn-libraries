@@ -66,6 +66,8 @@ message IpSecTransformParams {
   optional string destination_address = 9;
   optional NetworkInfo.AddressFamily destination_address_family = 10;
   optional int32 destination_port = 11;
+
+  optional int32 keepalive_interval_seconds = 12 [default = 20];
 }
 
 // Encryption key for uplink and downlink.
