@@ -185,4 +185,9 @@ FOUNDATION_EXTERN PPNOptionKey const PPNOptionNetworkExtensionUploadCrashReportE
  */
 FOUNDATION_EXTERN PPNOptionKey const PPNPublicMetadataEnabled;
 
+/**
+ * Indicates whether to always reconnect when xenon detects a network switch.
+ */
+FOUNDATION_EXTERN PPNOptionKey const PPNRespectAllNetworkSwitches;
+
 NS_ASSUME_NONNULL_END

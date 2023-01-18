@@ -89,6 +89,8 @@ PPNOptionKey const PPNOptionNetworkExtensionCrashReportingEnabled = @"crashRepor
 
 PPNOptionKey const PPNOptionNetworkExtensionUploadCrashReportEnabled = @"uploadCrashReportEnabled";
 
+PPNOptionKey const PPNRespectAllNetworkSwitches = @"respectAllNetworkSwitches";
+
 #pragma mark - Default Option Values
 
 static PPNOptionKey const PPNOptionDefaultZincURLString =

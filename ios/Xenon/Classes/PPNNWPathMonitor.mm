@@ -25,6 +25,17 @@
 @implementation PPNNWPathMonitor {
   nw_path_monitor_t _networkPathMonitor;
   std::optional<::privacy::krypton::NetworkInfo> _currentNetwork;
+  BOOL _shouldRespectAllNetworkSwitches;
+}
+
+- (instancetype)initWithOptions:(NSDictionary<PPNOptionKey, id> *)options {
+  self = [super init];
+  if (self != nullptr) {
+    _shouldRespectAllNetworkSwitches = _shouldRespectAllNetworkSwitches =
+        [options[PPNRespectAllNetworkSwitches] isKindOfClass:[NSNumber class]] &&
+        ((NSNumber *)options[PPNRespectAllNetworkSwitches]).boolValue;
+  }
+  return self;
 }
 
 - (void)startMonitor {
@@ -98,108 +109,105 @@
 }
 
 - (void)notifyPathChange:(nw_path_t)path {
-  // The IOS_MINIMUM_OS requirement to use this library is 12.0. iOS 11.4 will be dropped soon.
-  if (@available(iOS 12.0, *)) {
-    if (path == nullptr) {
+  if (path == nullptr) {
+    return;
+  }
+
+  [self logPath:path];
+
+  nw_path_status_t status = nw_path_get_status(path);
+  if (status != nw_path_status_satisfied) {
+    // No network is available.
+    if (!_currentNetwork || status == nw_path_status_satisfiable) {
       return;
     }
 
-    [self logPath:path];
+    LOG(INFO) << "Notifying Krypton that network is no longer available.";
+    _currentNetwork = std::nullopt;
+    [_delegate NWPathMonitorDidDetectNoNetwork:self];
+    return;
+  }
 
-    nw_path_status_t status = nw_path_get_status(path);
-    if (status != nw_path_status_satisfied) {
-      // No network is available.
-      if (!_currentNetwork || status == nw_path_status_satisfiable) {
-        return;
-      }
+  // Fetch the info for the current network.
+  ::privacy::krypton::NetworkInfo networkInfo;
+  [self populateNetworkInfo:&networkInfo forPath:path];
 
-      LOG(INFO) << "Notifying Krypton that network is no longer available.";
-      _currentNetwork = std::nullopt;
-      [_delegate NWPathMonitorDidDetectNoNetwork:self];
-      return;
-    }
+  LOG(INFO) << "Found satisfied path: "
+            << privacy::krypton::utils::NetworkInfoDebugString(networkInfo);
 
-    // Fetch the info for the current network.
-    ::privacy::krypton::NetworkInfo networkInfo;
-    [self populateNetworkInfo:&networkInfo forPath:path];
-
-    LOG(INFO) << "Found satisfied path: "
-              << privacy::krypton::utils::NetworkInfoDebugString(networkInfo);
-
-    // If it's sufficiently different, then tell Krypton to reconnect.
-    if ([self isChangedNetwork:networkInfo]) {
-      LOG(INFO) << "Network is sufficiently different. Notifying Krypton.";
-      _currentNetwork = networkInfo;
-      [_delegate NWPathMonitor:self didDetectNetwork:networkInfo];
-    } else {
-      LOG(INFO) << "Network has not changed significantly. Ignoring change.";
-    }
+  // If it's sufficiently different, then tell Krypton to reconnect.
+  BOOL isChangedNetwork = [self isChangedNetwork:networkInfo];
+  if (isChangedNetwork || _shouldRespectAllNetworkSwitches) {
+    auto message = !isChangedNetwork ? "Network has not changed significantly but reconnect anyway."
+                                     : "Network is sufficiently different. Notifying Krypton.";
+    LOG(INFO) << message;
+    _currentNetwork = networkInfo;
+    [_delegate NWPathMonitor:self didDetectNetwork:networkInfo];
+  } else {
+    LOG(INFO) << "Network has not changed significantly. Ignoring change.";
   }
 }
 
 - (void)logPath:(nw_path_t)path {
-  // The IOS_MINIMUM_OS requirement to use this library is 12.0. iOS 11.4 will be dropped soon.
-  if (@available(iOS 12.0, *)) {
-    __block NSString *output = [NSString stringWithFormat:@"Path changed: %@\n", path];
+  __block NSString *output = [NSString stringWithFormat:@"Path changed: %@\n", path];
 
-    nw_path_enumerate_interfaces(path, ^bool(nw_interface_t interface) {
-      uint32_t index = nw_interface_get_index(interface);
-      NSString *name = @(nw_interface_get_name(interface));
-      NSString *type;
-      switch (nw_interface_get_type(interface)) {
-        case nw_interface_type_wifi:
-          type = @"wifi";
+  nw_path_enumerate_interfaces(path, ^bool(nw_interface_t interface) {
+    uint32_t index = nw_interface_get_index(interface);
+    NSString *name = @(nw_interface_get_name(interface));
+    NSString *type;
+    switch (nw_interface_get_type(interface)) {
+      case nw_interface_type_wifi:
+        type = @"wifi";
+        break;
+      case nw_interface_type_cellular:
+        type = @"cellular";
+        break;
+      case nw_interface_type_wired:
+        type = @"wired";
+        break;
+      case nw_interface_type_loopback:
+        type = @"loopback";
+        break;
+      case nw_interface_type_other:
+        type = @"other";
+        break;
+    }
+    output = [output stringByAppendingFormat:@"  interface %d: %@ (%@)\n", index, name, type];
+    return true;
+  });
+
+  if (@available(iOS 13.0, *)) {
+    nw_path_enumerate_gateways(path, ^bool(nw_endpoint_t endpoint) {
+      switch (nw_endpoint_get_type(endpoint)) {
+        case nw_endpoint_type_invalid:
+          output = [output stringByAppendingFormat:@"  endpoint: invalid\n"];
           break;
-        case nw_interface_type_cellular:
-          type = @"cellular";
+        case nw_endpoint_type_address: {
+          char *address = nw_endpoint_copy_address_string(endpoint);
+          char *port = nw_endpoint_copy_port_string(endpoint);
+          output =
+              [output stringByAppendingFormat:@"  endpoint: address<%@:%@>\n", @(address), @(port)];
+          free(address);
+          free(port);
+        } break;
+        case nw_endpoint_type_host:
+          output = [output stringByAppendingFormat:@"  endpoint: host<%@:%d>\n",
+                                                   @(nw_endpoint_get_hostname(endpoint)),
+                                                   nw_endpoint_get_port(endpoint)];
           break;
-        case nw_interface_type_wired:
-          type = @"wired";
+        case nw_endpoint_type_bonjour_service:
+          output = [output stringByAppendingFormat:@"  endpoint: bonjour<>\n"];
           break;
-        case nw_interface_type_loopback:
-          type = @"loopback";
-          break;
-        case nw_interface_type_other:
-          type = @"other";
+        case nw_endpoint_type_url:
+          output = [output
+              stringByAppendingFormat:@"  endpoint: url<%@>\n", @(nw_endpoint_get_url(endpoint))];
           break;
       }
-      output = [output stringByAppendingFormat:@"  interface %d: %@ (%@)\n", index, name, type];
       return true;
     });
-
-    if (@available(iOS 13.0, *)) {
-      nw_path_enumerate_gateways(path, ^bool(nw_endpoint_t endpoint) {
-        switch (nw_endpoint_get_type(endpoint)) {
-          case nw_endpoint_type_invalid:
-            output = [output stringByAppendingFormat:@"  endpoint: invalid\n"];
-            break;
-          case nw_endpoint_type_address: {
-            char *address = nw_endpoint_copy_address_string(endpoint);
-            char *port = nw_endpoint_copy_port_string(endpoint);
-            output = [output
-                stringByAppendingFormat:@"  endpoint: address<%@:%@>\n", @(address), @(port)];
-            free(address);
-            free(port);
-          } break;
-          case nw_endpoint_type_host:
-            output = [output stringByAppendingFormat:@"  endpoint: host<%@:%d>\n",
-                                                     @(nw_endpoint_get_hostname(endpoint)),
-                                                     nw_endpoint_get_port(endpoint)];
-            break;
-          case nw_endpoint_type_bonjour_service:
-            output = [output stringByAppendingFormat:@"  endpoint: bonjour<>\n"];
-            break;
-          case nw_endpoint_type_url:
-            output = [output
-                stringByAppendingFormat:@"  endpoint: url<%@>\n", @(nw_endpoint_get_url(endpoint))];
-            break;
-        }
-        return true;
-      });
-    }
-
-    LOG(INFO) << output.UTF8String;
   }
+
+  LOG(INFO) << output.UTF8String;
 }
 
 @end

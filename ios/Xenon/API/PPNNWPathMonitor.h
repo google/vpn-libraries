@@ -16,6 +16,7 @@
 
 #import <Foundation/Foundation.h>
 
+#import "googlemac/iPhone/Shared/PPN/API/PPNOptions.h"
 #import "googlemac/iPhone/Shared/PPN/Xenon/API/PPNNWPathMonitorDelegate.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -29,6 +30,10 @@ NS_ASSUME_NONNULL_BEGIN
  * Optional delegate that notifies the changes of NWPath.
  */
 @property(nonatomic, weak) id<PPNNWPathMonitorDelegate> delegate;
+
+- (instancetype)initWithOptions:(NSDictionary<PPNOptionKey, id> *)options NS_DESIGNATED_INITIALIZER;
+
+- (instancetype)init NS_UNAVAILABLE;
 
 /**
  * Starts monitoring NWPath changes.

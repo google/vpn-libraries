@@ -94,7 +94,6 @@ NSNumber *PPNMemoryUsageInBytes() {
                  UDPSessionManager:(id<PPNUDPSessionManaging>)UDPSessionManager {
   self = [super init];
   if (self != nullptr) {
-
     _kryptonDispatchQueue = dispatch_queue_create("com.google.ppn.krypton", DISPATCH_QUEUE_SERIAL);
     _delegateDispatchQueue = dispatch_get_main_queue();
 
@@ -105,7 +104,7 @@ NSNumber *PPNMemoryUsageInBytes() {
                                                            timerQueue:_kryptonDispatchQueue];
     _kryptonService.delegate = self;
 
-    _nwPathMonitor = [[PPNNWPathMonitor alloc] init];
+    _nwPathMonitor = [[PPNNWPathMonitor alloc] initWithOptions:options];
     _nwPathMonitor.delegate = self;
 
     _running = false;

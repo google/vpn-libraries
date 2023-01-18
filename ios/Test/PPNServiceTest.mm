@@ -157,7 +157,7 @@ static NSTimeInterval const PPNTimeoutInterval = 1.0;
   FakePPNKryptonService *fakeKryptonService = [[FakePPNKryptonService alloc] init];
   [_PPNService setValue:fakeKryptonService forKey:@"kryptonService"];
 
-  FakePPNNWPathMonitor *fakePPNNWPathMonitor = [[FakePPNNWPathMonitor alloc] init];
+  FakePPNNWPathMonitor *fakePPNNWPathMonitor = [[FakePPNNWPathMonitor alloc] initWithOptions:@{}];
   [_PPNService setValue:fakePPNNWPathMonitor forKey:@"nwPathMonitor"];
 
   XCTAssertFalse(_PPNService.isRunning);
@@ -228,7 +228,7 @@ static NSTimeInterval const PPNTimeoutInterval = 1.0;
   FakePPNKryptonService *fakeKryptonService = [[FakePPNKryptonService alloc] init];
   [_PPNService setValue:fakeKryptonService forKey:@"kryptonService"];
 
-  FakePPNNWPathMonitor *fakePPNNWPathMonitor = [[FakePPNNWPathMonitor alloc] init];
+  FakePPNNWPathMonitor *fakePPNNWPathMonitor = [[FakePPNNWPathMonitor alloc] initWithOptions:@{}];
   [_PPNService setValue:fakePPNNWPathMonitor forKey:@"nwPathMonitor"];
 
   [_PPNService start];
