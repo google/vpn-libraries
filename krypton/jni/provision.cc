@@ -133,7 +133,7 @@ class ProvisionContext : public Provision::NotificationInterface {
       LOG(ERROR) << "Permanently unable to provision: " << status;
     }
 
-    PpnStatusDetails details = utils::GetPpnStatusDetails(status);
+    ppn::PpnStatusDetails details = utils::GetPpnStatusDetails(status);
     std::string details_bytes;
     details.SerializeToString(&details_bytes);
 

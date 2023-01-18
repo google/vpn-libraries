@@ -17,7 +17,7 @@
 
 #include <utility>
 
-#include "privacy/net/krypton/proto/ppn_status.proto.h"
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "third_party/absl/base/optimization.h"
 #include "third_party/absl/status/status.h"
 
@@ -69,10 +69,10 @@ absl::Status GetStatusForHttpStatus(int http_status, absl::string_view message);
 bool IsPermanentError(absl::Status status);
 
 /** Gets PPN-specific details from the given Status. */
-PpnStatusDetails GetPpnStatusDetails(absl::Status status);
+ppn::PpnStatusDetails GetPpnStatusDetails(absl::Status status);
 
 /** Attaches PPN-specific detailts to the given Status. */
-void SetPpnStatusDetails(absl::Status* status, PpnStatusDetails details);
+void SetPpnStatusDetails(absl::Status* status, ppn::PpnStatusDetails details);
 
 }  // namespace utils
 }  // namespace krypton

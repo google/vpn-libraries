@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-syntax = "proto2";
+syntax = "proto3";
 
-package privacy.krypton;
+package privacy.ppn;
 
 option cc_api_version = 2;
 option java_outer_classname = "PpnStatusProto";
@@ -23,11 +23,16 @@ option java_api_version = 2;
 option java_multiple_files = true;
 
 // Extra optional metadata that can be attached to an absl::Status / PpnStatus.
+// Details the error sent by PPN nodes.
 message PpnStatusDetails {
   enum DetailedErrorCode {
+    // Default value, use when no other error known.
     ERROR_CODE_UNKNOWN = 0;
+    // Some country associated with the request is not allowed to access PPN.
     DISALLOWED_COUNTRY = 1;
+    // Client side use only. Do not use on PPN servers. Never sent from servers.
     LIBRARY_NOT_FOUND = 2;
+    // Client side use only. Do not use on PPN servers. Never sent from servers.
     IPC_FAILURE = 3;
   }
 
@@ -35,5 +40,5 @@ message PpnStatusDetails {
   // generic error code included on the status. In most cases, this will be
   // UNKNOWN, but can be set to specific values for errors we want to propagate
   // up to the user with a detailed message.
-  optional DetailedErrorCode detailed_error_code = 1;
+  DetailedErrorCode detailed_error_code = 1;
 }

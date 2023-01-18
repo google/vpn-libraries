@@ -19,7 +19,7 @@
 #import "googlemac/iPhone/Shared/PPN/Classes/PPNStatusDetails+Internal.h"
 
 #import <XCTest/XCTest.h>
-#import "privacy/net/krypton/proto/ppn_status.proto.h"
+#import "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
 
@@ -38,8 +38,8 @@
 
 - (void)testNSErrorFromPPNStatusNotOk {
   absl::Status status = absl::PermissionDeniedError("bad test");
-  privacy::krypton::PpnStatusDetails input;
-  input.set_detailed_error_code(privacy::krypton::PpnStatusDetails::DISALLOWED_COUNTRY);
+  privacy::ppn::PpnStatusDetails input;
+  input.set_detailed_error_code(privacy::ppn::PpnStatusDetails::DISALLOWED_COUNTRY);
   privacy::krypton::utils::SetPpnStatusDetails(&status, input);
   NSError *error = privacy::krypton::NSErrorFromPPNStatus(status);
   XCTAssertNotNil(error);

@@ -16,7 +16,7 @@
 
 #include <string>
 
-#include "privacy/net/krypton/proto/ppn_status.proto.h"
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/cord.h"
 #include "third_party/absl/strings/str_cat.h"
@@ -30,8 +30,8 @@ namespace {
 absl::Status CreateDisallowedCountryStatus(absl::string_view message) {
   absl::Status status = absl::FailedPreconditionError(
       absl::StrCat("Disallowed country: ", message));
-  PpnStatusDetails details;
-  details.set_detailed_error_code(PpnStatusDetails::DISALLOWED_COUNTRY);
+  ppn::PpnStatusDetails details;
+  details.set_detailed_error_code(ppn::PpnStatusDetails::DISALLOWED_COUNTRY);
   SetPpnStatusDetails(&status, details);
   return status;
 }
@@ -93,21 +93,21 @@ bool IsPermanentError(absl::Status status) {
 
   if (status.code() == absl::StatusCode::kFailedPrecondition &&
       GetPpnStatusDetails(status).detailed_error_code() ==
-          PpnStatusDetails::DISALLOWED_COUNTRY) {
+          ppn::PpnStatusDetails::DISALLOWED_COUNTRY) {
     return true;
   }
 
   if (status.code() == absl::StatusCode::kFailedPrecondition &&
       GetPpnStatusDetails(status).detailed_error_code() ==
-          PpnStatusDetails::LIBRARY_NOT_FOUND) {
+          ppn::PpnStatusDetails::LIBRARY_NOT_FOUND) {
     return true;
   }
 
   return false;
 }
 
-PpnStatusDetails GetPpnStatusDetails(absl::Status status) {
-  PpnStatusDetails details;
+ppn::PpnStatusDetails GetPpnStatusDetails(absl::Status status) {
+  ppn::PpnStatusDetails details;
   auto payload = status.GetPayload(kPpnStatusDetailsPayloadKey);
   if (payload) {
     std::string s;
@@ -117,7 +117,7 @@ PpnStatusDetails GetPpnStatusDetails(absl::Status status) {
   return details;
 }
 
-void SetPpnStatusDetails(absl::Status* status, PpnStatusDetails details) {
+void SetPpnStatusDetails(absl::Status* status, ppn::PpnStatusDetails details) {
   status->SetPayload(kPpnStatusDetailsPayloadKey,
                      absl::Cord(details.SerializeAsString()));
 }

@@ -17,12 +17,12 @@
 
 #include <string>
 
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/jni/jni_utils.h"
 #include "privacy/net/krypton/jni/krypton_notification.h"
 #include "privacy/net/krypton/jni/vpn_service.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
-#include "privacy/net/krypton/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
@@ -32,7 +32,6 @@ using privacy::krypton::ConnectionStatus;
 using privacy::krypton::DisconnectionStatus;
 using privacy::krypton::IpSecTransformParams;
 using privacy::krypton::NetworkInfo;
-using privacy::krypton::PpnStatusDetails;
 using privacy::krypton::ReconnectionStatus;
 using privacy::krypton::ResumeStatus;
 using privacy::krypton::SnoozeStatus;
@@ -43,6 +42,7 @@ using privacy::krypton::jni::JniCache;
 using privacy::krypton::jni::KryptonNotification;
 using privacy::krypton::jni::VpnService;
 using privacy::krypton::utils::SetPpnStatusDetails;
+using privacy::ppn::PpnStatusDetails;
 
 // Implementations of native methods from JniTestNotification.java.
 // LINT.IfChange

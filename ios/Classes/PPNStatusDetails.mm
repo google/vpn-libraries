@@ -15,14 +15,13 @@
  */
 
 #import "googlemac/iPhone/Shared/PPN/Classes/PPNStatusDetails+Internal.h"
-#import "privacy/net/krypton/proto/ppn_status.proto.h"
+#import "privacy/net/common/proto/ppn_status.proto.h"
 
 static NSString *const kDetailedErrorCode = @"detailedErrorCode";
 
 @implementation PPNStatusDetails
 
-- (instancetype)initWithPpnStatusDetails:
-    (const privacy::krypton::PpnStatusDetails &)ppnStatusDetails {
+- (instancetype)initWithPpnStatusDetails:(const privacy::ppn::PpnStatusDetails &)ppnStatusDetails {
   self = [super init];
   if (self != nullptr) {
     _detailedErrorCode = PPNDetailedErrorCode(ppnStatusDetails.detailed_error_code());
@@ -39,8 +38,8 @@ static NSString *const kDetailedErrorCode = @"detailedErrorCode";
 #pragma mark - NSSecureCoding
 
 - (instancetype)initWithCoder:(NSCoder *)coder {
-  privacy::krypton::PpnStatusDetails ppnStatusDetails;
-  ppnStatusDetails.set_detailed_error_code(privacy::krypton::PpnStatusDetails_DetailedErrorCode(
+  privacy::ppn::PpnStatusDetails ppnStatusDetails;
+  ppnStatusDetails.set_detailed_error_code(privacy::ppn::PpnStatusDetails_DetailedErrorCode(
       [coder decodeIntegerForKey:kDetailedErrorCode]));
   return [self initWithPpnStatusDetails:ppnStatusDetails];
 }

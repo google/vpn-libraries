@@ -21,10 +21,10 @@
 #include <string>
 
 #include "base/logging.h"
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/jni/jni_utils.h"
 #include "privacy/net/krypton/proto/connection_status.proto.h"
-#include "privacy/net/krypton/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
@@ -127,7 +127,7 @@ void KryptonNotification::PermanentFailure(const absl::Status& status) {
     return;
   }
 
-  PpnStatusDetails details = utils::GetPpnStatusDetails(status);
+  ppn::PpnStatusDetails details = utils::GetPpnStatusDetails(status);
   std::string details_bytes;
   details.SerializeToString(&details_bytes);
 
@@ -152,7 +152,7 @@ void KryptonNotification::NetworkDisconnected(const NetworkInfo& network_info,
   std::string network_info_bytes;
   network_info.SerializeToString(&network_info_bytes);
 
-  PpnStatusDetails details = utils::GetPpnStatusDetails(status);
+  ppn::PpnStatusDetails details = utils::GetPpnStatusDetails(status);
   std::string details_bytes;
   details.SerializeToString(&details_bytes);
 

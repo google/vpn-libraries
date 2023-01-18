@@ -17,7 +17,7 @@
 #ifdef __cplusplus
 
 #import "googlemac/iPhone/Shared/PPN/API/PPNStatusDetails.h"
-#import "privacy/net/krypton/proto/ppn_status.proto.h"
+#import "privacy/net/common/proto/ppn_status.proto.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -29,7 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Initializes the class with PpnStatusDetails.
  */
-- (instancetype)initWithPpnStatusDetails:(const privacy::krypton::PpnStatusDetails&)ppnStatusDetails
+- (instancetype)initWithPpnStatusDetails:(const privacy::ppn::PpnStatusDetails&)ppnStatusDetails
     NS_DESIGNATED_INITIALIZER;
 
 - (instancetype)init NS_UNAVAILABLE;

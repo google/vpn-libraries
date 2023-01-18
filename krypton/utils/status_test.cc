@@ -14,7 +14,7 @@
 
 #include "privacy/net/krypton/utils/status.h"
 
-#include "privacy/net/krypton/proto/ppn_status.proto.h"
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
@@ -68,19 +68,19 @@ TEST_F(StatusTest, TestPermanentFailures) {
 
 TEST_F(StatusTest, TestPpnStatusDetailsDefault) {
   auto status = absl::FailedPreconditionError("error");
-  PpnStatusDetails details = GetPpnStatusDetails(status);
-  EXPECT_EQ(PpnStatusDetails::ERROR_CODE_UNKNOWN,
+  ppn::PpnStatusDetails details = GetPpnStatusDetails(status);
+  EXPECT_EQ(ppn::PpnStatusDetails::ERROR_CODE_UNKNOWN,
             details.detailed_error_code());
 }
 
 TEST_F(StatusTest, TestPpnStatusDetails) {
-  PpnStatusDetails input;
-  input.set_detailed_error_code(PpnStatusDetails::DISALLOWED_COUNTRY);
+  ppn::PpnStatusDetails input;
+  input.set_detailed_error_code(ppn::PpnStatusDetails::DISALLOWED_COUNTRY);
   auto status = absl::FailedPreconditionError("error");
   SetPpnStatusDetails(&status, input);
 
-  PpnStatusDetails details = GetPpnStatusDetails(status);
-  EXPECT_EQ(PpnStatusDetails::DISALLOWED_COUNTRY,
+  ppn::PpnStatusDetails details = GetPpnStatusDetails(status);
+  EXPECT_EQ(ppn::PpnStatusDetails::DISALLOWED_COUNTRY,
             details.detailed_error_code());
 }
 
@@ -89,8 +89,8 @@ TEST_F(StatusTest, TestHttpStatus412) {
   EXPECT_EQ(absl::StatusCode::kFailedPrecondition, status.code());
   EXPECT_EQ("Disallowed country: disallowed country", status.message());
 
-  PpnStatusDetails details = GetPpnStatusDetails(status);
-  EXPECT_EQ(PpnStatusDetails::DISALLOWED_COUNTRY,
+  ppn::PpnStatusDetails details = GetPpnStatusDetails(status);
+  EXPECT_EQ(ppn::PpnStatusDetails::DISALLOWED_COUNTRY,
             details.detailed_error_code());
 
   EXPECT_TRUE(IsPermanentError(status));
