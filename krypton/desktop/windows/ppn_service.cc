@@ -38,7 +38,7 @@
 #include "privacy/net/krypton/desktop/windows/vpn_service.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
-#include "privacy/net/krypton/proto/ppn_status.proto.h"
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/log/check.h"
 #include "third_party/absl/status/status.h"
@@ -285,8 +285,8 @@ void PpnService::HandlePipeFailure(const absl::Status& status) {
 
   manager_->StopKryptonService();
   absl::Status ipc_failure_status = absl::InternalError("IPC failure");
-  PpnStatusDetails details;
-  details.set_detailed_error_code(PpnStatusDetails::IPC_FAILURE);
+  ppn::PpnStatusDetails details;
+  details.set_detailed_error_code(ppn::PpnStatusDetails::IPC_FAILURE);
   ::privacy::krypton::utils::SetPpnStatusDetails(&ipc_failure_status, details);
 
   auto ppn_notification = ppn_notification_;

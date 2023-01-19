@@ -303,8 +303,8 @@ absl::Status Wintun::IsWintunInitialized() {
   if (!EnsureLibraryExists().ok()) {
     absl::Status status =
         absl::FailedPreconditionError("TUN library not found");
-    PpnStatusDetails details;
-    details.set_detailed_error_code(PpnStatusDetails::LIBRARY_NOT_FOUND);
+    ppn::PpnStatusDetails details;
+    details.set_detailed_error_code(ppn::PpnStatusDetails::LIBRARY_NOT_FOUND);
     ::privacy::krypton::utils::SetPpnStatusDetails(&status, details);
     return status;
   }

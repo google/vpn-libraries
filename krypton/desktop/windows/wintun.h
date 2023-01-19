@@ -24,7 +24,7 @@
 
 #include "privacy/net/krypton/desktop/windows/wintun_interface.h"
 #include "privacy/net/krypton/pal/packet.h"
-#include "privacy/net/krypton/proto/ppn_status.proto.h"
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
