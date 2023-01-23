@@ -168,6 +168,8 @@ absl::Status DatagramSocket::Connect(Endpoint dest) {
   return absl::OkStatus();
 }
 
+int DatagramSocket::GetFd() { return socket_fd_; }
+
 std::string DatagramSocket::DebugString() {
   return absl::StrCat("FD=", socket_fd_.load());
 }
@@ -178,10 +180,10 @@ absl::Status DatagramSocket::Init() {
   auto status = events_helper_.AddFile(fd, EventsHelper::EventReadableFlags());
   if (status.ok()) {
     status = events_helper_.AddFile(close_event_.fd(),
-                                    EventsHelper::EventReadableFlags());
-    if (!status.ok()) {
+                                  EventsHelper::EventReadableFlags());
+  if (!status.ok()) {
       LOG(ERROR) << "Failed to add close event for socket " << fd
-                 << " to EventsHelper: " << status;
+               << " to EventsHelper: " << status;
     }
   } else {
     LOG(ERROR) << "Failed to add socket " << fd

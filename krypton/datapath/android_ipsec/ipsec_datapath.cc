@@ -84,19 +84,8 @@ absl::Status IpSecDatapath::SwitchNetwork(
   }
   key_material_->set_uplink_spi(session_id);
 
-  auto network_fd = vpn_service_->CreateProtectedNetworkSocket(*network_info);
-  if (!network_fd.ok()) {
-    auto status = network_fd.status();
-    auto* notification = notification_;
-    LOG(ERROR) << "Unable to create network socket fd: " << status;
-    notification_thread_->Post(
-        [notification, status]() { notification->DatapathFailed(status); });
-    // Returning OK since failure is handled by preceding notification call
-    return absl::OkStatus();
-  }
-
   auto network_socket =
-      vpn_service_->ConfigureNetworkSocket(*network_fd, endpoint);
+      vpn_service_->CreateProtectedNetworkSocket(*network_info, endpoint);
   if (!network_socket.ok()) {
     auto status = network_socket.status();
     auto* notification = notification_;
@@ -110,9 +99,10 @@ absl::Status IpSecDatapath::SwitchNetwork(
   if (*network_socket == nullptr) {
     return absl::InternalError("got a null network socket");
   }
+  int network_fd = (*network_socket)->GetFd();
 
   key_material_->set_network_id(network_info->network_id());
-  key_material_->set_network_fd(*network_fd);
+  key_material_->set_network_fd(network_fd);
   key_material_->set_destination_address(endpoint.address());
   key_material_->set_destination_port(endpoint.port());
   if (endpoint.ip_protocol() == IPProtocol::kIPv4) {
@@ -130,7 +120,7 @@ absl::Status IpSecDatapath::SwitchNetwork(
   } else {
     return absl::InternalError("unsupported address family for endpoint");
   }
-  LOG(INFO) << "Configuring IpSecManager with fd=" << *network_fd
+  LOG(INFO) << "Configuring IpSecManager with fd=" << network_fd
             << " network=" << network_info->network_id()
             << " uplink_spi=" << key_material_->uplink_spi()
             << " downlink_spi=" << key_material_->downlink_spi()

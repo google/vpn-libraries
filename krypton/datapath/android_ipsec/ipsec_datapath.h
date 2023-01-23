@@ -19,14 +19,15 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_packet_forwarder.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
-#include "privacy/net/krypton/socket_interface.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/synchronization/mutex.h"
@@ -44,13 +45,10 @@ class IpSecDatapath : public DatapathInterface,
   // Extension to VpnService with methods needed specifically for Android IpSec.
   class IpSecVpnServiceInterface : public virtual VpnServiceInterface {
    public:
-    // Creates a protected FD for the network connection.
-    virtual absl::StatusOr<int> CreateProtectedNetworkSocket(
-        const NetworkInfo& network_info) = 0;
-
-    // Configures a UDP connection using provided FD.
-    virtual absl::StatusOr<std::unique_ptr<SocketInterface>>
-    ConfigureNetworkSocket(int fd, const Endpoint& endpoint) = 0;
+    // Creates a protected FD and a socket object for the network connection.
+    virtual absl::StatusOr<std::unique_ptr<IpSecSocketInterface>>
+    CreateProtectedNetworkSocket(const NetworkInfo& network_info,
+                                 const Endpoint& endpoint) = 0;
 
     virtual TunnelInterface* GetTunnel() = 0;
 
@@ -104,7 +102,7 @@ class IpSecDatapath : public DatapathInterface,
 
   std::optional<IpSecTransformParams> key_material_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<IpSecPacketForwarder> forwarder_ ABSL_GUARDED_BY(mutex_);
-  std::unique_ptr<SocketInterface> network_socket_ ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<IpSecSocketInterface> network_socket_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace android

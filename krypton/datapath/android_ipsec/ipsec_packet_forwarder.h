@@ -19,9 +19,9 @@
 #include <memory>
 #include <vector>
 
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
-#include "privacy/net/krypton/socket_interface.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
@@ -53,7 +53,7 @@ class IpSecPacketForwarder {
   };
 
   explicit IpSecPacketForwarder(TunnelInterface* utun_interface,
-                                SocketInterface* network_socket,
+                                IpSecSocketInterface* network_socket,
                                 utils::LooperThread* looper,
                                 NotificationInterface* notification);
   ~IpSecPacketForwarder();
@@ -87,7 +87,7 @@ class IpSecPacketForwarder {
   void PostDatapathFailure(const absl::Status& status);
 
   TunnelInterface* utun_interface_;           // Not owned.
-  SocketInterface* network_socket_;           // Not owned.
+  IpSecSocketInterface* network_socket_;      // Not owned.
   utils::LooperThread* notification_thread_;  // Not owned.
   NotificationInterface* notification_;       // Not owned.
 

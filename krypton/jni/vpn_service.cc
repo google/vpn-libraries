@@ -194,8 +194,10 @@ absl::StatusOr<int> VpnService::CreateProtectedTcpSocket(
   return fd;
 }
 
-absl::StatusOr<std::unique_ptr<SocketInterface>>
-VpnService::ConfigureNetworkSocket(int fd, const Endpoint& endpoint) {
+absl::StatusOr<std::unique_ptr<datapath::android::IpSecSocketInterface>>
+VpnService::CreateProtectedNetworkSocket(const NetworkInfo& network_info,
+                                         const Endpoint& endpoint) {
+  PPN_ASSIGN_OR_RETURN(auto fd, CreateProtectedNetworkSocket(network_info));
   PPN_ASSIGN_OR_RETURN(auto socket,
                        datapath::android::DatagramSocket::Create(fd));
   auto status = socket->Connect(endpoint);

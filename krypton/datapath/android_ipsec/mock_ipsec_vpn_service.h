@@ -25,26 +25,24 @@ namespace android {
 
 class MockIpSecVpnService : public IpSecDatapath::IpSecVpnServiceInterface {
  public:
-  MOCK_METHOD(DatapathInterface*, BuildDatapath,
-              (const KryptonConfig&, utils::LooperThread*,
-               TimerManager* timer_manager),
+  MOCK_METHOD(DatapathInterface *, BuildDatapath,
+              (const KryptonConfig &, utils::LooperThread *,
+               TimerManager *timer_manager),
               (override));
 
-  MOCK_METHOD(absl::Status, CreateTunnel, (const TunFdData&), (override));
+  MOCK_METHOD(absl::Status, CreateTunnel, (const TunFdData &), (override));
 
   MOCK_METHOD(void, CloseTunnel, (), (override));
 
   MOCK_METHOD(void, DisableKeepalive, (), (override));
 
-  MOCK_METHOD(absl::StatusOr<int>, CreateProtectedNetworkSocket,
-              (const NetworkInfo&), (override));
+  MOCK_METHOD((absl::StatusOr<std::unique_ptr<IpSecSocketInterface>>),
+              CreateProtectedNetworkSocket,
+              (const NetworkInfo &, const Endpoint &), (override));
 
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<SocketInterface>>,
-              ConfigureNetworkSocket, (int, const Endpoint&), (override));
+  MOCK_METHOD(TunnelInterface *, GetTunnel, (), (override));
 
-  MOCK_METHOD(TunnelInterface*, GetTunnel, (), (override));
-
-  MOCK_METHOD(absl::Status, ConfigureIpSec, (const IpSecTransformParams&),
+  MOCK_METHOD(absl::Status, ConfigureIpSec, (const IpSecTransformParams &),
               (override));
 };
 

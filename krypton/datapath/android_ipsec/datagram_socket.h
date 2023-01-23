@@ -22,10 +22,10 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/event_fd.h"
 #include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
-#include "privacy/net/krypton/socket_interface.h"
 #include "third_party/absl/status/statusor.h"
 
 namespace privacy {
@@ -33,7 +33,7 @@ namespace krypton {
 namespace datapath {
 namespace android {
 
-class DatagramSocket : public SocketInterface {
+class DatagramSocket : public IpSecSocketInterface {
  public:
   static absl::StatusOr<std::unique_ptr<DatagramSocket>> Create(int socket_fd);
 
@@ -51,7 +51,9 @@ class DatagramSocket : public SocketInterface {
   // This should be called before calling WritePackets.
   absl::Status Connect(Endpoint dest) override;
 
-  void GetDebugInfo(DatapathDebugInfo* debug_info) override {};
+  int GetFd() override;
+
+  void GetDebugInfo(DatapathDebugInfo* debug_info) override{};
 
   std::string DebugString();
 

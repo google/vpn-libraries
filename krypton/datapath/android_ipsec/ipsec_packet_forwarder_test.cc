@@ -18,8 +18,8 @@
 #include <utility>
 #include <vector>
 
+#include "privacy/net/krypton/datapath/android_ipsec/mock_ipsec_socket.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mock_tunnel.h"
-#include "privacy/net/krypton/mock_socket.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
@@ -47,7 +47,7 @@ class MockNotification : public IpSecPacketForwarder::NotificationInterface {
 class IpSecPacketForwarderTest : public ::testing::Test {
  public:
   MockTunnel utun_interface_;
-  MockSocket network_socket_;
+  MockIpSecSocket network_socket_;
   utils::LooperThread notification_thread_{"IpSecPacketForwarder Test"};
   MockNotification notification_;
 };
@@ -65,9 +65,9 @@ TEST_F(IpSecPacketForwarderTest, TestStartAndStop) {
   });
 
   EXPECT_CALL(network_socket_, Close()).WillOnce([&network_closed]() {
-    network_closed.Notify();
-    return absl::OkStatus();
-  });
+        network_closed.Notify();
+        return absl::OkStatus();
+      });
 
   EXPECT_CALL(utun_interface_, ReadPackets()).WillOnce([&utun_closed]() {
     utun_closed.WaitForNotification();
@@ -124,9 +124,9 @@ TEST_F(IpSecPacketForwarderTest, TestDownlinkPacketHandling) {
       });
 
   EXPECT_CALL(network_socket_, Close()).WillOnce([&network_closed]() {
-    network_closed.Notify();
-    return absl::OkStatus();
-  });
+        network_closed.Notify();
+        return absl::OkStatus();
+      });
 
   EXPECT_CALL(utun_interface_, WritePackets(testing::_))
       .WillOnce([&packet_count, &test_data](std::vector<Packet> packets) {
@@ -200,9 +200,9 @@ TEST_F(IpSecPacketForwarderTest, TestUplinkPacketHandling) {
   });
 
   EXPECT_CALL(network_socket_, Close()).WillOnce([&network_closed]() {
-    network_closed.Notify();
-    return absl::OkStatus();
-  });
+        network_closed.Notify();
+        return absl::OkStatus();
+      });
 
   EXPECT_CALL(utun_interface_, ReadPackets())
       .WillOnce(testing::Return(std::exchange(packets, {})))
@@ -254,9 +254,9 @@ TEST_F(IpSecPacketForwarderTest, TestNetworkWriteFail) {
   });
 
   EXPECT_CALL(network_socket_, Close()).WillOnce([&network_closed]() {
-    network_closed.Notify();
-    return absl::OkStatus();
-  });
+        network_closed.Notify();
+        return absl::OkStatus();
+      });
 
   EXPECT_CALL(utun_interface_, ReadPackets())
       .WillOnce(testing::Return(std::move(packets)))
@@ -335,9 +335,9 @@ TEST_F(IpSecPacketForwarderTest, TestTunnelReadFail) {
   });
 
   EXPECT_CALL(network_socket_, Close()).WillOnce([&network_closed]() {
-    network_closed.Notify();
-    return absl::OkStatus();
-  });
+        network_closed.Notify();
+        return absl::OkStatus();
+      });
 
   EXPECT_CALL(utun_interface_, ReadPackets())
       .WillOnce(testing::Return(read_status));

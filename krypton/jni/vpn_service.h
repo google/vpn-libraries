@@ -18,15 +18,16 @@
 #include <jni.h>
 
 #include <memory>
+#include <utility>
 
 #include "base/logging.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_tunnel.h"
 
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
-#include "privacy/net/krypton/socket_interface.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/statusor.h"
@@ -61,9 +62,9 @@ class VpnService
       const NetworkInfo& network_info) override;
   absl::StatusOr<int> CreateProtectedTcpSocket(
       const NetworkInfo& network_info) override;
-
-  absl::StatusOr<std::unique_ptr<SocketInterface>> ConfigureNetworkSocket(
-      int fd, const Endpoint& endpoint) override;
+  absl::StatusOr<std::unique_ptr<datapath::android::IpSecSocketInterface>>
+  CreateProtectedNetworkSocket(const NetworkInfo& network_info,
+                               const Endpoint& endpoint) override;
 
   absl::Status ConfigureIpSec(const IpSecTransformParams& params) override;
 

@@ -19,11 +19,11 @@
 #include <vector>
 
 #include "privacy/net/krypton/add_egress_response.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mock_ipsec_socket.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mock_ipsec_vpn_service.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mock_tunnel.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
-#include "privacy/net/krypton/mock_socket.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "testing/base/public/gmock.h"
@@ -140,15 +140,14 @@ TEST_F(IpSecDatapathTest, SwitchNetworkAndNoKeyMaterial) {
 }
 
 TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
-  auto socket_ptr = std::make_unique<MockSocket>();
+  auto socket_ptr = std::make_unique<MockIpSecSocket>();
 
   // Need to keep a reference to the socket to simulate data being sent.
-  MockSocket *socket = socket_ptr.get();
-  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_))
+  MockIpSecSocket *socket = socket_ptr.get();
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _))
       .Times(1)
-      .WillOnce(Return(1));
-  EXPECT_CALL(vpn_service_, ConfigureNetworkSocket(_, _))
       .WillOnce(Return(std::move(socket_ptr)));
+  EXPECT_CALL(*socket, GetFd()).WillOnce(Return(1));
 
   EXPECT_CALL(notification_, DatapathFailed).Times(0);
   EXPECT_CALL(notification_, DatapathPermanentFailure).Times(0);
@@ -202,28 +201,10 @@ TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
 
   datapath_.Stop();
 }
-
-TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkFd) {
-  // create failure to create network fd.
-  EXPECT_CALL(notification_, DatapathFailed).Times(1);
-  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_))
-      .Times(1)
-      .WillOnce(Return(absl::InternalError("Failure")));
-
-  EXPECT_OK(datapath_.Start(fake_add_egress_response_, params_));
-  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel_));
-  EXPECT_OK(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1));
-
-  datapath_.Stop();
-}
-
 TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
   // create failure to create network socket.
   EXPECT_CALL(notification_, DatapathFailed).Times(1);
-  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_))
-      .Times(1)
-      .WillOnce(Return(1));
-  EXPECT_CALL(vpn_service_, ConfigureNetworkSocket(_, _))
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _))
       .Times(1)
       .WillOnce(Return(absl::InternalError("Failure")));
 

@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
@@ -34,7 +36,7 @@ namespace datapath {
 namespace android {
 
 IpSecPacketForwarder::IpSecPacketForwarder(TunnelInterface* utun_interface,
-                                           SocketInterface* network_socket,
+                                           IpSecSocketInterface* network_socket,
                                            utils::LooperThread* looper,
                                            NotificationInterface* notification)
     : utun_interface_(utun_interface),
