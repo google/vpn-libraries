@@ -56,10 +56,11 @@ class RsaFdhBlinder {
  private:
   // Use `Blind` to construct
   RsaFdhBlinder(bssl::UniquePtr<BIGNUM> r, bssl::UniquePtr<RSA> public_key,
-                std::string blind);
+                bssl::UniquePtr<BN_MONT_CTX> mont_n, std::string blind);
 
   const bssl::UniquePtr<BIGNUM> r_;
   bssl::UniquePtr<RSA> public_key_;
+  bssl::UniquePtr<BN_MONT_CTX> mont_n_;
   std::string blind_;
 };
 

@@ -113,9 +113,12 @@ class CtxEnder {
 }  // namespace
 
 RsaFdhBlinder::RsaFdhBlinder(bssl::UniquePtr<BIGNUM> r,
-                             bssl::UniquePtr<RSA> public_key, std::string blind)
+                             bssl::UniquePtr<RSA> public_key,
+                             bssl::UniquePtr<BN_MONT_CTX> mont_n,
+                             std::string blind)
     : r_(std::move(r)),
       public_key_(std::move(public_key)),
+      mont_n_(std::move(mont_n)),
       blind_(std::move(blind)) {}
 
 absl::StatusOr<std::unique_ptr<RsaFdhBlinder>> RsaFdhBlinder::Blind(
@@ -137,25 +140,39 @@ absl::StatusOr<std::unique_ptr<RsaFdhBlinder>> RsaFdhBlinder::Blind(
     return absl::InternalError("BN_rand_range_ex failed");
   }
 
+  bssl::UniquePtr<BN_MONT_CTX> mont_n(
+      BN_MONT_CTX_new_for_modulus(RSA_get0_n(signer_public_key.get()), bn_ctx));
+  if (!mont_n) {
+    return absl::InternalError("BN_MONT_CTX_new_for_modulus failed");
+  }
+
   // take `r^e mod n`. This is an equivalent operation to RSA_encrypt, without
   // extra encode/decode trips.
-  // https://boringssl.googlesource.com/boringssl/+/master/crypto/fipsmodule/rsa/rsa_impl.c#322
   BIGNUM* rE = BN_CTX_get(bn_ctx);
-  if (BN_MONT_CTX_set_locked(&signer_public_key->mont_n,
-                             &signer_public_key->lock, signer_public_key->n,
-                             bn_ctx) != kBsslSuccess ||
-      BN_mod_exp_mont(rE, r.get(), RSA_get0_e(signer_public_key.get()),
-                      &signer_public_key->mont_n->N, bn_ctx,
-                      signer_public_key->mont_n) != kBsslSuccess) {
+  if (BN_mod_exp_mont(rE, r.get(), RSA_get0_e(signer_public_key.get()),
+                      RSA_get0_n(signer_public_key.get()), bn_ctx,
+                      mont_n.get()) != kBsslSuccess) {
     return absl::InternalError("BN_mod_exp_mont failed.");
   }
 
   PPN_ASSIGN_OR_RETURN(const auto hash,
                        Shake256Fdh(message, signer_public_key.get(), bn_ctx));
 
+  // To avoid leaking side channels, we use Montgomery reduction. This would be
+  // FromMontgomery(ModMulMontgomery(ToMontgomery(m), ToMontgomery(r^e))).
+  // However, this is equivalent to ModMulMontgomery(m, ToMontgomery(r^e)).
+  // Each BN_mod_mul_montgomery removes a factor of R, so by having only one
+  // input in the Montgomery domain, we save a To/FromMontgomery pair.
+  //
+  // Internally, BN_mod_exp_mont actually computes r^e in the Montgomery domain
+  // and converts it out, but there is no public API for this, so we perform an
+  // extra conversion.
   auto blinded_hash = BN_CTX_get(bn_ctx);
-  if (BN_mod_mul(blinded_hash, hash, rE, n, bn_ctx) != kBsslSuccess) {
-    return absl::InternalError("BN_mod_mul of hash and rE failed");
+  if (BN_to_montgomery(blinded_hash, rE, mont_n.get(), bn_ctx) !=
+          kBsslSuccess ||
+      BN_mod_mul_montgomery(blinded_hash, hash, blinded_hash, mont_n.get(),
+                            bn_ctx) != kBsslSuccess) {
+    return absl::InternalError("Multiplying hash and rE failed");
   }
 
   PPN_ASSIGN_OR_RETURN(const std::string blinded_hash_str,
@@ -164,7 +181,7 @@ absl::StatusOr<std::unique_ptr<RsaFdhBlinder>> RsaFdhBlinder::Blind(
   auto blinded = absl::WrapUnique(
       new RsaFdhBlinder(std::move(r),
                         /*public_key*/ std::move(signer_public_key),
-                        std::move(blinded_hash_str)));
+                        std::move(mont_n), std::move(blinded_hash_str)));
 
   return blinded;
 }
@@ -190,22 +207,28 @@ absl::StatusOr<std::string> RsaFdhBlinder::Unblind(
   PPN_ASSIGN_OR_RETURN(BIGNUM * signed_big,
                        StringToBignum(blind_signature, bn_ctx));
 
-  // TODO: Consider BN_mod_exp_mont_consttime instead.
-  auto r_inv = BN_CTX_get(bn_ctx);
-  auto bn_mont_ctx =
-      BN_MONT_CTX_new_for_modulus(RSA_get0_n(public_key_.get()), bn_ctx);
-  int out_noinverse;
-  if (BN_mod_inverse_blinded(r_inv, &out_noinverse, r_.get(), bn_mont_ctx,
+  // We wish to compute r^-1 in the Montgomery domain, or r^-1 R mod n. This is
+  // can be done with BN_mod_inverse_blinded followed by BN_to_montgomery, but
+  // it is equivalent and slightly more efficient to first compute r R^-1 mod n
+  // with BN_from_montgomery, and then inverting that to give r^-1 R mod n.
+  auto r_inv_mont = BN_CTX_get(bn_ctx);
+  int no_inverse = 0;
+  if (BN_from_montgomery(r_inv_mont, r_.get(), mont_n_.get(), bn_ctx) !=
+          kBsslSuccess ||
+      BN_mod_inverse_blinded(r_inv_mont, &no_inverse, r_inv_mont, mont_n_.get(),
                              bn_ctx) != kBsslSuccess) {
-    BN_MONT_CTX_free(bn_mont_ctx);
     return absl::InternalError(
-        absl::StrCat("BN_mod_inverse failed out_noinverse=", out_noinverse));
+        absl::StrCat("BN_mod_inverse failed no_inverse=", no_inverse));
   }
-  BN_MONT_CTX_free(bn_mont_ctx);
 
+  // To avoid leaking side channels, we use Montgomery reduction. This would be
+  // FromMontgomery(ModMulMontgomery(ToMontgomery(m), ToMontgomery(r^-1))).
+  // However, this is equivalent to ModMulMontgomery(m, ToMontgomery(r^-1)).
+  // Each BN_mod_mul_montgomery removes a factor of R, so by having only one
+  // input in the Montgomery domain, we save a To/FromMontgomery pair.
   auto unblinded_sig_big = BN_CTX_get(bn_ctx);
-  if (BN_mod_mul(unblinded_sig_big, signed_big, r_inv,
-                 RSA_get0_n(public_key_.get()), bn_ctx) != kBsslSuccess) {
+  if (BN_mod_mul_montgomery(unblinded_sig_big, signed_big, r_inv_mont,
+                            mont_n_.get(), bn_ctx) != kBsslSuccess) {
     return absl::InternalError("BN_mod_mul failed.");
   }
 
