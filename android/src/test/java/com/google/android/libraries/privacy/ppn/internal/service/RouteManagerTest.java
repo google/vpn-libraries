@@ -37,8 +37,16 @@ public class RouteManagerTest {
   @Mock private VpnService.Builder mockBuilder;
 
   @Test
-  public void addRoutes_addsRoutes() {
-    RouteManager.addRoutes(mockBuilder);
+  public void addIpv4Routes_addsRoutes() {
+    RouteManager.addIpv4Routes(mockBuilder);
+
+    verify(mockBuilder, atLeastOnce()).addRoute(anyString(), anyInt());
+    verifyNoMoreInteractions(mockBuilder);
+  }
+
+  @Test
+  public void addIpv6Routes_addsRoutes() {
+    RouteManager.addIpv6Routes(mockBuilder);
 
     verify(mockBuilder, atLeastOnce()).addRoute(anyString(), anyInt());
     verifyNoMoreInteractions(mockBuilder);

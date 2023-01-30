@@ -189,6 +189,9 @@ public class VpnManager {
 
     builder.setMtu(tunFdData.getMtu());
 
+    // To use IPv6 it must be enabled and the MTU must be at least the IPv6 minimum.
+    boolean ipv6Enabled = options.isIPv6Enabled() && tunFdData.getMtu() >= 1280;
+
     // VpnService.Builder.setMetered(...) is only supported in API 29+.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       Log.w(TAG, "Setting metered to " + tunFdData.getIsMetered());
@@ -197,7 +200,7 @@ public class VpnManager {
 
     for (TunFdData.IpRange ipRange : tunFdData.getTunnelIpAddressesList()) {
       // TODO: Don't enable IPv6 until it's working.
-      if (!options.isIPv6Enabled() && ipRange.getIpFamily() == IpFamily.IPV6) {
+      if (ipRange.getIpFamily() == IpFamily.IPV6 && !ipv6Enabled) {
         Log.w(TAG, "Skipping IPv6 tunnel address: " + ipRange.getIpRange());
         continue;
       }
@@ -205,11 +208,18 @@ public class VpnManager {
       builder.addAddress(ipRange.getIpRange(), ipRange.getPrefix());
     }
     for (TunFdData.IpRange ipRange : tunFdData.getTunnelDnsAddressesList()) {
+      if (ipRange.getIpFamily() == IpFamily.IPV6 && !ipv6Enabled) {
+        Log.w(TAG, "Skipping IPv6 DNS address: " + ipRange.getIpRange());
+        continue;
+      }
       Log.w(TAG, "Adding DNS: " + ipRange.getIpRange());
       builder.addDnsServer(ipRange.getIpRange());
     }
 
-    RouteManager.addRoutes(builder);
+    RouteManager.addIpv4Routes(builder);
+    if (ipv6Enabled) {
+      RouteManager.addIpv6Routes(builder);
+    }
   }
 
   /**

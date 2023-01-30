@@ -25,10 +25,9 @@ public class RouteManager {
 
   private RouteManager() {}
 
-  /** Uses a standard set of IPs to build the list of routes to include in PPN. */
-  public static void addRoutes(VpnService.Builder builder) {
+  /** Uses a standard set of IPs to build the list of IPv4 routes to include in PPN. */
+  public static void addIpv4Routes(VpnService.Builder builder) {
     List<Cidr> ipv4SubnetsToExclude = new ArrayList<>();
-    List<Cidr> ipv6SubnetsToExclude = new ArrayList<>();
 
     // IPv4
     // See
@@ -56,6 +55,11 @@ public class RouteManager {
     for (Cidr cidr : includeIpv4) {
       builder.addRoute(cidr.getInetAddress().getHostAddress(), cidr.getPrefixBits());
     }
+  }
+
+  /** Uses a standard set of IPs to build the list of IPv6 routes to include in PPN. */
+  public static void addIpv6Routes(VpnService.Builder builder) {
+    List<Cidr> ipv6SubnetsToExclude = new ArrayList<>();
 
     // IPv6
     // See

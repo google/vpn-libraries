@@ -19,9 +19,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.robolectric.Shadows.shadowOf;
@@ -33,8 +35,12 @@ import androidx.test.core.app.ApplicationProvider;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
+import com.google.android.libraries.privacy.ppn.internal.TunFdData.IpRange;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
+import com.google.common.net.InetAddresses;
 import java.net.DatagramSocket;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.util.Arrays;
 import java.util.HashSet;
 import org.junit.Before;
@@ -62,6 +68,30 @@ public class VpnManagerTest {
 
   @Mock private Network mockNetwork;
   @Mock private ParcelFileDescriptor mockFd;
+
+  private boolean isIpv4Addr(String addr) {
+    return InetAddresses.forString(addr) instanceof Inet4Address;
+  }
+
+  private boolean isIpv6Addr(String addr) {
+    return InetAddresses.forString(addr) instanceof Inet6Address;
+  }
+
+  private IpRange buildIpv4IpRange() {
+    return IpRange.newBuilder()
+        .setIpFamily(IpRange.IpFamily.IPV4)
+        .setIpRange("0.0.0.0")
+        .setPrefix(16)
+        .build();
+  }
+
+  private IpRange buildIpv6IpRange() {
+    return IpRange.newBuilder()
+        .setIpFamily(IpRange.IpFamily.IPV6)
+        .setIpRange("::1")
+        .setPrefix(128)
+        .build();
+  }
 
   @Before
   public void setUp() {
@@ -126,7 +156,7 @@ public class VpnManagerTest {
   }
 
   @Test
-  public void createTunFd_establishesASocket() throws Exception {
+  public void createTunFd_establishesTunFd() throws Exception {
     ShadowVpnService.setPrepareResult(null);
     PpnOptions options = new PpnOptions.Builder().build();
     VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
@@ -142,6 +172,134 @@ public class VpnManagerTest {
     verify(mockService).newBuilder();
     verify(mockBuilder, atLeastOnce()).addRoute(anyString(), anyInt());
     verify(mockBuilder).setMtu(anyInt());
+    verify(mockBuilder).setMetered(anyBoolean());
+    verify(mockBuilder).establish();
+    verify(mockFd).detachFd();
+
+    verifyNoMoreInteractions(mockService);
+    verifyNoMoreInteractions(mockBuilder);
+    verifyNoMoreInteractions(mockNetwork);
+    verifyNoMoreInteractions(mockFd);
+  }
+
+  @Test
+  public void createTunFd_establishesTunFdWithIpv6() throws Exception {
+    ShadowVpnService.setPrepareResult(null);
+    // Enable IPv6 in the options
+    PpnOptions options = new PpnOptions.Builder().setIPv6Enabled(true).build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    manager.setServiceWrapper(mockService);
+    doReturn(mockFd).when(mockBuilder).establish();
+    doReturn(0xdead).when(mockFd).detachFd();
+
+    IpRange ipv4Range = buildIpv4IpRange();
+    IpRange ipv6Range = buildIpv6IpRange();
+    // Create with an MTU of at least the IPv6 minimum of 1280
+    TunFdData data =
+        TunFdData.newBuilder()
+            .setMtu(1280)
+            .addTunnelIpAddresses(ipv4Range)
+            .addTunnelIpAddresses(ipv6Range)
+            .addTunnelDnsAddresses(ipv4Range)
+            .addTunnelDnsAddresses(ipv6Range)
+            .build();
+    int fd = manager.createTunFd(data);
+
+    assertThat(fd).isEqualTo(0xdead);
+
+    verify(mockService).newBuilder();
+    verify(mockBuilder, atLeastOnce()).addRoute(argThat(this::isIpv4Addr), anyInt());
+    verify(mockBuilder, atLeastOnce()).addRoute(argThat(this::isIpv6Addr), anyInt());
+    verify(mockBuilder, atLeastOnce()).addAddress(argThat(this::isIpv4Addr), anyInt());
+    verify(mockBuilder, atLeastOnce()).addAddress(argThat(this::isIpv6Addr), anyInt());
+    verify(mockBuilder, atLeastOnce()).addDnsServer(argThat(this::isIpv4Addr));
+    verify(mockBuilder, atLeastOnce()).addDnsServer(argThat(this::isIpv6Addr));
+    verify(mockBuilder).setMtu(1280);
+    verify(mockBuilder).setMetered(anyBoolean());
+    verify(mockBuilder).establish();
+    verify(mockFd).detachFd();
+
+    verifyNoMoreInteractions(mockService);
+    verifyNoMoreInteractions(mockBuilder);
+    verifyNoMoreInteractions(mockNetwork);
+    verifyNoMoreInteractions(mockFd);
+  }
+
+  @Test
+  public void createTunFd_ipv6DisabledEstablishesTunFdWithoutIpv6() throws Exception {
+    ShadowVpnService.setPrepareResult(null);
+    // Disable IPv6 in the options
+    PpnOptions options = new PpnOptions.Builder().setIPv6Enabled(false).build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    manager.setServiceWrapper(mockService);
+    doReturn(mockFd).when(mockBuilder).establish();
+    doReturn(0xdead).when(mockFd).detachFd();
+
+    IpRange ipv4Range = buildIpv4IpRange();
+    IpRange ipv6Range = buildIpv6IpRange();
+    // Create with an MTU of at least the IPv6 minimum of 1280
+    TunFdData data =
+        TunFdData.newBuilder()
+            .setMtu(1280)
+            .addTunnelIpAddresses(ipv4Range)
+            .addTunnelIpAddresses(ipv6Range)
+            .addTunnelDnsAddresses(ipv4Range)
+            .addTunnelDnsAddresses(ipv6Range)
+            .build();
+    int fd = manager.createTunFd(data);
+
+    assertThat(fd).isEqualTo(0xdead);
+
+    verify(mockService).newBuilder();
+    verify(mockBuilder, atLeastOnce()).addRoute(argThat(this::isIpv4Addr), anyInt());
+    verify(mockBuilder, never()).addRoute(argThat(this::isIpv6Addr), anyInt());
+    verify(mockBuilder, atLeastOnce()).addAddress(argThat(this::isIpv4Addr), anyInt());
+    verify(mockBuilder, never()).addAddress(argThat(this::isIpv6Addr), anyInt());
+    verify(mockBuilder, atLeastOnce()).addDnsServer(argThat(this::isIpv4Addr));
+    verify(mockBuilder, never()).addDnsServer(argThat(this::isIpv6Addr));
+    verify(mockBuilder).setMtu(1280);
+    verify(mockBuilder).setMetered(anyBoolean());
+    verify(mockBuilder).establish();
+    verify(mockFd).detachFd();
+
+    verifyNoMoreInteractions(mockService);
+    verifyNoMoreInteractions(mockBuilder);
+    verifyNoMoreInteractions(mockNetwork);
+    verifyNoMoreInteractions(mockFd);
+  }
+
+  @Test
+  public void createTunFd_mtuUnderMinForIpv6EstablishesTunFdWithoutIpv6() throws Exception {
+    ShadowVpnService.setPrepareResult(null);
+    PpnOptions options = new PpnOptions.Builder().build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    manager.setServiceWrapper(mockService);
+    doReturn(mockFd).when(mockBuilder).establish();
+    doReturn(0xdead).when(mockFd).detachFd();
+
+    IpRange ipv4Range = buildIpv4IpRange();
+    IpRange ipv6Range = buildIpv6IpRange();
+    // Create with an MTU less than the IPv6 minimum of 1280
+    TunFdData data =
+        TunFdData.newBuilder()
+            .setMtu(1279)
+            .addTunnelIpAddresses(ipv4Range)
+            .addTunnelIpAddresses(ipv6Range)
+            .addTunnelDnsAddresses(ipv4Range)
+            .addTunnelDnsAddresses(ipv6Range)
+            .build();
+    int fd = manager.createTunFd(data);
+
+    assertThat(fd).isEqualTo(0xdead);
+
+    verify(mockService).newBuilder();
+    verify(mockBuilder, atLeastOnce()).addRoute(argThat(this::isIpv4Addr), anyInt());
+    verify(mockBuilder, never()).addRoute(argThat(this::isIpv6Addr), anyInt());
+    verify(mockBuilder, atLeastOnce()).addAddress(argThat(this::isIpv4Addr), anyInt());
+    verify(mockBuilder, never()).addAddress(argThat(this::isIpv6Addr), anyInt());
+    verify(mockBuilder, atLeastOnce()).addDnsServer(argThat(this::isIpv4Addr));
+    verify(mockBuilder, never()).addDnsServer(argThat(this::isIpv6Addr));
+    verify(mockBuilder).setMtu(1279);
     verify(mockBuilder).setMetered(anyBoolean());
     verify(mockBuilder).establish();
     verify(mockFd).detachFd();
