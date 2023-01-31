@@ -45,7 +45,10 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
       "egress_point_public_value": "1234567890abcdef",
       "server_nonce": "abcd",
       "uplink_spi": 123,
-      "expiry": "2020-08-07T01:06:13+00:00"
+      "expiry": "2020-08-07T01:06:13+00:00",
+      "mss_detection_sock_addr": [
+        "addr2"
+      ]
     }
   })string");
 
@@ -57,11 +60,12 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
   EXPECT_THAT(ppn_response, EqualsProto(R"pb(
                 user_private_ip: { ipv4_range: "127.0.0.1" },
                 user_private_ip: { ipv6_range: "fe80::1" },
-                egress_point_sock_addr: "addr1"
+                egress_point_sock_addr: "addr1",
                 egress_point_public_value: "1234567890abcdef",
                 server_nonce: "abcd",
                 uplink_spi: 123,
-                expiry: { seconds: 1596762373 nanos: 0 }
+                expiry: { seconds: 1596762373 nanos: 0 },
+                mss_detection_sock_addr: "addr2",
               )pb"));
 
   EXPECT_THAT(ppn_response.user_private_ip(),
@@ -80,6 +84,9 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
                 seconds: 1596762373
                 nanos: 0
               )pb"));
+
+  EXPECT_EQ(ppn_response.mss_detection_sock_addr_size(), 1);
+  EXPECT_THAT(ppn_response.mss_detection_sock_addr(0), "addr2");
 }
 
 TEST(AddEgressResponse, TestAddEgressIkeResponse) {

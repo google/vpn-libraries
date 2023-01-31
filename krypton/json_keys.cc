@@ -39,6 +39,7 @@ const char JsonKeys::kServerNonce[] = "server_nonce";
 const char JsonKeys::kUplinkSpi[] = "uplink_spi";
 const char JsonKeys::kDownlinkSpi[] = "downlink_spi";
 const char JsonKeys::kExpiry[] = "expiry";
+const char JsonKeys::kMssDetectionSockAddr[] = "mss_detection_sock_addr";
 const char JsonKeys::kIpv4[] = "ipv4_range";
 const char JsonKeys::kIpv6[] = "ipv6_range";
 const char JsonKeys::kDataplaneProtocol[] = "dataplane_protocol";

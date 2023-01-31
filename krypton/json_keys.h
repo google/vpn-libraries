@@ -44,6 +44,7 @@ class JsonKeys {
   static const char kUplinkSpi[];
   static const char kDownlinkSpi[];
   static const char kExpiry[];
+  static const char kMssDetectionSockAddr[];
   static const char kIpv4[];
   static const char kIpv6[];
   static const char kDataplaneProtocol[];

@@ -121,6 +121,9 @@ message PpnDataplaneResponse {
   // rekey before this time. Any packets destined for this session after this
   // time will be dropped.
   google.protobuf.Timestamp expiry = 6;
+
+  // The address the client should use to perform TCP MSS detection.
+  repeated string mss_detection_sock_addr = 7;
 }
 
 message PpnIkeResponse {

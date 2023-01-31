@@ -154,6 +154,9 @@ absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
 
   COPY_INT_VALUE(json, kUplinkSpi, response, uplink_spi);
 
+  COPY_STRING_ARRAY(json, kMssDetectionSockAddr, response,
+                    mss_detection_sock_addr);
+
   // This is the only Timestamp value, so there's no need for a helper macro.
   if (json.contains(JsonKeys::kExpiry)) {
     if (!json[JsonKeys::kExpiry].is_string()) {
