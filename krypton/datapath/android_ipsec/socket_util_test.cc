@@ -75,13 +75,21 @@ TEST(SocketUtilTest, NotifyEventFd) {
   ASSERT_EQ(op, 1);
 }
 
-TEST(SocketUtilTest, FdError) {
-  int fd = socket(AF_INET6, SOCK_DGRAM, 0);
+TEST(SocketUtilTest, FdErrorGood) {
+  int fd = socket(AF_INET6, SOCK_STREAM, 0);
   ASSERT_THAT(fd, Ge(0)) << absl::Substitute("socket: $0", strerror(errno));
 
-  auto status = FdError(absl::StatusCode::kUnknown, fd);
-  ASSERT_EQ(status.code(), absl::StatusCode::kUnknown);
-  ASSERT_EQ(status.message(), "Success");
+  std::string msg;
+  EXPECT_EQ(FdError(fd, &msg), 0);
+  EXPECT_EQ(msg, "Success");
+
+  close(fd);
+}
+
+TEST(SocketUtilTest, FdErrorInvalidFd) {
+  std::string msg;
+  EXPECT_EQ(FdError(-1, &msg), -1);
+  EXPECT_EQ(msg, "getsockopt(SO_ERROR): Bad file descriptor");
 }
 
 }  // namespace

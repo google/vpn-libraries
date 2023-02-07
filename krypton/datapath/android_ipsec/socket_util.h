@@ -29,10 +29,13 @@ namespace android {
 // Sets the given socket fd in blocking mode.
 absl::Status SetSocketBlocking(int fd);
 
+// Sets the given socket fd in non-blocking mode.
+absl::Status SetSocketNonBlocking(int fd);
+
 // Tells the error of the socket, and a message describing the error. If failed
 // to retrieve the socket error, it returns -1 and the msg describes the failure
 // of retrieving error.
-absl::Status FdError(absl::StatusCode status_code, int fd);
+int FdError(int fd, std::string* msg);
 
 }  // namespace android
 }  // namespace datapath

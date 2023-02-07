@@ -25,7 +25,6 @@
 
 #include "base/logging.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/strings/substitute.h"
 
 namespace privacy {
 namespace krypton {
@@ -63,18 +62,20 @@ namespace {
   return SetSocketBlockingStatus(fd, /*is_blocking= */ true);
 }
 
-absl::Status FdError(absl::StatusCode status_code, int fd) {
+::absl::Status SetSocketNonBlocking(int fd) {
+  return SetSocketBlockingStatus(fd, /*is_blocking= */ false);
+}
+
+int FdError(int fd, std::string* msg) {
   int error = 0;
   socklen_t errlen = sizeof(error);
-
-  // Clear the error that is reported on the socket.
   if (getsockopt(fd, SOL_SOCKET, SO_ERROR, reinterpret_cast<void*>(&error),
                  &errlen) < 0) {
-    return absl::Status(
-        status_code,
-        absl::Substitute("getsockopt(SO_ERROR): $0", strerror(errno)));
+    *msg = absl::StrCat("getsockopt(SO_ERROR): ", strerror(errno));
+    return -1;
   }
-  return absl::Status(status_code, strerror(error));
+  *msg = strerror(error);
+  return error;
 }
 
 }  // namespace android
