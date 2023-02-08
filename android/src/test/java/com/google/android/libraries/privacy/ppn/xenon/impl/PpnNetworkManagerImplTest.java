@@ -109,10 +109,11 @@ public final class PpnNetworkManagerImplTest {
 
     wifiAndroidNetwork = ShadowNetwork.newInstance(/* netId= */ 1);
     cellAndroidNetwork = ShadowNetwork.newInstance(/* netId= */ 2);
-
+ 
     context = ApplicationProvider.getApplicationContext();
-    shadowConnectivityManager = shadowOf(context.getSystemService(ConnectivityManager.class));
-    shadowWifiManager = shadowOf(context.getSystemService(WifiManager.class));
+    shadowConnectivityManager =
+        shadowOf((ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE));
+    shadowWifiManager = shadowOf((WifiManager) context.getSystemService(Context.WIFI_SERVICE));
 
     // Assume all tested networks are valid from Android unless otherwise set in the specific test.
     shadowConnectivityManager.setNetworkCapabilities(

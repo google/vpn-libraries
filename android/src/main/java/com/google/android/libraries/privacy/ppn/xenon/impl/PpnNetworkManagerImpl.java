@@ -466,7 +466,7 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
 
     boolean hasIPv4 = false;
     boolean hasIPv6 = false;
-    ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
+    ConnectivityManager manager = getConnectivityManager();
     LinkProperties linkProperties = manager.getLinkProperties(ppnNetwork.getNetwork());
     if (linkProperties != null) {
       for (LinkAddress linkAddress : linkProperties.getLinkAddresses()) {
