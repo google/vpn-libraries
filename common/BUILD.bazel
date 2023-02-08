@@ -1,0 +1,24 @@
+proto_library(
+    name = "get_initial_data_protobuf",
+    srcs = ["get_initial_data.proto"],
+    deps = [
+        "attestation:attestation_protobuf",
+        ":public_metadata_protobuf",
+        ":anonymous_tokens_protobuf",
+    ],
+    import_prefix = "privacy/net/common/proto/",
+    strip_import_prefix = "/common/",
+)
+
+proto_library(
+    name = "public_metadata_protobuf",
+    srcs = ["public_metadata.proto"],
+    deps = ["@com_google_protobuf//:timestamp_proto"],
+    import_prefix = "privacy/net/common/proto/",
+    strip_import_prefix = "/common/",
+)
+
+cc_proto_library(
+    name = "get_initial_data_cc_protobuf",
+    deps = [":get_initial_data_protobuf"],
+)
