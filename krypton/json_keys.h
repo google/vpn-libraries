@@ -21,19 +21,16 @@ namespace krypton {
 // Define all the JSON keys here.
 class JsonKeys {
  public:
-  // static const char kJsonBodyKey[];
   static const char kAuthTokenKey[];
   static const char kServiceTypeKey[];
   static const char kBlindedTokensKey[];
 
   // Egress
-  static const char kUnblindedToken[];
   static const char kControlPlaneSockAddr[];
   static const char kApnType[];
   static const char kDynamicMtuEnabled[];
 
   // PPN
-  static const char kPpn[];
   static const char kPpnDataplane[];
   static const char kClientPublicValue[];
   static const char kClientNonce[];
@@ -55,8 +52,6 @@ class JsonKeys {
   static const char kPem[];
   static const char kBlindedTokenSignature[];
   static const char kCopperControllerHostname[];
-  static const char kRegionTokenAndSignature[];
-  static const char kUnblindedTokenSignature[];
   static const char kPublicKeyHash[];
 
   // IKE
@@ -67,6 +62,27 @@ class JsonKeys {
 
   // Attestation
   static const char kAttestationNonce[];
+
+  // AddEgressRequest
+  static const char kUnblindedToken[];
+  static const char kPpn[];
+  static const char kUnblindedTokenSignature[];
+  static const char kPublicMetadata[];
+  static const char kRegionTokenAndSignature[];
+  static const char kSigningKeyVersion[];
+
+  // Public Metadata
+  static const char kExitLocation[];
+  static const char kServiceType[];
+  static const char kExpiration[];
+
+  // Public Metadata Location
+  static const char kCountry[];
+  static const char kCityGeoId[];
+
+  // Timestamp
+  static const char kSeconds[];
+  static const char kNanos[];
 
  private:
   JsonKeys() = default;

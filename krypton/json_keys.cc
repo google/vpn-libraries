@@ -22,13 +22,11 @@ const char JsonKeys::kServiceTypeKey[] = "service_type";
 const char JsonKeys::kBlindedTokensKey[] = "blinded_token";
 
 // Egress
-const char JsonKeys::kUnblindedToken[] = "unblinded_token";
 const char JsonKeys::kControlPlaneSockAddr[] = "control_plane_sock_addr";
 const char JsonKeys::kApnType[] = "apn_type";
 const char JsonKeys::kDynamicMtuEnabled[] = "dynamic_mtu_enabled";
 
 // PPN
-const char JsonKeys::kPpn[] = "ppn";
 const char JsonKeys::kPpnDataplane[] = "ppn_dataplane";
 const char JsonKeys::kClientPublicValue[] = "client_public_value";
 const char JsonKeys::kClientNonce[] = "client_nonce";
@@ -50,8 +48,6 @@ const char JsonKeys::kPreviousUplinkSpi[] = "previous_uplink_spi";
 const char JsonKeys::kPem[] = "pem";
 const char JsonKeys::kBlindedTokenSignature[] = "blinded_token_signature";
 const char JsonKeys::kCopperControllerHostname[] = "copper_controller_hostname";
-const char JsonKeys::kRegionTokenAndSignature[] = "region_token_and_signature";
-const char JsonKeys::kUnblindedTokenSignature[] = "unblinded_token_signature";
 const char JsonKeys::kPublicKeyHash[] = "public_key_hash";
 
 // IKE
@@ -62,6 +58,27 @@ const char JsonKeys::kServerAddress[] = "server_address";
 
 // Attestation
 const char JsonKeys::kAttestationNonce[] = "attestation_nonce";
+
+// AddEgressRequest
+const char JsonKeys::kUnblindedToken[] = "unblinded_token";
+const char JsonKeys::kPpn[] = "ppn";
+const char JsonKeys::kUnblindedTokenSignature[] = "unblinded_token_signature";
+const char JsonKeys::kPublicMetadata[] = "public_metadata";
+const char JsonKeys::kRegionTokenAndSignature[] = "region_token_and_signature";
+const char JsonKeys::kSigningKeyVersion[] = "signing_key_version";
+
+// Public Metadata
+const char JsonKeys::kExitLocation[] = "exit_location";
+const char JsonKeys::kServiceType[] = "service_type";
+const char JsonKeys::kExpiration[] = "expiration";
+
+// Public Metadata Location
+const char JsonKeys::kCountry[] = "country";
+const char JsonKeys::kCityGeoId[] = "city_geo_id";
+
+// Timestamp
+const char JsonKeys::kSeconds[] = "seconds";
+const char JsonKeys::kNanos[] = "nanos";
 
 }  // namespace krypton
 }  // namespace privacy
