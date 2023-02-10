@@ -186,6 +186,11 @@ FOUNDATION_EXTERN PPNOptionKey const PPNOptionNetworkExtensionUploadCrashReportE
 FOUNDATION_EXTERN PPNOptionKey const PPNPublicMetadataEnabled;
 
 /**
+ * Stores the api key for making calls to beryllium API.
+ */
+FOUNDATION_EXTERN PPNOptionKey const PPNAPIKey;
+
+/**
  * Indicates whether to always reconnect when xenon detects a network switch.
  */
 FOUNDATION_EXTERN PPNOptionKey const PPNRespectAllNetworkSwitches;

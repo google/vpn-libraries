@@ -91,6 +91,8 @@ PPNOptionKey const PPNOptionNetworkExtensionUploadCrashReportEnabled = @"uploadC
 
 PPNOptionKey const PPNRespectAllNetworkSwitches = @"respectAllNetworkSwitches";
 
+PPNOptionKey const PPNAPIKey = @"apiKey";
+
 #pragma mark - Default Option Values
 
 static PPNOptionKey const PPNOptionDefaultZincURLString =
@@ -218,6 +220,11 @@ privacy::krypton::KryptonConfig PPNKryptonConfigFromOptions(
   NSNumber *publicMetadataEnabled = options[PPNPublicMetadataEnabled];
   if (publicMetadataEnabled != nullptr) {
     kryptonConfig.set_public_metadata_enabled(publicMetadataEnabled.boolValue);
+  }
+
+  NSString *apiKey = options[PPNAPIKey];
+  if (apiKey != nullptr) {
+    kryptonConfig.set_api_key(std::string(apiKey.UTF8String));
   }
 
   return kryptonConfig;
