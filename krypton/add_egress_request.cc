@@ -27,6 +27,7 @@
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
+#include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
@@ -52,19 +53,44 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
   nlohmann::json json_body;
   nlohmann::json ppn;
 
+  if (request_destination_ == RequestDestination::kBeryllium) {
+    nlohmann::json exit_location;
+    nlohmann::json expiration;
+    nlohmann::json public_metadata;
+
+    exit_location[JsonKeys::kCountry] = params.country;
+    exit_location[JsonKeys::kCityGeoId] = params.city_geo_id;
+
+    auto time = absl::ToTimespec(params.expiration);
+    expiration[JsonKeys::kSeconds] = time.tv_sec;
+    expiration[JsonKeys::kNanos] = time.tv_nsec;
+
+    public_metadata[JsonKeys::kExitLocation] = exit_location;
+    public_metadata[JsonKeys::kServiceType] = params.service_type;
+    public_metadata[JsonKeys::kExpiration] = expiration;
+
+    ppn[JsonKeys::kPublicMetadata] = public_metadata;
+
+    json_body[JsonKeys::kSigningKeyVersion] = params.signing_key_version;
+  }
+
   // Add blind stuff.
   json_body[JsonKeys::kUnblindedToken] = params.blind_message;
   json_body[JsonKeys::kUnblindedTokenSignature] =
       params.unblinded_token_signature;
 
-  json_body[JsonKeys::kRegionTokenAndSignature] =
-      params.region_token_and_signature;
+  if (request_destination_ == RequestDestination::kBrass) {
+    json_body[JsonKeys::kRegionTokenAndSignature] =
+        params.region_token_and_signature;
+  }
 
   auto my_keys = params.crypto->GetMyKeyMaterial();
   ppn[JsonKeys::kClientPublicValue] = my_keys.public_value;
   ppn[JsonKeys::kClientNonce] = my_keys.nonce;
   ppn[JsonKeys::kDownlinkSpi] = params.crypto->downlink_spi();
-  ppn[JsonKeys::kApnType] = params.apn_type;
+  if (request_destination_ == RequestDestination::kBrass) {
+    ppn[JsonKeys::kApnType] = params.apn_type;
+  }
   if (params.dynamic_mtu_enabled) {
     ppn[JsonKeys::kDynamicMtuEnabled] = params.dynamic_mtu_enabled;
   }

@@ -25,6 +25,7 @@
 #include "privacy/net/krypton/utils/json_util.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
@@ -40,7 +41,7 @@ class AddEgressRequestTest : public ::testing::Test {
 class PpnAddEgressRequest : public AddEgressRequestTest,
                             public ::testing::WithParamInterface<bool> {};
 
-TEST_F(PpnAddEgressRequest, TestPpnRequest) {
+TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
   AddEgressRequest request(std::optional("apiKey"));
 
   // Use the actual crypto utils to ensure the base64 encoded strings are sent
@@ -86,9 +87,11 @@ TEST_F(PpnAddEgressRequest, TestPpnRequest) {
   EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
             crypto.GetRekeyVerificationKey().ValueOrDie());
   EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"].is_null());
+  EXPECT_TRUE(actual["ppn"]["public_metadata"].is_null());
+  EXPECT_TRUE(actual["signing_key_version"].is_null());
 }
 
-TEST_F(PpnAddEgressRequest, TestPpnRequestWithDynamicMtu) {
+TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
   AddEgressRequest request(std::optional("apiKey"));
 
   // Use the actual crypto utils to ensure the base64 encoded strings are sent
@@ -135,9 +138,11 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestWithDynamicMtu) {
   EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
             crypto.GetRekeyVerificationKey().ValueOrDie());
   EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"]);
+  EXPECT_TRUE(actual["ppn"]["public_metadata"].is_null());
+  EXPECT_TRUE(actual["signing_key_version"].is_null());
 }
 
-TEST_F(AddEgressRequestTest, TestRekeyParameters) {
+TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
   crypto::SessionCrypto crypto(config_);
   auto keys = crypto.GetMyKeyMaterial();
 
@@ -171,13 +176,16 @@ TEST_F(AddEgressRequestTest, TestRekeyParameters) {
   EXPECT_EQ(actual["ppn"]["rekey_signature"], params.signature);
   EXPECT_EQ(actual["ppn"]["previous_uplink_spi"], params.uplink_spi);
   EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"].is_null());
+  EXPECT_TRUE(actual["ppn"]["public_metadata"].is_null());
+  EXPECT_TRUE(actual["signing_key_version"].is_null());
 }
 
 TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   crypto::SessionCrypto crypto(config_);
   auto keys = crypto.GetMyKeyMaterial();
 
-  AddEgressRequest request(std::optional("apiKey"));
+  AddEgressRequest request(std::optional("apiKey"),
+                           AddEgressRequest::RequestDestination::kBeryllium);
   AddEgressRequest::PpnDataplaneRequestParams params;
   params.crypto = &crypto;
   params.copper_control_plane_address = kCopperControlPlaneAddress;
@@ -186,7 +194,11 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   params.is_rekey = true;
   params.signature = "some_signature";
   params.uplink_spi = 1234;
-  params.dynamic_mtu_enabled = true;
+  params.country = "US";
+  params.city_geo_id = "us_ca_san_diego";
+  params.expiration = absl::FromUnixMillis(1002);
+  params.service_type = "foo";
+  params.signing_key_version = 3;
   auto http_request = request.EncodeToProtoForPpn(params);
 
   EXPECT_EQ(http_request.headers().find("X-Goog-Api-Key")->second, "apiKey");
@@ -195,18 +207,32 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   // Round-tripping through serialization causes int values to randomly be int
   // or uint, so we need to test each value separately.
   EXPECT_EQ(actual["unblinded_token"], "");
-  EXPECT_EQ(actual["ppn"]["client_public_value"], keys.public_value);
-  EXPECT_EQ(actual["ppn"]["client_nonce"], keys.nonce);
-  EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
+  EXPECT_EQ(actual["signing_key_version"], params.signing_key_version);
+  EXPECT_TRUE(actual["region_token_and_signature"].is_null());
+  ASSERT_TRUE(actual["ppn"].is_object());
+
+  auto ppn = actual["ppn"];
+  EXPECT_TRUE(ppn["apn_type"].is_null());
+  EXPECT_EQ(ppn["client_public_value"], keys.public_value);
+  EXPECT_EQ(ppn["client_nonce"], keys.nonce);
+  EXPECT_EQ(ppn["control_plane_sock_addr"],
             absl::StrCat(kCopperControlPlaneAddress, ":1849"));
-  EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
-  EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
-  EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
-  EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
+  EXPECT_EQ(ppn["downlink_spi"], crypto.downlink_spi());
+  EXPECT_EQ(ppn["suite"], "AES128_GCM");
+  EXPECT_EQ(ppn["dataplane_protocol"], "BRIDGE");
+  EXPECT_EQ(ppn["rekey_verification_key"],
             crypto.GetRekeyVerificationKey().ValueOrDie());
-  EXPECT_EQ(actual["ppn"]["rekey_signature"], params.signature);
-  EXPECT_EQ(actual["ppn"]["previous_uplink_spi"], params.uplink_spi);
-  EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"]);
+  EXPECT_EQ(ppn["rekey_signature"], params.signature);
+  EXPECT_EQ(ppn["previous_uplink_spi"], params.uplink_spi);
+  EXPECT_TRUE(ppn["dynamic_mtu_enabled"].is_null());
+  ASSERT_TRUE(ppn["public_metadata"].is_object());
+
+  auto public_metadata = ppn["public_metadata"];
+  EXPECT_EQ(public_metadata["exit_location"]["country"], "US");
+  EXPECT_EQ(public_metadata["exit_location"]["city_geo_id"], "us_ca_san_diego");
+  EXPECT_EQ(public_metadata["service_type"], "foo");
+  EXPECT_EQ(public_metadata["expiration"]["seconds"], 1);
+  EXPECT_EQ(public_metadata["expiration"]["nanos"], 2000000);
 }
 
 }  // namespace krypton

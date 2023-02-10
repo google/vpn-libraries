@@ -22,6 +22,7 @@
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
@@ -31,8 +32,12 @@ namespace krypton {
 // Proto definition is brass.proto
 class AddEgressRequest {
  public:
-  explicit AddEgressRequest(std::optional<std::string> api_key)
-      : api_key_(api_key) {}
+  enum class RequestDestination { kBrass, kBeryllium };
+
+  explicit AddEgressRequest(
+      std::optional<std::string> api_key,
+      RequestDestination request_destination = RequestDestination::kBrass)
+      : api_key_(api_key), request_destination_(request_destination) {}
   ~AddEgressRequest() = default;
 
   // Parameters needed for PpnDataplane.
@@ -50,12 +55,22 @@ class AddEgressRequest {
     // This is the unblinded signature after receiving the blinding signature
     // from Zinc that needs to be sent to Brass.
     std::string unblinded_token_signature;
-    // This is the region overriding token and signature for sending to Brass.
-    std::string region_token_and_signature;
-    // This is the APN type from Zinc and used to decide APN in bridge-proxy.
-    std::string apn_type;
     // Whether to enable dynamic mtu on the backend dataplane.
     bool dynamic_mtu_enabled = false;
+
+    // Brass Only
+    // This is the APN type from Zinc and used to decide APN in bridge-proxy.
+    std::string apn_type;
+    // This is the region overriding token and signature for sending to Brass.
+    std::string region_token_and_signature;
+
+    // Beryllium Only
+    int64_t signing_key_version;
+    // This is the public metadata
+    std::string country;
+    std::string city_geo_id;
+    std::string service_type;
+    absl::Time expiration;
   };
 
   HttpRequest EncodeToProtoForPpn(const PpnDataplaneRequestParams& params);
@@ -63,6 +78,7 @@ class AddEgressRequest {
  private:
   nlohmann::json BuildBodyJson(const PpnDataplaneRequestParams& params);
   std::optional<std::string> api_key_;
+  RequestDestination request_destination_;
 };
 }  // namespace krypton
 }  // namespace privacy
