@@ -28,14 +28,12 @@
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/utils/status.h"
-#include "third_party/absl/memory/memory.h"
 #include "third_party/absl/random/distributions.h"
 #include "third_party/absl/random/random.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/str_cat.h"
-#include "third_party/absl/strings/str_join.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/openssl/base.h"
@@ -163,18 +161,21 @@ absl::StatusOr<std::string> SessionCrypto::GetRekeyVerificationKey() const {
   return absl::Base64Escape(rekey_verification_key);
 }
 
-absl::StatusOr<std::string> SessionCrypto::GenerateSignature(
+absl::StatusOr<std::string> SessionCrypto::GeneratePublicValueSignature(
     absl::string_view other_public_value) {
   std::string other_public_value_unescaped;
   absl::Base64Unescape(other_public_value, &other_public_value_unescaped);
+  PPN_ASSIGN_OR_RETURN(auto signature_unescaped,
+                       GenerateSignature(other_public_value_unescaped));
+  return absl::Base64Escape(signature_unescaped);
+}
 
+absl::StatusOr<std::string> SessionCrypto::GenerateSignature(
+    absl::string_view data) {
   PPN_ASSIGN_OR_RETURN(
       auto public_sign_primitive,
       key_handle_->GetPrimitive<::crypto::tink::PublicKeySign>());
-  PPN_ASSIGN_OR_RETURN(
-      auto signed_public_value,
-      public_sign_primitive->Sign(other_public_value_unescaped));
-  return absl::Base64Escape(signed_public_value);
+  return public_sign_primitive->Sign(data);
 }
 
 absl::StatusOr<std::string> SessionCrypto::SharedKey() const {

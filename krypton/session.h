@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 
+#include "privacy/net/common/proto/update_path_info.proto.h"
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/datapath_address_selector.h"
@@ -44,6 +45,8 @@ namespace privacy {
 namespace krypton {
 
 class SessionDebugInfo;
+
+std::string ProtoToJsonString(const ppn::UpdatePathInfo& update_path_info);
 
 // Session or Krypton session that represents a session to the copper
 // server. This also is the statemachine for establishing the Copper |
@@ -194,6 +197,8 @@ class Session : public Auth::NotificationInterface,
   void CancelDatapathReattemptTimerIfRunning()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  absl::Status SendPathInfoUpdate() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   mutable absl::Mutex mutex_;
 
   KryptonConfig config_;
@@ -223,6 +228,10 @@ class Session : public Auth::NotificationInterface,
   int fetch_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int datapath_reattempt_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   std::atomic_int datapath_reattempt_count_ ABSL_GUARDED_BY(mutex_) = 0;
+
+  uint32_t path_info_seq_ ABSL_GUARDED_BY(mutex_) = 0;
+  // Path MTU initialized to a commonly used MTU value
+  int path_mtu_ ABSL_GUARDED_BY(mutex_) = 1500;
 
   std::unique_ptr<crypto::SessionCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
   std::optional<std::string> rekey_verification_key_ ABSL_GUARDED_BY(mutex_);

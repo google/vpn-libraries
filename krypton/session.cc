@@ -23,12 +23,14 @@
 
 #include "base/logging.h"
 #include "google/protobuf/duration.proto.h"
+#include "privacy/net/common/proto/update_path_info.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
+#include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
@@ -38,6 +40,7 @@
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/ip_range.h"
+#include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/network_info.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/functional/bind_front.h"
@@ -49,6 +52,7 @@
 #include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
+#include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -164,6 +168,44 @@ void Session::CancelDatapathReattemptTimerIfRunning() {
   datapath_reattempt_timer_id_ = kInvalidTimerId;
 }
 
+std::string ProtoToJsonString(const ppn::UpdatePathInfo& update_path_info) {
+  std::string verification_key_encoded;
+  std::string mtu_update_signature_encoded;
+  absl::Base64Escape(update_path_info.verification_key(),
+                     &verification_key_encoded);
+  absl::Base64Escape(update_path_info.mtu_update_signature(),
+                     &mtu_update_signature_encoded);
+
+  nlohmann::json json_obj;
+  json_obj[JsonKeys::kSessionId] = update_path_info.session_id();
+  json_obj[JsonKeys::kSequenceNumber] = update_path_info.sequence_number();
+  json_obj[JsonKeys::kMtu] = update_path_info.mtu();
+  json_obj[JsonKeys::kVerificationKey] = verification_key_encoded;
+  json_obj[JsonKeys::kMtuUpdateSignature] = mtu_update_signature_encoded;
+  return utils::JsonToString(json_obj);
+}
+
+absl::Status Session::SendPathInfoUpdate() {
+  privacy::ppn::UpdatePathInfo mtu_update;
+  mtu_update.set_session_id(egress_manager_->uplink_spi());
+  mtu_update.set_sequence_number(path_info_seq_++);
+  mtu_update.set_mtu(path_mtu_);
+
+  std::string signed_data = absl::StrCat("path_info;", mtu_update.session_id(),
+                                         ";", mtu_update.mtu());
+
+  PPN_ASSIGN_OR_RETURN(auto signature,
+                       key_material_->GenerateSignature(signed_data));
+  mtu_update.set_mtu_update_signature(signature);
+
+  auto path_info_update_json = ProtoToJsonString(mtu_update);
+
+  // TODO: Update to send to Brass or Beryllium once the handler
+  // has been set up.
+
+  return absl::OkStatus();
+}
+
 void Session::SetState(State state, absl::Status status) {
   LOG(INFO) << "Transitioning from " << StateString(state_) << " to "
             << StateString(state);
@@ -242,7 +284,7 @@ void Session::PpnDataplaneRequest(bool is_rekey) {
                      ? ppn::PpnDataplaneRequest::AES256_GCM
                      : ppn::PpnDataplaneRequest::AES128_GCM;
   params.dataplane_protocol = config_.datapath_protocol();
-  // Always send the region token and sig even if it's empty.
+  // Always send the region token and signature even if it's empty.
   params.region_token_and_signature =
       auth_response.region_token_and_signatures();
   params.apn_type = auth_response.apn_type();
@@ -446,8 +488,9 @@ absl::Status Session::Rekey() {
   // Generate the rekey parameters that are needed and generate a signature from
   // the old crypto keys.
   auto new_key_material = std::make_unique<crypto::SessionCrypto>(config_);
-  PPN_ASSIGN_OR_RETURN(auto signature, key_material_->GenerateSignature(
-                                           new_key_material->public_value()));
+  PPN_ASSIGN_OR_RETURN(auto signature,
+                       key_material_->GeneratePublicValueSignature(
+                           new_key_material->public_value()));
   new_key_material->SetSignature(signature);
   key_material_.reset();
   key_material_ = std::move(new_key_material);

@@ -31,7 +31,6 @@
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/openssl/base.h"
-#include "third_party/openssl/bn.h"
 #include "third_party/tink/cc/keyset_handle.h"
 
 namespace privacy {
@@ -67,10 +66,16 @@ class SessionCrypto {
   // Generate a signature based on a public value. Here is an example:
   // Crypto key 1 : Used in initiation
   // Crypto key 2 : Used in rekey
-  // Crypto key 2 public value is signed by Cryto Key 1.
+  // Crypto key 2 public value is signed by Crypto Key 1.
   // public value should be base64 encoded.
-  absl::StatusOr<std::string> GenerateSignature(
+  // The returned value will be base 64 encoded.
+  absl::StatusOr<std::string> GeneratePublicValueSignature(
       absl::string_view other_public_value);
+
+  // Generate a signature based on a string of data. The data being signed
+  // should not be base64 encoded. The returned value will not be base 64
+  // encoded.
+  absl::StatusOr<std::string> GenerateSignature(absl::string_view data);
 
   // Get the base64 RekeyVerificationKey. This is used by the server to verify
   // the next request.

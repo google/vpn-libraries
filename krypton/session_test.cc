@@ -42,6 +42,7 @@
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/str_replace.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
@@ -804,6 +805,41 @@ TEST_F(SessionTest, TestEmptyAuthResponseCopperControllerHostname) {
   session_->Start();
 
   auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
+}
+
+TEST_F(SessionTest, UpdatePathInfoToJsonDefaultValues) {
+  ppn::UpdatePathInfo update_path_info;
+  auto json_str = ProtoToJsonString(update_path_info);
+  std::string expected = R"string(
+  {
+    "mtu":1280,
+    "mtu_update_signature":"",
+    "sequence_number":0,
+    "session_id":0,
+    "verification_key":""
+  })string";
+  absl::StrReplaceAll({{"\n", ""}, {" ", ""}}, &expected);
+  EXPECT_EQ(json_str, expected);
+}
+
+TEST_F(SessionTest, UpdatePathInfoToJsonNonDefaultValues) {
+  ppn::UpdatePathInfo update_path_info;
+  update_path_info.set_session_id(1);
+  update_path_info.set_sequence_number(2);
+  update_path_info.set_mtu(3);
+  update_path_info.set_verification_key("foo");
+  update_path_info.set_mtu_update_signature("bar");
+  auto json_str = ProtoToJsonString(update_path_info);
+  std::string expected = R"string(
+  {
+    "mtu":3,
+    "mtu_update_signature":"YmFy",
+    "sequence_number":2,
+    "session_id":1,
+    "verification_key":"Zm9v"
+  })string";
+  absl::StrReplaceAll({{"\n", ""}, {" ", ""}}, &expected);
+  EXPECT_EQ(json_str, expected);
 }
 
 }  // namespace

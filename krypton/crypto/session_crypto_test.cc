@@ -239,9 +239,9 @@ TEST_F(SessionCryptoTest, VerifyRekey) {
 
   // Use previous ed25519 to generate a signature using the current public
   // value.
-  ASSERT_OK_AND_ASSIGN(
-      auto escaped_signature,
-      previous.GenerateSignature(current.GetMyKeyMaterial().public_value));
+  ASSERT_OK_AND_ASSIGN(auto escaped_signature,
+                       previous.GeneratePublicValueSignature(
+                           current.GetMyKeyMaterial().public_value));
   absl::Base64Unescape(escaped_signature, &signature);
 
   // Step 3: Time for validation.
@@ -365,6 +365,25 @@ TEST_F(SessionCryptoTest, TestInvalidPem) {
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("PEM Public Key parsing failed")));
   EXPECT_EQ(std::nullopt, crypto.GetZincBlindToken());
+}
+
+TEST_F(SessionCryptoTest, VerifySignature) {
+  SessionCrypto crypto(bridge_config_aes_128_);
+  std::string data = "foo";
+
+  ASSERT_OK_AND_ASSIGN(auto escaped_verification_key,
+                       crypto.GetRekeyVerificationKey());
+  std::string verification_key;
+  absl::Base64Unescape(escaped_verification_key, &verification_key);
+
+  ASSERT_OK_AND_ASSIGN(auto signature, crypto.GenerateSignature(data));
+
+  ASSERT_OK_AND_ASSIGN(
+      const auto handle,
+      ::crypto::tink::KeysetHandle::ReadNoSecret(verification_key));
+  ASSERT_OK_AND_ASSIGN(const auto verifier,
+                       handle->GetPrimitive<::crypto::tink::PublicKeyVerify>());
+  EXPECT_OK(verifier->Verify(signature, data));
 }
 
 }  // namespace

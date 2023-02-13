@@ -63,6 +63,13 @@ class JsonKeys {
   // Attestation
   static const char kAttestationNonce[];
 
+  // UpdatePathInfo
+  static const char kSessionId[];
+  static const char kSequenceNumber[];
+  static const char kMtu[];
+  static const char kVerificationKey[];
+  static const char kMtuUpdateSignature[];
+
   // AddEgressRequest
   static const char kUnblindedToken[];
   static const char kPpn[];
