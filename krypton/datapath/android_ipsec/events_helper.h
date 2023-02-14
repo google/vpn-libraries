@@ -62,14 +62,29 @@ class EventsHelper {
   // Returns true if there is an error in the monitored event.
   static bool FileHasError(const EventsHelper::Event& event);
 
+  // Returns true if the File Descriptor has been closed. EPOLLHUP on
+  // Android/Linux allows all remaining bytes on the File Descriptor to be read
+  // before returning 0.
+  static bool FileWasClosed(const EventsHelper::Event& event);
+
   // Returns true if the event is signaling there are bytes to be read
   // from the File Descriptor.
   static bool FileCanRead(const EventsHelper::Event& event);
+
+  // Returns true if the event is signaling that the File Descripter is
+  // writable.
+  static bool FileCanWrite(const EventsHelper::Event& event);
 
   // Returns the necessary flags to monitor file descriptors for read
   // operations.
   static inline constexpr unsigned int EventReadableFlags() {
     return EPOLLIN | EPOLLERR;
+  }
+
+  // Returns the necessary flags to monitor file descriptors for being
+  // writeable.
+  static inline constexpr unsigned int EventWritableFlags() {
+    return EPOLLOUT | EPOLLERR;
   }
 
  private:
