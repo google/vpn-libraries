@@ -45,7 +45,6 @@ using ::testing::status::StatusIs;
 class MockMtuTracker : public MtuTrackerInterface {
  public:
   MOCK_METHOD(void, UpdateMtu, (int), (override));
-  MOCK_METHOD(void, UpdateDestIpProtocol, (IPProtocol), (override));
   MOCK_METHOD(int, GetPathMtu, (), (const override));
   MOCK_METHOD(int, GetTunnelMtu, (), (const override));
 };
@@ -309,7 +308,6 @@ TEST(DatagramSocketTest, DynamicMtuCreateAndConnect) {
   MockMtuTracker* mtu_tracker_ptr = mtu_tracker.get();
 
   EXPECT_CALL(*mtu_tracker_ptr, UpdateMtu(_)).Times(1);
-  EXPECT_CALL(*mtu_tracker_ptr, UpdateDestIpProtocol(_)).Times(1);
 
   // Create the socket.
   ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket(std::move(mtu_tracker)));

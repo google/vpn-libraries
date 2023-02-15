@@ -15,8 +15,6 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MTU_TRACKER_INTERFACE_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MTU_TRACKER_INTERFACE_H_
 
-#include "privacy/net/krypton/pal/packet.h"
-
 namespace privacy {
 namespace krypton {
 namespace datapath {
@@ -31,10 +29,6 @@ class MtuTrackerInterface {
 
   // Updates both the Path MTU and Tunnel MTU based on a provided Path MTU.
   virtual void UpdateMtu(int path_mtu) = 0;
-
-  // Updates the tunnel overhead used in MTU calculation based on the IP
-  // protocol being connected to.
-  virtual void UpdateDestIpProtocol(IPProtocol dest_ip_protocol) = 0;
 
   virtual int GetPathMtu() const = 0;
 

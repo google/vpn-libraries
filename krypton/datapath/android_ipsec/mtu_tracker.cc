@@ -37,11 +37,14 @@ constexpr int kGenericEspOverheadMaxV6 = 50;
 constexpr int kMaxIpv4Overhead = kAesGcm128Overhead + kGenericEspOverheadMaxV4;
 constexpr int kMaxIpv6Overhead = kAesGcm128Overhead + kGenericEspOverheadMaxV6;
 
-MtuTracker::MtuTracker() : MtuTracker(kDefaultMtu) {}
+MtuTracker::MtuTracker(IPProtocol dest_ip_protocol)
+    : MtuTracker(dest_ip_protocol, kDefaultMtu) {}
 
-MtuTracker::MtuTracker(int initial_path_mtu)
-    : dest_ip_protocol_(IPProtocol::kIPv4),
-      tunnel_overhead_(kMaxIpv4Overhead),
+MtuTracker::MtuTracker(IPProtocol dest_ip_protocol, int initial_path_mtu)
+    : dest_ip_protocol_(dest_ip_protocol),
+      tunnel_overhead_(dest_ip_protocol == IPProtocol::kIPv6
+                           ? kMaxIpv6Overhead
+                           : kMaxIpv4Overhead),
       path_mtu_(initial_path_mtu),
       tunnel_mtu_(path_mtu_ - tunnel_overhead_) {}
 
@@ -49,18 +52,6 @@ void MtuTracker::UpdateMtu(int path_mtu) {
   if (path_mtu < path_mtu_) {
     LOG(INFO) << "Updating Path MTU from " << path_mtu_ << " to " << path_mtu;
     path_mtu_ = path_mtu;
-    int tunnel_mtu = path_mtu_ - tunnel_overhead_;
-    LOG(INFO) << "Updating Tunnel MTU from " << tunnel_mtu_ << " to "
-              << tunnel_mtu;
-    tunnel_mtu_ = tunnel_mtu;
-  }
-}
-
-void MtuTracker::UpdateDestIpProtocol(IPProtocol dest_ip_protocol) {
-  if (dest_ip_protocol != dest_ip_protocol_) {
-    dest_ip_protocol_ = dest_ip_protocol;
-    tunnel_overhead_ = dest_ip_protocol == IPProtocol::kIPv6 ? kMaxIpv6Overhead
-                                                             : kMaxIpv4Overhead;
     int tunnel_mtu = path_mtu_ - tunnel_overhead_;
     LOG(INFO) << "Updating Tunnel MTU from " << tunnel_mtu_ << " to "
               << tunnel_mtu;

@@ -14,6 +14,7 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker.h"
 
+#include "privacy/net/krypton/pal/packet.h"
 #include "testing/base/public/gunit.h"
 
 namespace privacy {
@@ -22,37 +23,36 @@ namespace datapath {
 namespace android {
 namespace {
 
-TEST(MtuTrackerTest, TestCreateWithDefault) {
-  MtuTracker mtu_tracker = MtuTracker();
+TEST(MtuTrackerTest, TestCreateWithDefaultIPv4) {
+  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
   EXPECT_EQ(mtu_tracker.GetPathMtu(), 1500);
   EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 1395);
 }
 
+TEST(MtuTrackerTest, TestCreateWithDefaultIPv6) {
+  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv6);
+  EXPECT_EQ(mtu_tracker.GetPathMtu(), 1500);
+  EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 1423);
+}
+
 TEST(MtuTrackerTest, TestCreateWithCustomMtu) {
-  MtuTracker mtu_tracker = MtuTracker(2000);
+  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4, 2000);
   EXPECT_EQ(mtu_tracker.GetPathMtu(), 2000);
   EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 1895);
 }
 
 TEST(MtuTrackerTest, TestSetLowerMtu) {
-  MtuTracker mtu_tracker = MtuTracker();
+  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
   mtu_tracker.UpdateMtu(1000);
   EXPECT_EQ(mtu_tracker.GetPathMtu(), 1000);
   EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 895);
 }
 
 TEST(MtuTrackerTest, TestSetHigherMtu) {
-  MtuTracker mtu_tracker = MtuTracker();
+  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
   mtu_tracker.UpdateMtu(2000);
   EXPECT_EQ(mtu_tracker.GetPathMtu(), 1500);
   EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 1395);
-}
-
-TEST(MtuTrackerTest, TestChangeIpProtocol) {
-  MtuTracker mtu_tracker = MtuTracker();
-  mtu_tracker.UpdateDestIpProtocol(IPProtocol::kIPv6);
-  EXPECT_EQ(mtu_tracker.GetPathMtu(), 1500);
-  EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 1423);
 }
 
 }  // namespace

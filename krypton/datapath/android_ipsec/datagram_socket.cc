@@ -211,7 +211,6 @@ absl::Status DatagramSocket::Connect(Endpoint dest) {
   }
 
   if (dynamic_mtu_enabled_) {
-    mtu_tracker_->UpdateDestIpProtocol(dest.ip_protocol());
     PPN_RETURN_IF_ERROR(UpdateMtuFromKernel(dest.ip_protocol()));
   }
 
