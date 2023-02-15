@@ -29,6 +29,8 @@ class MockIpSecSocket : public IpSecSocketInterface {
  public:
   MOCK_METHOD(absl::Status, Close, (), (override));
 
+  MOCK_METHOD(absl::Status, CancelReadPackets, (), (override));
+
   MOCK_METHOD(absl::StatusOr<std::vector<Packet>>, ReadPackets, (), (override));
 
   MOCK_METHOD(absl::Status, WritePackets, (std::vector<Packet>), (override));

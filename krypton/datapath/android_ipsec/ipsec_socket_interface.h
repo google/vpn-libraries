@@ -33,9 +33,14 @@ class IpSecSocketInterface {
  public:
   virtual ~IpSecSocketInterface() = default;
 
-  // Shuts down and closes the socket. The socket cannot be restarted after
-  // being stopped.
+  // Shuts down and closes the socket, causing the next call to ReadPackets
+  // on the socket to return. The socket cannot be restarted after being
+  // stopped.
   virtual absl::Status Close() = 0;
+
+  // Causes the next call to ReadPackets on the socket to return, but does not
+  // close the underlying fd.
+  virtual absl::Status CancelReadPackets() = 0;
 
   // Make a blocking read from the socket.
   // Returns an error if the read fails.

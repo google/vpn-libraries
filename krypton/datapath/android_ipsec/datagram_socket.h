@@ -53,6 +53,8 @@ class DatagramSocket : public IpSecSocketInterface {
 
   absl::Status Close() override;
 
+  absl::Status CancelReadPackets() override;
+
   absl::StatusOr<std::vector<Packet>> ReadPackets() override;
 
   absl::Status WritePackets(std::vector<Packet> packets) override;
@@ -72,6 +74,8 @@ class DatagramSocket : public IpSecSocketInterface {
 
   absl::Status Init();
 
+  absl::Status ClearEventFd(int fd);
+
   absl::Status EnablePathMtuDiscovery(
       std::unique_ptr<MtuTrackerInterface> mtu_tracker);
 
@@ -84,7 +88,7 @@ class DatagramSocket : public IpSecSocketInterface {
 
   std::atomic_int socket_fd_;
 
-  EventFd close_event_;
+  EventFd cancel_read_event_;
   EventsHelper events_helper_;
 
   bool dynamic_mtu_enabled_;

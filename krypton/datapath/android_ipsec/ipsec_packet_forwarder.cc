@@ -107,7 +107,7 @@ void IpSecPacketForwarder::IpSecPacketForwarder::Stop() {
   uplink_thread_.Stop();
   uplink_thread_.Join();
 
-  PPN_LOG_IF_ERROR(network_socket_->Close());
+  PPN_LOG_IF_ERROR(network_socket_->CancelReadPackets());
 
   LOG(INFO) << "Finished closing network_socket_[" << network_socket_ << "].";
 

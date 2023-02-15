@@ -70,7 +70,7 @@ DatagramSocket::~DatagramSocket() {
     PPN_LOG_IF_ERROR(Close());
   }
 
-  PPN_LOG_IF_ERROR(events_helper_.RemoveFile(close_event_.fd()));
+  PPN_LOG_IF_ERROR(events_helper_.RemoveFile(cancel_read_event_.fd()));
 }
 
 absl::Status DatagramSocket::Close() {
@@ -83,8 +83,12 @@ absl::Status DatagramSocket::Close() {
   PPN_LOG_IF_ERROR(events_helper_.RemoveFile(fd));
   shutdown(fd, SHUT_RDWR);
   close(fd);
-  PPN_LOG_IF_ERROR(close_event_.Notify(1));
+  PPN_LOG_IF_ERROR(CancelReadPackets());
   return absl::OkStatus();
+}
+
+absl::Status DatagramSocket::CancelReadPackets() {
+  return cancel_read_event_.Notify(1);
 }
 
 absl::StatusOr<std::vector<Packet>> DatagramSocket::ReadPackets() {
@@ -102,8 +106,9 @@ absl::StatusOr<std::vector<Packet>> DatagramSocket::ReadPackets() {
     }
 
     int notified_fd = datapath::android::EventsHelper::FileFromEvent(event);
-    if (notified_fd == close_event_.fd()) {
-      // An empty vector without an error status indicates a close
+    if (notified_fd == cancel_read_event_.fd()) {
+      PPN_RETURN_IF_ERROR(ClearEventFd(notified_fd));
+      // Indicate clean exit with an empty vector
       return std::vector<Packet>();
     }
     if (datapath::android::EventsHelper::FileHasError(event)) {
@@ -227,23 +232,30 @@ absl::Status DatagramSocket::Init() {
   int fd = socket_fd_;
 
   auto status = events_helper_.AddFile(fd, EventsHelper::EventReadableFlags());
-  if (status.ok()) {
-    status = events_helper_.AddFile(close_event_.fd(),
-                                    EventsHelper::EventReadableFlags());
-    if (!status.ok()) {
-      LOG(ERROR) << "Failed to add close event for socket " << fd
-                 << " to EventsHelper: " << status;
-    }
-  } else {
-    LOG(ERROR) << "Failed to add socket " << fd
-               << " to EventsHelper: " << status;
-  }
-
   if (!status.ok()) {
+    LOG(ERROR) << "Failed to add fd " << fd << " to EventsHelper: " << status;
     PPN_LOG_IF_ERROR(Close());
     return status;
   }
 
+  status = events_helper_.AddFile(cancel_read_event_.fd(),
+                                  EventsHelper::EventReadableFlags());
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to add cancel read event with fd " << fd
+               << " to EventsHelper: " << status;
+    PPN_LOG_IF_ERROR(Close());
+    return status;
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status DatagramSocket::ClearEventFd(int fd) {
+  uint64_t tmp;
+  if (read(fd, &tmp, sizeof(tmp)) == -1) {
+    return absl::InternalError(
+        absl::StrCat("Failed to clear EventFd ", fd, ": ", strerror(errno)));
+  }
   return absl::OkStatus();
 }
 

@@ -175,12 +175,12 @@ TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
       });
 
   // Closed by both the packet forwarder and the datapath.
-  EXPECT_CALL(*socket, Close())
-      .WillOnce([&socket_closed]() {
-        socket_closed.Notify();
-        return absl::OkStatus();
-      })
-      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*socket, CancelReadPackets()).WillOnce([&socket_closed]() {
+    socket_closed.Notify();
+    return absl::OkStatus();
+  });
+
+  EXPECT_CALL(*socket, Close()).WillOnce(Return(absl::OkStatus()));
 
   EXPECT_CALL(tunnel_, ReadPackets()).WillOnce([&tunnel_closed]() {
     tunnel_closed.WaitForNotification();

@@ -242,7 +242,67 @@ TEST(DatagramSocketTest, CloseAfterClose) {
   ASSERT_OK(sock->Close());
 }
 
-TEST(DatagramSocketTest, DynamicMtuCreate) {
+TEST(DatagramSocketTest, CancelReadPackets) {
+  testing::SimpleUdpServer server;
+
+  // Create the socket.
+  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket());
+  ASSERT_OK_AND_ASSIGN(auto localhost, GetLocalhost(server.port()));
+  ASSERT_OK(sock->Connect(localhost));
+
+  absl::Notification read_packets_done;
+
+  krypton::utils::LooperThread looper("CancelReadPackets Thread");
+  looper.Post([&]() {
+    ASSERT_OK_AND_ASSIGN(auto recv_packets, sock->ReadPackets());
+    ASSERT_TRUE(recv_packets.empty());
+    read_packets_done.Notify();
+  });
+
+  ASSERT_OK(sock->CancelReadPackets());
+  read_packets_done.WaitForNotification();
+
+  ASSERT_OK(sock->Close());
+}
+
+TEST(DatagramSocketTest, ReadDataAfterCallingCancelReadPackets) {
+  testing::SimpleUdpServer server;
+
+  // Create the socket.
+  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket());
+  ASSERT_OK_AND_ASSIGN(auto localhost, GetLocalhost(server.port()));
+  ASSERT_OK(sock->Connect(localhost));
+
+  absl::Notification read_packets_done;
+
+  krypton::utils::LooperThread looper("CancelReadPackets Thread");
+  looper.Post([&]() {
+    ASSERT_OK_AND_ASSIGN(auto recv_packets, sock->ReadPackets());
+    read_packets_done.Notify();
+  });
+
+  ASSERT_OK(sock->CancelReadPackets());
+  read_packets_done.WaitForNotification();
+
+  // Send a packet to the server, to establish the client port.
+  std::vector<Packet> packets;
+  packets.emplace_back("foo", 3, IPProtocol::kIPv6, []() {});
+  ASSERT_OK(sock->WritePackets(std::move(packets)));
+
+  // Verify the server received the packet.
+  ASSERT_OK_AND_ASSIGN((auto [port, data]), server.ReceivePacket());
+
+  // Send a packet back to the client.
+  server.SendSamplePacket(port, "bar");
+
+  ASSERT_OK_AND_ASSIGN(auto recv_packets, sock->ReadPackets());
+  ASSERT_EQ(recv_packets.size(), 1);
+  ASSERT_EQ(recv_packets[0].data(), "bar");
+
+  ASSERT_OK(sock->Close());
+}
+
+TEST(DatagramSocketTest, DynamicMtuCreateAndConnect) {
   testing::SimpleUdpServer server;
 
   auto mtu_tracker = std::make_unique<MockMtuTracker>();

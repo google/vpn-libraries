@@ -64,7 +64,8 @@ TEST_F(IpSecPacketForwarderTest, TestStartAndStop) {
     return std::vector<Packet>();
   });
 
-  EXPECT_CALL(network_socket_, Close()).WillOnce([&network_closed]() {
+  EXPECT_CALL(network_socket_, CancelReadPackets())
+      .WillOnce([&network_closed]() {
         network_closed.Notify();
         return absl::OkStatus();
       });
@@ -78,6 +79,8 @@ TEST_F(IpSecPacketForwarderTest, TestStartAndStop) {
     utun_closed.Notify();
     return absl::OkStatus();
   });
+
+  EXPECT_CALL(network_socket_, Close()).Times(0);
 
   EXPECT_FALSE(forwarder.is_started());
   EXPECT_FALSE(forwarder.is_shutdown());
@@ -123,7 +126,8 @@ TEST_F(IpSecPacketForwarderTest, TestDownlinkPacketHandling) {
         return std::vector<Packet>();
       });
 
-  EXPECT_CALL(network_socket_, Close()).WillOnce([&network_closed]() {
+  EXPECT_CALL(network_socket_, CancelReadPackets())
+      .WillOnce([&network_closed]() {
         network_closed.Notify();
         return absl::OkStatus();
       });
@@ -147,6 +151,8 @@ TEST_F(IpSecPacketForwarderTest, TestDownlinkPacketHandling) {
     utun_closed.Notify();
     return absl::OkStatus();
   });
+
+  EXPECT_CALL(network_socket_, Close()).Times(0);
 
   forwarder.Start();
 
@@ -199,7 +205,8 @@ TEST_F(IpSecPacketForwarderTest, TestUplinkPacketHandling) {
     return std::vector<Packet>();
   });
 
-  EXPECT_CALL(network_socket_, Close()).WillOnce([&network_closed]() {
+  EXPECT_CALL(network_socket_, CancelReadPackets())
+      .WillOnce([&network_closed]() {
         network_closed.Notify();
         return absl::OkStatus();
       });
@@ -216,6 +223,8 @@ TEST_F(IpSecPacketForwarderTest, TestUplinkPacketHandling) {
     utun_closed.Notify();
     return absl::OkStatus();
   });
+
+  EXPECT_CALL(network_socket_, Close()).Times(0);
 
   forwarder.Start();
 
@@ -253,7 +262,8 @@ TEST_F(IpSecPacketForwarderTest, TestNetworkWriteFail) {
     return std::vector<Packet>();
   });
 
-  EXPECT_CALL(network_socket_, Close()).WillOnce([&network_closed]() {
+  EXPECT_CALL(network_socket_, CancelReadPackets())
+      .WillOnce([&network_closed]() {
         network_closed.Notify();
         return absl::OkStatus();
       });
@@ -273,6 +283,8 @@ TEST_F(IpSecPacketForwarderTest, TestNetworkWriteFail) {
   EXPECT_CALL(notification_, IpSecPacketForwarderFailed(_))
       .With(testing::Eq(std::make_tuple(write_status)))
       .WillOnce([&failed]() { failed.Notify(); });
+
+  EXPECT_CALL(network_socket_, Close()).Times(0);
 
   forwarder.Start();
 
@@ -310,6 +322,8 @@ TEST_F(IpSecPacketForwarderTest, TestNetworkReadFail) {
       .With(testing::Eq(std::make_tuple(read_status)))
       .WillOnce([&failed]() { failed.Notify(); });
 
+  EXPECT_CALL(network_socket_, Close()).Times(0);
+
   forwarder.Start();
 
   EXPECT_TRUE(failed.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
@@ -334,7 +348,8 @@ TEST_F(IpSecPacketForwarderTest, TestTunnelReadFail) {
     return std::vector<Packet>();
   });
 
-  EXPECT_CALL(network_socket_, Close()).WillOnce([&network_closed]() {
+  EXPECT_CALL(network_socket_, CancelReadPackets())
+      .WillOnce([&network_closed]() {
         network_closed.Notify();
         return absl::OkStatus();
       });
@@ -345,6 +360,8 @@ TEST_F(IpSecPacketForwarderTest, TestTunnelReadFail) {
   EXPECT_CALL(notification_, IpSecPacketForwarderFailed(_))
       .With(testing::Eq(std::make_tuple(read_status)))
       .WillOnce([&failed]() { failed.Notify(); });
+
+  EXPECT_CALL(network_socket_, Close()).Times(0);
 
   forwarder.Start();
 
