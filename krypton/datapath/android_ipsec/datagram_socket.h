@@ -23,10 +23,13 @@
 #include "privacy/net/krypton/datapath/android_ipsec/event_fd.h"
 #include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
 namespace krypton {
@@ -35,7 +38,14 @@ namespace android {
 
 class DatagramSocket : public IpSecSocketInterface {
  public:
+  // Creates a DatagramSocket without path MTU discovery enabled.
   static absl::StatusOr<std::unique_ptr<DatagramSocket>> Create(int socket_fd);
+
+  // Creates a DatagramSocket with path MTU discovery enabled. The provided
+  // MtuTrackerInterface object will be used to keep track of the currently
+  // known path MTU information.
+  static absl::StatusOr<std::unique_ptr<DatagramSocket>> Create(
+      int socket_fd, std::unique_ptr<MtuTrackerInterface>);
 
   ~DatagramSocket() override;
   DatagramSocket(const DatagramSocket&) = delete;
@@ -53,7 +63,7 @@ class DatagramSocket : public IpSecSocketInterface {
 
   int GetFd() override;
 
-  void GetDebugInfo(DatapathDebugInfo* debug_info) override{};
+  void GetDebugInfo(DatapathDebugInfo* debug_info) override;
 
   std::string DebugString();
 
@@ -62,11 +72,27 @@ class DatagramSocket : public IpSecSocketInterface {
 
   absl::Status Init();
 
+  absl::Status EnablePathMtuDiscovery(
+      std::unique_ptr<MtuTrackerInterface> mtu_tracker);
+
+  absl::Status UpdateMtuFromKernel(IPProtocol ip_protocol);
+
+  absl::Status ProcessSocketErrorQueue() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  absl::Mutex mutex_;  // Ensures kernel_mtu_ contains the most recent MTU read
+                       // from the socket error queue
+
   std::atomic_int socket_fd_;
 
   EventFd close_event_;
-
   EventsHelper events_helper_;
+
+  bool dynamic_mtu_enabled_;
+  std::atomic_int uplink_packets_dropped_;
+  int kernel_mtu_ ABSL_GUARDED_BY(mutex_);
+
+  // Only accessed from Connect and WritePackets functions
+  std::unique_ptr<MtuTrackerInterface> mtu_tracker_;
 };
 
 }  // namespace android
