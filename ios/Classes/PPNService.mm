@@ -151,7 +151,16 @@ NSNumber *PPNMemoryUsageInBytes() {
 }
 
 - (NSDictionary<NSString *, id> *)debugInfo {
-  return @{};
+  __block NSMutableDictionary<NSString *, id> *debugInfoDictionary;
+  dispatch_sync(_kryptonDispatchQueue, ^{
+    privacy::krypton::KryptonDebugInfo debugInfo = [self->_kryptonService debugInfo];
+
+    NSNumber *memoryUsageInBytes = PPNMemoryUsageInBytes();
+    debugInfoDictionary = [PPNKryptonDebugInfoToNSDictionary(debugInfo) mutableCopy];
+    debugInfoDictionary[@"memory_usage_in_bytes"] =
+        memoryUsageInBytes.integerValue > 0 ? memoryUsageInBytes : @"Unknown";
+  });
+  return debugInfoDictionary;
 }
 
 - (void)stopWithError:(nullable NSError *)error {

@@ -245,6 +245,13 @@ static NSTimeInterval const PPNTimeoutInterval = 1.0;
   XCTAssertEqualObjects(_error, error);
 }
 
+- (void)testGetDebugInfo {
+  FakePPNKryptonService *fakeKryptonService = [[FakePPNKryptonService alloc] init];
+  [_PPNService setValue:fakeKryptonService forKey:@"kryptonService"];
+
+  XCTAssertNotNil([_PPNService debugInfo][@"memory_usage_in_bytes"]);
+}
+
 #pragma mark - PPNServiceDelegate
 
 - (void)PPNServiceDidStart:(PPNService *)PPNService {
