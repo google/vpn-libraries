@@ -19,6 +19,7 @@
 #include <string>
 
 #include "privacy/net/attestation/proto/attestation.proto.h"
+#include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/zinc/rpc/zinc.proto.h"
 #include "third_party/absl/strings/string_view.h"
@@ -41,6 +42,24 @@ class PublicKeyRequest {
   HttpRequest http_request_;
   const bool request_nonce_;
   std::optional<std::string> api_key_;
+};
+
+// Request for GetInitialData from authentication service.
+class InitialDataRequest {
+ public:
+  InitialDataRequest(
+      bool use_attestation, absl::string_view service_type,
+      ppn::GetInitialDataRequest::LocationGranularity location_granularity)
+      : use_attestation_(use_attestation),
+        service_type_(service_type),
+        granularity_(location_granularity) {}
+  ~InitialDataRequest() = default;
+  HttpRequest EncodeToProto() const;
+
+ private:
+  const bool use_attestation_;
+  const std::string service_type_;
+  ppn::GetInitialDataRequest::LocationGranularity granularity_;
 };
 
 // A class for constructing http AuthAndSignRequest to Zinc.

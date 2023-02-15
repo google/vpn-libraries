@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "google/protobuf/duration.proto.h"
+#include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/http_fetcher.h"
@@ -38,6 +39,7 @@
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -105,6 +107,8 @@ class Auth {
  private:
   void RequestKeyForBlindSigning(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
 
+  void RequestForInitialData(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Authenticates with Auth server and is a non blocking call.
   void Authenticate(bool is_rekey, std::optional<std::string> nonce)
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -114,6 +118,9 @@ class Auth {
   void HandleAuthAndSignResponse(bool is_rekey, const HttpResponse& response)
       ABSL_LOCKS_EXCLUDED(mutex_);
   void HandlePublicKeyResponse(bool is_rekey, const HttpResponse& http_response)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+  void HandleInitialDataResponse(bool is_rekey,
+                                 const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
   static void RecordLatency(absl::Time start,
                             std::vector<google::protobuf::Duration>* latencies,
@@ -145,8 +152,10 @@ class Auth {
   std::vector<google::protobuf::Duration> zinc_latencies_
       ABSL_GUARDED_BY(mutex_);
   absl::Time request_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
-  absl::Time zinc_call_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
+  absl::Time auth_call_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
   std::string signer_public_key_;
+  absl::Duration expiry_increments_ = absl::Minutes(15);
+  ppn::GetInitialDataResponse get_initial_data_response_;
 };
 
 }  // namespace krypton

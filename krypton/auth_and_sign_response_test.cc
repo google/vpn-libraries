@@ -18,15 +18,24 @@
 #include <optional>
 #include <string>
 
+#include "google/protobuf/timestamp.proto.h"
+#include "privacy/net/common/proto/get_initial_data.proto.h"
+#include "privacy/net/common/proto/public_metadata.proto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
+#include "privacy/private_membership/anonymous_tokens/public/proto/anonymous_tokens.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/string_view.h"
 
 namespace privacy {
 namespace krypton {
 namespace {
 
+using private_membership::anonymous_tokens::HashType;
+using private_membership::anonymous_tokens::MaskGenFunction;
+using private_membership::anonymous_tokens::MessageMaskType;
+using private_membership::anonymous_tokens::RSABlindSignaturePublicKey;
 using ::testing::HasSubstr;
 using ::testing::status::StatusIs;
 
@@ -35,6 +44,117 @@ constexpr char kGoldenZincResponse[] = R"string(
 
 constexpr char kGoldenPublicKeyResponse[] =
     R"string({"pem": "some_pem"})string";
+
+constexpr char kGetInitialDataResponse[] = R"string(
+    {"at_public_metadata_public_key":{"use_case":"test","key_version":2,"serialized_public_key":"test","expiration_time":{"seconds":30,"nanos":0},"key_validity_start_time":{"seconds":30,"nanos":0},"sig_hash_type":"AT_HASH_TYPE_SHA256","mask_gen_function":"AT_MGF_SHA256","salt_length":2,"key_size":2,"message_mask_type":"AT_MESSAGE_MASK_CONCAT","message_mask_size":2},
+    "public_metadata_info":{"public_metadata":{"exit_location":{"country":"US","city_geo_id":"us_ca_san_diego"},"service_type":"good","expiration":{"seconds":30,"nanos":0}},"validation_version":1},
+    "attestation":{"attestation_nonce":"/ab"}})string";
+
+class InitialDataResponseTest : public ::testing::Test {
+ public:
+  InitialDataResponseTest() = default;
+  ~InitialDataResponseTest() override = default;
+
+  ppn::GetInitialDataResponse CreateGetInitialDataResponse() {
+    ppn::GetInitialDataResponse response;
+
+    // setup at_public_metadata_public_key fields
+    response.mutable_at_public_metadata_public_key()->set_use_case("test");
+    response.mutable_at_public_metadata_public_key()->set_key_version(2);
+    response.mutable_at_public_metadata_public_key()->set_serialized_public_key(
+        "test");
+    response.mutable_at_public_metadata_public_key()
+        ->mutable_expiration_time()
+        ->set_seconds(30);
+    response.mutable_at_public_metadata_public_key()
+        ->mutable_expiration_time()
+        ->set_nanos(0);
+    response.mutable_at_public_metadata_public_key()
+        ->mutable_key_validity_start_time()
+        ->set_seconds(30);
+    response.mutable_at_public_metadata_public_key()
+        ->mutable_key_validity_start_time()
+        ->set_nanos(0);
+    response.mutable_at_public_metadata_public_key()->set_sig_hash_type(
+        HashType::AT_HASH_TYPE_SHA256);
+    response.mutable_at_public_metadata_public_key()->set_mask_gen_function(
+        MaskGenFunction::AT_MGF_SHA256);
+    response.mutable_at_public_metadata_public_key()->set_salt_length(2);
+    response.mutable_at_public_metadata_public_key()->set_key_size(2);
+    response.mutable_at_public_metadata_public_key()->set_message_mask_type(
+        MessageMaskType::AT_MESSAGE_MASK_CONCAT);
+    response.mutable_at_public_metadata_public_key()->set_message_mask_size(2);
+
+    // setup public metadata fields
+    response.mutable_public_metadata_info()
+        ->mutable_public_metadata()
+        ->mutable_exit_location()
+        ->set_country("US");
+    response.mutable_public_metadata_info()
+        ->mutable_public_metadata()
+        ->mutable_exit_location()
+        ->set_city_geo_id("us_ca_san_diego");
+    response.mutable_public_metadata_info()
+        ->mutable_public_metadata()
+        ->set_service_type("good");
+    response.mutable_public_metadata_info()
+        ->mutable_public_metadata()
+        ->mutable_expiration()
+        ->set_seconds(30);
+    response.mutable_public_metadata_info()
+        ->mutable_public_metadata()
+        ->mutable_expiration()
+        ->set_nanos(0);
+    response.mutable_public_metadata_info()->set_validation_version(1);
+
+    // setup attestation fields
+    response.mutable_attestation()->set_attestation_nonce("/ab");
+    return response;
+  }
+
+  void CheckDecodedGetInitialDataResponse(
+      const RSABlindSignaturePublicKey& at_public_key,
+      const ppn::PublicMetadataInfo& public_metadata_info,
+      const ppn::PrepareAttestationData& attestation) {
+    // check for set public metadata fields
+    EXPECT_EQ(public_metadata_info.public_metadata().exit_location().country(),
+              "US");
+    EXPECT_EQ(
+        public_metadata_info.public_metadata().exit_location().city_geo_id(),
+        "us_ca_san_diego");
+    EXPECT_EQ(public_metadata_info.public_metadata().expiration().seconds(),
+              30);
+    EXPECT_EQ(public_metadata_info.public_metadata().expiration().nanos(), 0);
+    EXPECT_EQ(public_metadata_info.public_metadata().service_type(), "good");
+    EXPECT_EQ(public_metadata_info.validation_version(), 1);
+
+    // check for set at_public_metadata_public_key fields
+    EXPECT_EQ(at_public_key.use_case(), "test");
+    EXPECT_EQ(at_public_key.key_version(), 2);
+    EXPECT_EQ(at_public_key.serialized_public_key(), "test");
+    EXPECT_EQ(at_public_key.expiration_time().seconds(), 30);
+    EXPECT_EQ(at_public_key.expiration_time().nanos(), 0);
+    EXPECT_EQ(at_public_key.key_validity_start_time().seconds(), 30);
+    EXPECT_EQ(at_public_key.key_validity_start_time().nanos(), 0);
+    EXPECT_EQ(at_public_key.sig_hash_type(), HashType::AT_HASH_TYPE_SHA256);
+    EXPECT_EQ(at_public_key.mask_gen_function(),
+              MaskGenFunction::AT_MGF_SHA256);
+    EXPECT_EQ(at_public_key.salt_length(), 2);
+    EXPECT_EQ(at_public_key.key_size(), 2);
+    EXPECT_EQ(at_public_key.message_mask_type(),
+              MessageMaskType::AT_MESSAGE_MASK_CONCAT);
+
+    // check for set attestation fields
+    EXPECT_EQ(attestation.attestation_nonce(), "/ab");
+  }
+
+  HttpResponse CreateHttpResponseProtoBody(
+      const ppn::GetInitialDataResponse initial_data) {
+    HttpResponse response;
+    response.set_proto_body(initial_data.SerializeAsString());
+    return response;
+  }
+};
 
 TEST(AuthAndSignResponse, TestAuthParameter) {
   HttpResponse proto;
@@ -261,6 +381,44 @@ TEST(PublicKeyResponse, TestMalformedJsonBody) {
   EXPECT_THAT(response.DecodeFromProto(proto),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Error parsing json body")));
+}
+
+TEST_F(InitialDataResponseTest, DecodeFromProtoEmptyResponse) {
+  HttpResponse http_response;
+  EXPECT_THAT(http_response.proto_body(), testing::IsEmpty());
+  EXPECT_THAT(http_response.json_body(), testing::IsEmpty());
+  // DecodeGetInitialDataResponse
+  EXPECT_EQ(DecodeGetInitialDataResponse(http_response).status(),
+            absl::InvalidArgumentError("HttpResponse is missing proto_body"));
+}
+
+TEST_F(InitialDataResponseTest, HasJsonBody) {
+  HttpResponse http_response;
+  http_response.set_json_body(kGetInitialDataResponse);
+  EXPECT_THAT(http_response.proto_body(), testing::IsEmpty());
+  // DecodeGetInitialDataResponse
+  EXPECT_EQ(
+      DecodeGetInitialDataResponse(http_response).status(),
+      absl::InvalidArgumentError("Unable to process HttpResponse.json_body()"));
+}
+
+TEST_F(InitialDataResponseTest, DecodeFromProtoProtoBodyResponse) {
+  ppn::GetInitialDataResponse init_data_response_proto =
+      CreateGetInitialDataResponse();
+  HttpResponse http_response =
+      CreateHttpResponseProtoBody(init_data_response_proto);
+
+  EXPECT_THAT(http_response.json_body(), testing::IsEmpty());
+
+  auto decode_status = DecodeGetInitialDataResponse(http_response);
+  EXPECT_EQ(decode_status.status(), absl::OkStatus());
+  RSABlindSignaturePublicKey at_public_key =
+      decode_status->at_public_metadata_public_key();
+  ppn::PublicMetadataInfo public_metadata_info =
+      decode_status->public_metadata_info();
+  ppn::PrepareAttestationData attestation = decode_status->attestation();
+  CheckDecodedGetInitialDataResponse(at_public_key, public_metadata_info,
+                                     attestation);
 }
 
 }  // namespace

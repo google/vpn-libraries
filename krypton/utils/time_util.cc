@@ -18,6 +18,7 @@
 #include <string>
 
 #include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -85,6 +86,17 @@ absl::StatusOr<absl::Time> ParseTimestamp(absl::string_view s) {
         absl::StrCat("Unable to parse timestamp [", s, "]"));
   }
   return time;
+}
+
+absl::Status VerifyTimestampIsRounded(
+    const google::protobuf::Timestamp& timestamp, absl::Duration increments) {
+  if (timestamp.nanos() != 0 ||
+      timestamp.seconds() % (absl::ToInt64Seconds(increments)) != 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expiry timestamp not in increments of ",
+                     absl::FormatDuration(increments)));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace utils

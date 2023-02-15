@@ -15,6 +15,7 @@
 #include "privacy/net/krypton/utils/json_util.h"
 
 #include <string>
+#include <string_view>
 
 #include "third_party/json/include/nlohmann/json.hpp"
 
@@ -39,6 +40,29 @@ absl::StatusOr<nlohmann::json> StringToJson(absl::string_view json_str) {
   return json_obj;
 }
 
+absl::StatusOr<std::string> JsonGetString(const nlohmann::json& value,
+                                          const std::string& json_key) {
+  if (!value.contains(json_key)) {
+    return absl::InvalidArgumentError(absl::StrCat("missing ", json_key, "."));
+  }
+  if (!value[json_key].is_string()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(json_key, " is not a string"));
+  }
+  return value[json_key];
+}
+
+absl::StatusOr<int64_t> JsonGetInt(const nlohmann::json& value,
+                                   const std::string& json_key) {
+  if (!value.contains(json_key)) {
+    return absl::InvalidArgumentError(absl::StrCat("missing ", json_key, "."));
+  }
+  if (!value[json_key].is_number_integer()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(json_key, " is not an integer"));
+  }
+  return value[json_key];
+}
 }  // namespace utils
 }  // namespace krypton
 }  // namespace privacy

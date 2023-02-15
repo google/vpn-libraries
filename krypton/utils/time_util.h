@@ -38,6 +38,13 @@ absl::Status ToProtoTime(absl::Time t, google::protobuf::Timestamp* proto);
 
 absl::StatusOr<absl::Time> ParseTimestamp(absl::string_view s);
 
+// Checks that a timestamp is only as granular as the allowed increments.
+// Example: if increments = 30 minutes, timestamp value must fall on the hour or
+// half hour mark.
+// A use is to ensure expiry timestamp ins't granular enough to be associated
+// with a single user.
+absl::Status VerifyTimestampIsRounded(
+    const google::protobuf::Timestamp& timestamp, absl::Duration increments);
 }  // namespace utils
 }  // namespace krypton
 }  // namespace privacy
