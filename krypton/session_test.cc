@@ -807,12 +807,12 @@ TEST_F(SessionTest, TestEmptyAuthResponseCopperControllerHostname) {
   auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
 }
 
-TEST_F(SessionTest, UpdatePathInfoToJsonDefaultValues) {
+TEST(UpdatePathInfoTest, UpdatePathInfoToJsonDefaultValues) {
   ppn::UpdatePathInfo update_path_info;
   auto json_str = ProtoToJsonString(update_path_info);
   std::string expected = R"string(
   {
-    "mtu":1280,
+    "mtu":0,
     "mtu_update_signature":"",
     "sequence_number":0,
     "session_id":0,
@@ -822,7 +822,7 @@ TEST_F(SessionTest, UpdatePathInfoToJsonDefaultValues) {
   EXPECT_EQ(json_str, expected);
 }
 
-TEST_F(SessionTest, UpdatePathInfoToJsonNonDefaultValues) {
+TEST(UpdatePathInfoTest, UpdatePathInfoToJsonNonDefaultValues) {
   ppn::UpdatePathInfo update_path_info;
   update_path_info.set_session_id(1);
   update_path_info.set_sequence_number(2);
