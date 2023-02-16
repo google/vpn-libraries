@@ -15,7 +15,10 @@
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker.h"
 
 #include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/utils/looper.h"
+#include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/synchronization/notification.h"
 
 namespace privacy {
 namespace krypton {
@@ -23,7 +26,14 @@ namespace datapath {
 namespace android {
 namespace {
 
-TEST(MtuTrackerTest, TestCreateWithDefaultIPv4) {
+using ::testing::_;
+
+class MockNotification : public MtuTrackerInterface::NotificationInterface {
+ public:
+  MOCK_METHOD(void, MtuUpdated, (int, int), (override));
+};
+
+TEST(MtuTrackerTest, TestCreateWithDefaultIpv4) {
   MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
   EXPECT_EQ(mtu_tracker.GetPathMtu(), 1500);
   EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 1395);
@@ -53,6 +63,35 @@ TEST(MtuTrackerTest, TestSetHigherMtu) {
   mtu_tracker.UpdateMtu(2000);
   EXPECT_EQ(mtu_tracker.GetPathMtu(), 1500);
   EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 1395);
+}
+
+TEST(MtuTrackerTest, TestUpdateMtuWithNullNotificationThread) {
+  MockNotification notification;
+
+  EXPECT_CALL(notification, MtuUpdated(_, _)).Times(0);
+
+  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
+  mtu_tracker.RegisterNotificationHandler(&notification, nullptr);
+  mtu_tracker.UpdateMtu(1000);
+  EXPECT_EQ(mtu_tracker.GetPathMtu(), 1000);
+  EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 895);
+}
+
+TEST(MtuTrackerTest, TestUpdateMtuWithNotification) {
+  utils::LooperThread looper("MtuTrackerTest Thread");
+  MockNotification notification;
+
+  absl::Notification mtu_update_done;
+  EXPECT_CALL(notification, MtuUpdated(1000, 895))
+      .WillOnce([&mtu_update_done]() { mtu_update_done.Notify(); });
+
+  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
+  mtu_tracker.RegisterNotificationHandler(&notification, &looper);
+  mtu_tracker.UpdateMtu(1000);
+  EXPECT_EQ(mtu_tracker.GetPathMtu(), 1000);
+  EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 895);
+
+  EXPECT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
 }  // namespace

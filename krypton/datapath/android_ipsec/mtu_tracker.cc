@@ -16,6 +16,7 @@
 
 #include "base/logging.h"
 #include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/utils/looper.h"
 
 namespace privacy {
 namespace krypton {
@@ -41,12 +42,13 @@ MtuTracker::MtuTracker(IPProtocol dest_ip_protocol)
     : MtuTracker(dest_ip_protocol, kDefaultMtu) {}
 
 MtuTracker::MtuTracker(IPProtocol dest_ip_protocol, int initial_path_mtu)
-    : dest_ip_protocol_(dest_ip_protocol),
-      tunnel_overhead_(dest_ip_protocol == IPProtocol::kIPv6
+    : tunnel_overhead_(dest_ip_protocol == IPProtocol::kIPv6
                            ? kMaxIpv6Overhead
                            : kMaxIpv4Overhead),
       path_mtu_(initial_path_mtu),
-      tunnel_mtu_(path_mtu_ - tunnel_overhead_) {}
+      tunnel_mtu_(path_mtu_ - tunnel_overhead_),
+      notification_(nullptr),
+      notification_thread_(nullptr) {}
 
 void MtuTracker::UpdateMtu(int path_mtu) {
   if (path_mtu < path_mtu_) {
@@ -56,12 +58,27 @@ void MtuTracker::UpdateMtu(int path_mtu) {
     LOG(INFO) << "Updating Tunnel MTU from " << tunnel_mtu_ << " to "
               << tunnel_mtu;
     tunnel_mtu_ = tunnel_mtu;
+
+    if (notification_ == nullptr || notification_thread_ == nullptr) {
+      return;
+    }
+    auto notification = notification_;
+    notification_thread_->Post([notification, path_mtu, tunnel_mtu] {
+      notification->MtuUpdated(path_mtu, tunnel_mtu);
+    });
   }
 }
 
 int MtuTracker::GetPathMtu() const { return path_mtu_; }
 
 int MtuTracker::GetTunnelMtu() const { return tunnel_mtu_; }
+
+void MtuTracker::RegisterNotificationHandler(
+    NotificationInterface* notification,
+    utils::LooperThread* notification_thread) {
+  notification_ = notification;
+  notification_thread_ = notification_thread;
+}
 
 }  // namespace android
 }  // namespace datapath

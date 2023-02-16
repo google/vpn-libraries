@@ -47,6 +47,10 @@ class MockMtuTracker : public MtuTrackerInterface {
   MOCK_METHOD(void, UpdateMtu, (int), (override));
   MOCK_METHOD(int, GetPathMtu, (), (const override));
   MOCK_METHOD(int, GetTunnelMtu, (), (const override));
+  MOCK_METHOD(void, RegisterNotificationHandler,
+              (NotificationInterface * notification,
+               krypton::utils::LooperThread* notification_thread),
+              (override));
 };
 
 absl::StatusOr<std::unique_ptr<DatagramSocket>> CreateSocket() {

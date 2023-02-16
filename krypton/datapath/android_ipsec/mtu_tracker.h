@@ -17,6 +17,7 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
 #include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/utils/looper.h"
 
 namespace privacy {
 namespace krypton {
@@ -34,11 +35,20 @@ class MtuTracker : public MtuTrackerInterface {
 
   int GetTunnelMtu() const override;
 
+  void RegisterNotificationHandler(
+      NotificationInterface* notification,
+      utils::LooperThread* notification_thread) override;
+
  private:
-  IPProtocol dest_ip_protocol_;
   int tunnel_overhead_;
   int path_mtu_;
   int tunnel_mtu_;
+
+  NotificationInterface* notification_;  // Not owned.
+
+  // This thread will be used to send notifications "up the stack" to listeners.
+  // It should not be used for anything else.
+  utils::LooperThread* notification_thread_;  // Not owned.
 };
 
 }  // namespace android
