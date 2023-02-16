@@ -18,7 +18,6 @@
 #include <string>
 
 #include "privacy/net/attestation/proto/attestation.proto.h"
-#include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/json_util.h"
@@ -113,15 +112,5 @@ HttpRequest PublicKeyRequest::EncodeToProto() const {
   return request;
 }
 
-HttpRequest InitialDataRequest::EncodeToProto() const {
-  HttpRequest request;
-
-  ppn::GetInitialDataRequest initial_data_proto;
-  initial_data_proto.set_use_attestation(use_attestation_);
-  initial_data_proto.set_service_type(service_type_);
-  initial_data_proto.set_location_granularity(granularity_);
-  request.set_proto_body(initial_data_proto.SerializeAsString());
-  return request;
-}
 }  // namespace krypton
 }  // namespace privacy

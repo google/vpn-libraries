@@ -21,15 +21,10 @@
 #include <utility>
 #include <vector>
 
-#include "privacy/net/attestation/proto/attestation.proto.h"
-#include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/zinc/rpc/zinc.proto.h"
-// anonymous_tokens.proto will release under https://github.com/google/quiche
-#include "privacy/private_membership/anonymous_tokens/public/proto/anonymous_tokens.proto.h"
-#include "third_party/absl/container/flat_hash_map.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
@@ -59,9 +54,6 @@ class PublicKeyResponse {
   absl::Status DecodeJsonBody(nlohmann::json value);
   absl::Status parsing_status_ = absl::InternalError("Not initialized");
 };
-
-absl::StatusOr<ppn::GetInitialDataResponse> DecodeGetInitialDataResponse(
-    const HttpResponse& response);
 
 // Response for the Auth.
 class AuthAndSignResponse {

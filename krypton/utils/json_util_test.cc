@@ -19,8 +19,6 @@
 
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
-#include "third_party/absl/status/statusor.h"
-#include "third_party/absl/strings/string_view.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
@@ -228,44 +226,6 @@ TEST(JsonUtilTest, StringToJsonExtraBracket) {
       "test" : "abc"
    }})string"),
               StatusIs(absl::StatusCode::kInternal));
-}
-
-TEST(JsonContains, StringCheck) {
-  std::string key_missing = R"string({"foo":"bar"})string";
-  absl::string_view wrong_type = R"string({"use_case":7})string";
-  absl::string_view valid = R"string({"use_case":"bar"})string";
-  std::string json_key = "use_case";
-
-  absl::StatusOr<nlohmann::json> body = StringToJson(key_missing);
-  auto status = JsonGetString(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
-
-  body = StringToJson(wrong_type);
-  status = JsonGetString(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
-
-  body = StringToJson(valid);
-  status = JsonGetString(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kOk));
-}
-
-TEST(JsonContains, IntCheck) {
-  std::string key_missing = R"string({"foo":"bar"})string";
-  absl::string_view wrong_type = R"string({"foo_int":"bar"})string";
-  absl::string_view valid = R"string({"foo_int":7})string";
-  char json_key[] = "foo_int";
-
-  absl::StatusOr<nlohmann::json> body = StringToJson(key_missing);
-  auto status = JsonGetInt(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
-
-  body = StringToJson(wrong_type);
-  status = JsonGetInt(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
-
-  body = StringToJson(valid);
-  status = JsonGetInt(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kOk));
 }
 
 }  // namespace

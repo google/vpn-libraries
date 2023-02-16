@@ -28,12 +28,6 @@ std::string JsonToString(const nlohmann::json& json_obj);
 
 absl::StatusOr<nlohmann::json> StringToJson(absl::string_view json_str);
 
-absl::StatusOr<std::string> JsonGetString(const nlohmann::json& value,
-                                          const std::string& json_key);
-
-absl::StatusOr<int64_t> JsonGetInt(const nlohmann::json& value,
-                                   const std::string& json_key);
-
 }  // namespace utils
 }  // namespace krypton
 }  // namespace privacy

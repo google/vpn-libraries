@@ -17,8 +17,6 @@
 #include "google/protobuf/timestamp.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
-#include "third_party/absl/status/status.h"
-#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 
@@ -109,31 +107,6 @@ TEST(Time, TestTimeFromProto) {
   ASSERT_EQ(time.value(), absl::FromUnixNanos(1234567890000012345));
 }
 
-TEST(Time, VerifyTimestampIncrements) {
-  google::protobuf::Timestamp expiry_time;
-  absl::Duration increments = absl::Minutes(15);
-  // (GMT): February 1, 2023 6:19:00 AM
-  auto time = 1675232340000;
-  expiry_time.set_seconds(time);
-  expiry_time.set_nanos(0);
-  EXPECT_EQ(VerifyTimestampIsRounded(expiry_time, increments),
-            absl::InvalidArgumentError(
-                absl::StrCat("Expiry timestamp not in increments of ",
-                             absl::FormatDuration(increments))));
-  // (GMT): February 1, 2023 6:15:00 AM
-  time = 1675232100000;
-  expiry_time.clear_seconds();
-  expiry_time.set_seconds(time);
-  EXPECT_EQ(VerifyTimestampIsRounded(expiry_time, increments),
-            absl::OkStatus());
-  // check nanos as well
-  expiry_time.clear_nanos();
-  expiry_time.set_nanos(123);
-  EXPECT_EQ(VerifyTimestampIsRounded(expiry_time, increments),
-            absl::InvalidArgumentError(
-                absl::StrCat("Expiry timestamp not in increments of ",
-                             absl::FormatDuration(increments))));
-}
 }  // namespace
 }  // namespace utils
 }  // namespace krypton

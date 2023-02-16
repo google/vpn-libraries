@@ -14,14 +14,11 @@
 
 #include "privacy/net/krypton/auth_and_sign_request.h"
 
-#include <cstddef>
 #include <optional>
 #include <string>
 
 #include "google/protobuf/any.proto.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
-#include "privacy/net/common/proto/get_initial_data.proto.h"
-#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/json_util.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
@@ -138,24 +135,5 @@ TEST(AuthAndSignRequest, TestAuthAndSignRequestWithIntegrityToken) {
       )pb"));
 }
 
-TEST(AuthAndSignRequest, TestInitialDataRequestProtoEncoding) {
-  ppn::GetInitialDataRequest::LocationGranularity granularity =
-      ppn::GetInitialDataRequest::CITY_GEOS;
-  auto request = InitialDataRequest(/*use_attestation=*/true,
-                                    /*service_type=*/"123",
-                                    /*location_granularity==*/granularity);
-  HttpRequest proto = request.EncodeToProto();
-
-  // parse out GetInitialDataRequest proto from string
-  ppn::GetInitialDataRequest message;
-  bool result = message.ParseFromString(proto.proto_body());
-
-  EXPECT_TRUE(result);
-  EXPECT_THAT(message, EqualsProto(R"pb(
-                use_attestation: true
-                service_type: "123"
-                location_granularity: 2
-              )pb"));
-}
 }  // namespace krypton
 }  // namespace privacy
