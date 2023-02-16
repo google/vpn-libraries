@@ -15,10 +15,14 @@
 
 #include "privacy/net/krypton/auth_and_sign_response.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 
 #include "base/logging.h"
+#include "google/protobuf/timestamp.proto.h"
+#include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/json_util.h"
@@ -26,6 +30,7 @@
 #include "privacy/net/zinc/rpc/zinc.proto.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/match.h"
+#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/json/include/nlohmann/json.hpp"
@@ -227,6 +232,24 @@ absl::Status PublicKeyResponse::DecodeJsonBody(nlohmann::json value) {
     nonce_ = value[JsonKeys::kAttestationNonce];
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<ppn::GetInitialDataResponse> DecodeGetInitialDataResponse(
+    const HttpResponse& response) {
+  ppn::GetInitialDataResponse initial_data_response;
+  if (response.has_json_body()) {
+    return absl::InvalidArgumentError(
+        "Unable to process HttpResponse.json_body()");
+  }
+
+  if (response.has_proto_body()) {
+    if (!initial_data_response.ParseFromString(response.proto_body())) {
+      return absl::InvalidArgumentError("Error parsing proto_body");
+    }
+  } else {
+    return absl::InvalidArgumentError("HttpResponse is missing proto_body");
+  }
+  return initial_data_response;
 }
 
 }  // namespace krypton

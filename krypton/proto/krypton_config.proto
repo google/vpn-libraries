@@ -43,10 +43,13 @@ message ReconnectorConfig {
 message KryptonConfig {
   reserved 5, 7, 10, 13, 24;
 
+  // TODO: Clean up name of zinc_url.
   optional string zinc_url = 1;
   optional string zinc_public_signing_key_url = 11;
   optional string brass_url = 2;
   optional string service_type = 3;
+  // TODO Add PpnOptions for initial_data_url field
+  optional string initial_data_url = 31;
 
   optional ReconnectorConfig reconnector_config = 4;
 

@@ -14,6 +14,7 @@
 
 #include "privacy/net/krypton/auth.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -25,6 +26,8 @@
 
 #include "base/logging.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
+#include "privacy/net/common/proto/get_initial_data.proto.h"
+#include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/auth_and_sign_request.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
@@ -82,7 +85,7 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
                                      const HttpResponse& http_response) {
   absl::MutexLock l(&mutex_);
   RecordLatency(request_time_, &latencies_, "auth");
-  RecordLatency(zinc_call_time_, &zinc_latencies_, "zinc");
+  RecordLatency(auth_call_time_, &zinc_latencies_, "zinc");
 
   request_time_ = ::absl::InfinitePast();
 
@@ -167,6 +170,7 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
       LOG(ERROR) << "Error decoding PublicKeyResponse";
       return;
     }
+
     DCHECK_NE(key_material_, nullptr);
     auto blinding_status = key_material_->SetBlindingPublicKey(response.pem());
     if (!blinding_status.ok()) {
@@ -181,6 +185,77 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
   LOG(INFO) << "Exiting PublicKeyResponse";
 }
 
+void Auth::HandleInitialDataResponse(bool is_rekey,
+                                     const HttpResponse& http_response) {
+  std::optional<std::string> nonce = std::nullopt;
+  {
+    absl::MutexLock l(&mutex_);
+    // TODO
+    RecordLatency(request_time_, &latencies_, "auth");
+
+    request_time_ = ::absl::InfinitePast();
+
+    LOG(INFO) << "Received GetInitialData Response.";
+    if (stopped_) {
+      LOG(ERROR) << "Auth is already cancelled, don't update";
+      return;
+    }
+    if (http_response.status().code() < 200 ||
+        http_response.status().code() >= 300) {
+      SetState(State::kUnauthenticated);
+      RaiseAuthFailureNotification(utils::GetStatusForHttpStatus(
+          http_response.status().code(), http_response.status().message()));
+      LOG(ERROR) << "GetInitialDataResponse failed: "
+                 << http_response.status().code();
+      return;
+    }
+
+    auto decode_status = DecodeGetInitialDataResponse(http_response);
+    if (!decode_status.ok()) {
+      SetState(State::kUnauthenticated);
+      RaiseAuthFailureNotification(decode_status.status());
+    }
+    get_initial_data_response_ = decode_status.value();
+
+    auto rounded_expiry_timestamp = utils::VerifyTimestampIsRounded(
+        get_initial_data_response_.public_metadata_info()
+            .public_metadata()
+            .expiration(),
+        expiry_increments_);
+    if (!rounded_expiry_timestamp.ok()) {
+      SetState(State::kUnauthenticated);
+      LOG(ERROR) << "HandleInitialDataResponse failed due to unrounded expiry "
+                    "increment.";
+      return;
+    }
+    if (get_initial_data_response_.public_metadata_info()
+            .public_metadata()
+            .service_type() != config_.service_type()) {
+      SetState(State::kUnauthenticated);
+      LOG(ERROR) << "HandleInitialDataResponse failed due to incorrect service "
+                    "type in response.";
+      return;
+    }
+
+    DCHECK_NE(key_material_, nullptr);
+    auto blinding_status = key_material_->SetBlindingPublicKey(
+        get_initial_data_response_.at_public_metadata_public_key()
+            .serialized_public_key());
+    if (!blinding_status.ok()) {
+      LOG(ERROR)
+          << "HandleInitialDataResponse: Error setting blinding public key";
+      SetState(State::kUnauthenticated);
+      RaiseAuthFailureNotification(blinding_status);
+      return;
+    }
+    if (!get_initial_data_response_.attestation().attestation_nonce().empty()) {
+      nonce = get_initial_data_response_.attestation().attestation_nonce();
+    }
+  }
+  LOG(INFO) << "Exiting InitialDataResponseHandler";
+  Authenticate(is_rekey, nonce);
+}
+
 absl::StatusOr<std::string> Auth::signer_public_key() const {
   absl::MutexLock l(&mutex_);
   if (signer_public_key_.empty()) {
@@ -193,7 +268,13 @@ void Auth::Start(bool is_rekey) {
   if (config_.enable_blind_signing()) {
     LOG(INFO) << "Starting authentication with blind signing. Rekey:"
               << (is_rekey ? "true" : "false");
-    RequestKeyForBlindSigning(is_rekey);
+    if (config_.public_metadata_enabled()) {
+      LOG(INFO) << "Requesting key with public metadata enabled.";
+      RequestForInitialData(is_rekey);
+    } else {
+      LOG(INFO) << "Requesting key without public metadata enabled.";
+      RequestKeyForBlindSigning(is_rekey);
+    }
   } else {
     LOG(INFO) << "Starting authentication without blind signing. Rekey:"
               << (is_rekey ? "true" : "false");
@@ -214,6 +295,26 @@ void Auth::RequestKeyForBlindSigning(bool is_rekey) {
   http_fetcher_.PostJsonAsync(
       public_key_proto,
       absl::bind_front(&Auth::HandlePublicKeyResponse, this, is_rekey));
+}
+
+void Auth::RequestForInitialData(bool is_rekey) {
+  absl::MutexLock l(&mutex_);
+  request_time_ = absl::Now();
+
+  auto use_attestation = config_.integrity_attestation_enabled();
+  auto service_type = config_.service_type();
+
+  // TODO Temporariliy setting to granularity to country level
+  // until resolved.
+  ppn::GetInitialDataRequest::LocationGranularity granularity =
+      ppn::GetInitialDataRequest::COUNTRY;
+
+  InitialDataRequest request(use_attestation, service_type, granularity);
+  auto get_initial_data_proto = request.EncodeToProto();
+  get_initial_data_proto.set_url(config_.initial_data_url());
+  http_fetcher_.PostJsonAsync(
+      get_initial_data_proto,
+      absl::bind_front(&Auth::HandleInitialDataResponse, this, is_rekey));
 }
 
 void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
@@ -258,8 +359,9 @@ void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
     return;
   }
 
+  // TODO: Clean up name of zinc_url.
   auth_http_request->set_url(config_.zinc_url());
-  zinc_call_time_ = absl::Now();
+  auth_call_time_ = absl::Now();
   http_fetcher_.PostJsonAsync(
       auth_http_request.value(),
       absl::bind_front(&Auth::HandleAuthAndSignResponse, this, is_rekey));
