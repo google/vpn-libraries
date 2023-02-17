@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <string>
+
 #import "googlemac/iPhone/Shared/PPN/API/PPNOptions.h"
 
 #import "google/protobuf/duration.proto.h"
@@ -30,6 +32,8 @@ PPNOptionKey const PPNOptionZincPublicSigningKeyURLString = @"zincPublicSigningK
 PPNOptionKey const PPNOptionZincServiceType = @"zincServiceType";
 
 PPNOptionKey const PPNOptionBrassURLString = @"brassURL";
+
+PPNOptionKey const PPNOptionInitialDataURLString = @"initialDataURL";
 
 PPNOptionKey const PPNPeriodicHealthCheckEnabled = @"periodicHealthCheckEnabled";
 
@@ -106,6 +110,9 @@ static PPNOptionKey const PPNOptionDefaultZincServiceType = @"g1";
 static PPNOptionKey const PPNOptionDefaultBrassURLString =
     @"https://staging.brass.cloud.cupronickel.goog/addegress";
 
+static PPNOptionKey const PPNOptionDefaultInitialDataURLString =
+    @"https://staging-phosphor-pa.sandbox.googleapis.com/v1/getInitialData";
+
 static PPNOptionKey const PPNOptionDefaultCopperHostnameSuffix = @"g-tun.com";
 
 #pragma mark - Utility Functions
@@ -132,6 +139,11 @@ privacy::krypton::KryptonConfig PPNKryptonConfigFromOptions(
   NSString *brassURLString = options[PPNOptionBrassURLString];
   brassURLString = brassURLString != nullptr ? brassURLString : PPNOptionDefaultBrassURLString;
   kryptonConfig.set_brass_url(std::string(brassURLString.UTF8String));
+
+  NSString *initialDataURLString = options[PPNOptionInitialDataURLString];
+  initialDataURLString =
+      initialDataURLString != nullptr ? initialDataURLString : PPNOptionDefaultInitialDataURLString;
+  kryptonConfig.set_initial_data_url(std::string(initialDataURLString.UTF8String));
 
   NSString *copperControllerAddress = options[PPNOptionCopperControllerAddress];
   if (copperControllerAddress != nullptr) {

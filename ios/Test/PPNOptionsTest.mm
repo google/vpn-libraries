@@ -44,6 +44,10 @@
   NSString *brassURLString =
       [[NSString alloc] initWithUTF8String:kryptonConfig.brass_url().c_str()];
   XCTAssertEqualObjects(brassURLString, @"https://staging.brass.cloud.cupronickel.goog/addegress");
+  NSString *initialDataURLString =
+      [[NSString alloc] initWithUTF8String:kryptonConfig.initial_data_url().c_str()];
+  XCTAssertEqualObjects(initialDataURLString,
+                        @"https://staging-phosphor-pa.sandbox.googleapis.com/v1/getInitialData");
   NSString *copperHostnameOverride =
       [[NSString alloc] initWithUTF8String:kryptonConfig.copper_hostname_override().c_str()];
   XCTAssertEqualObjects(copperHostnameOverride, @"");
@@ -71,6 +75,7 @@
     PPNOptionZincPublicSigningKeyURLString : @"zinc_public_signing_key_url",
     PPNOptionZincServiceType : @"service_type",
     PPNOptionBrassURLString : @"brass_url",
+    PPNOptionInitialDataURLString : @"initial_data_url",
     PPNOptionCopperControllerAddress : @"copper_controller_address",
     PPNOptionCopperHostnameSuffix : @[ @"copperHostnameSuffix" ],
     PPNOptionBridgeKeyLength : @1024,
@@ -96,6 +101,9 @@
   NSString *brassURLString =
       [[NSString alloc] initWithUTF8String:kryptonConfig.brass_url().c_str()];
   XCTAssertEqualObjects(brassURLString, @"brass_url");
+  NSString *initialDataURLString =
+      [[NSString alloc] initWithUTF8String:kryptonConfig.initial_data_url().c_str()];
+  XCTAssertEqualObjects(initialDataURLString, @"initial_data_url");
   NSString *copperControllerAddress =
       [[NSString alloc] initWithUTF8String:kryptonConfig.copper_controller_address().c_str()];
   XCTAssertEqualObjects(copperControllerAddress, @"copper_controller_address");

@@ -190,6 +190,38 @@ public class PpnOptionsTest {
   }
 
   @Test
+  public void setInitialDataUrl_hasDefault() {
+    PpnOptions options = new PpnOptions.Builder().build();
+
+    assertThat(options.getInitialDataUrl()).isNotNull();
+    assertThat(options.getInitialDataUrl()).isNotEmpty();
+  }
+
+  @Test
+  public void setInitialDataUrl_storesUrl() {
+    String url = "http://example.com/v1/getInitialData";
+    PpnOptions options = new PpnOptions.Builder().setInitialDataUrl(url).build();
+
+    assertThat(options.getInitialDataUrl()).isEqualTo(url);
+  }
+
+  @Test
+  public void setInitialDataUrl_ignoresNull() {
+    PpnOptions options = new PpnOptions.Builder().setInitialDataUrl(null).build();
+
+    assertThat(options.getInitialDataUrl()).isNotNull();
+    assertThat(options.getInitialDataUrl()).isNotEmpty();
+  }
+
+  @Test
+  public void setInitialDataUrl_ignoresEmpty() {
+    PpnOptions options = new PpnOptions.Builder().setInitialDataUrl("").build();
+
+    assertThat(options.getInitialDataUrl()).isNotNull();
+    assertThat(options.getInitialDataUrl()).isNotEmpty();
+  }
+
+  @Test
   public void testConnectivityCheckUrl_hasDefault() {
     PpnOptions options = new PpnOptions.Builder().build();
 
@@ -536,6 +568,7 @@ public class PpnOptionsTest {
             .setIpv4KeepaliveInterval(Duration.ofMillis(8))
             .setIpv6KeepaliveInterval(Duration.ofMillis(16))
             .setPublicMetadataEnabled(true)
+            .setInitialDataUrl("h")
             .build();
 
     KryptonConfig config = options.createKryptonConfigBuilder().build();
@@ -571,6 +604,7 @@ public class PpnOptionsTest {
     assertThat(config.getIpv6KeepaliveInterval().getSeconds()).isEqualTo(0);
     assertThat(config.getIpv6KeepaliveInterval().getNanos()).isEqualTo(16000000);
     assertThat(config.getPublicMetadataEnabled()).isTrue();
+    assertThat(config.getInitialDataUrl()).isEqualTo("h");
   }
 
   @Test
@@ -602,6 +636,7 @@ public class PpnOptionsTest {
     assertThat(config.hasIpv4KeepaliveInterval()).isFalse();
     assertThat(config.hasIpv6KeepaliveInterval()).isFalse();
     assertThat(config.getPublicMetadataEnabled()).isFalse();
+    assertThat(config.getInitialDataUrl()).isNotEmpty();
   }
 
   @Test

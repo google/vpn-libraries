@@ -49,6 +49,11 @@ FOUNDATION_EXTERN PPNOptionKey const PPNOptionZincServiceType;
  */
 FOUNDATION_EXTERN PPNOptionKey const PPNOptionBrassURLString;
 /**
+ * Phosphor InitialData URL string.
+ * If not set, the default value is used.
+ */
+FOUNDATION_EXTERN PPNOptionKey const PPNOptionInitialDataURLString;
+/**
  * Whether the IPSec is enabled.
  * Set @YES to enable the IPSec or set @NO to disable the IPSec.
  */

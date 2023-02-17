@@ -43,6 +43,8 @@ public class PpnOptions {
   private static final String DEFAULT_ZINC_OAUTH_SCOPES =
       "oauth2:https://www.googleapis.com/auth/subscriptions email profile";
   private static final String DEFAULT_ZINC_SERVICE_TYPE = "g1";
+  private static final String DEFAULT_INITIAL_DATA_URL =
+      "https://staging-phosphor-pa.sandbox.googleapis.com/v1/getInitialData";
 
   // Default URL to use for checking for internet connectivity. This gstatic url returns no content
   // so it's a very low latency connection check.
@@ -58,6 +60,7 @@ public class PpnOptions {
   private final String brassUrl;
   private final String zincOAuthScopes;
   private final String zincServiceType;
+  private final String initialDataUrl;
 
   private final String connectivityCheckUrl;
   private final Duration connectivityCheckRetryDelay;
@@ -104,6 +107,7 @@ public class PpnOptions {
     this.brassUrl = builder.brassUrl;
     this.zincOAuthScopes = builder.zincOAuthScopes;
     this.zincServiceType = builder.zincServiceType;
+    this.initialDataUrl = builder.initialDataUrl;
 
     this.connectivityCheckUrl = builder.connectivityCheckUrl;
     this.connectivityCheckRetryDelay = builder.connectivityCheckRetryDelay;
@@ -165,6 +169,10 @@ public class PpnOptions {
 
   public String getZincServiceType() {
     return zincServiceType;
+  }
+
+  public String getInitialDataUrl() {
+    return initialDataUrl;
   }
 
   public String getConnectivityCheckUrl() {
@@ -302,6 +310,7 @@ public class PpnOptions {
             .setZincPublicSigningKeyUrl(getZincPublicSigningKeyUrl())
             .setBrassUrl(getBrassUrl())
             .setServiceType(getZincServiceType())
+            .setInitialDataUrl(getInitialDataUrl())
             .setReconnectorConfig(reconnectorConfig);
 
     if (getCopperControllerAddress().isPresent()) {
@@ -387,6 +396,7 @@ public class PpnOptions {
     private String brassUrl = DEFAULT_BRASS_URL;
     private String zincOAuthScopes = DEFAULT_ZINC_OAUTH_SCOPES;
     private String zincServiceType = DEFAULT_ZINC_SERVICE_TYPE;
+    private String initialDataUrl = DEFAULT_INITIAL_DATA_URL;
     private String connectivityCheckUrl = DEFAULT_CONNECTIVITY_CHECK_URL;
     private Duration connectivityCheckRetryDelay = DEFAULT_CONNECTIVITY_CHECK_RETRY_DELAY;
     private int connectivityCheckMaxRetries = DEFAULT_CONNECTIVITY_CHECK_MAX_RETRIES;
@@ -500,6 +510,22 @@ public class PpnOptions {
     public Builder setZincServiceType(String type) {
       if (!isNullOrEmpty(type)) {
         this.zincServiceType = type;
+      }
+      return this;
+    }
+
+    /**
+     * Sets the url to use for connecting to the Phosphor backend for get initial data, such as
+     * "https://autopush-phosphor-pa.sandbox.googleapis.com/v1/getInitialData".
+     *
+     * <p>If this is not set, it will default to a reasonable Phosphor server address.
+     *
+     * <p>If null or an empty string is passed in, it will be ignored.
+     */
+    @CanIgnoreReturnValue
+    public Builder setInitialDataUrl(String url) {
+      if (!isNullOrEmpty(url)) {
+        this.initialDataUrl = url;
       }
       return this;
     }
