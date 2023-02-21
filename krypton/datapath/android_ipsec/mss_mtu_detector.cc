@@ -94,23 +94,12 @@ absl::Status MssMtuDetector::StartInternal() {
   absl::Status status = SetSocketNonBlocking(fd_);
   if (!status.ok()) return status;
 
-  sockaddr_storage addr{};
-  if (endpoint_.ip_protocol() == IPProtocol::kIPv4) {
-    sockaddr_in* ipv4_addr = reinterpret_cast<sockaddr_in*>(&addr);
-    ipv4_addr->sin_family = AF_INET;
-    ipv4_addr->sin_port = htons(endpoint_.port());
-    inet_pton(AF_INET, endpoint_.address().c_str(), &ipv4_addr->sin_addr);
-  } else {
-    sockaddr_in6* ipv6_addr = reinterpret_cast<sockaddr_in6*>(&addr);
-    ipv6_addr->sin6_family = AF_INET6;
-    ipv6_addr->sin6_port = htons(endpoint_.port());
-    inet_pton(AF_INET6, endpoint_.address().c_str(), &ipv6_addr->sin6_addr);
-  }
+  PPN_ASSIGN_OR_RETURN(auto sockaddr_info, endpoint_.GetSockAddr());
 
   // Connection on nonblocking socket cannot be completed immediately and will
   // return with the error EINPROGRESS.
-  if (connect(fd_, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) ==
-          -1 &&
+  if (connect(fd_, reinterpret_cast<const sockaddr*>(&sockaddr_info.sockaddr),
+              sockaddr_info.socklen) == -1 &&
       errno != EINPROGRESS) {
     return absl::InternalError(absl::StrCat("Connect TCP Socket (fd: ", fd_,
                                             ") to ", endpoint_.ToString(),

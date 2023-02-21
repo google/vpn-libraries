@@ -15,6 +15,8 @@
 #ifndef PRIVACY_NET_KRYPTON_ENDPOINT_H_
 #define PRIVACY_NET_KRYPTON_ENDPOINT_H_
 
+#include <sys/socket.h>
+
 #include <string>
 
 #include "privacy/net/krypton/pal/packet.h"
@@ -26,6 +28,11 @@ namespace krypton {
 // The remote endpoint that Krypton connects to.
 class Endpoint {
  public:
+  struct SockAddrInfo {
+    sockaddr_storage sockaddr;
+    socklen_t socklen;
+  };
+
   // Endpoint that is formatted string using `address:port` for IPv4 and
   // `[address]:port` for IPv6.
   Endpoint(const std::string host_port, const std::string address, int port,
@@ -43,6 +50,8 @@ class Endpoint {
 
   // The protocol of the packet data.
   IPProtocol ip_protocol() const { return ip_protocol_; }
+
+  absl::StatusOr<SockAddrInfo> GetSockAddr() const;
 
   // Formatted string using `address:port` for IPv4 and `[address]:port` for
   // IPv6.
@@ -67,7 +76,7 @@ class Endpoint {
 };
 
 // Creates an endpoint from a formatted string.
-absl::StatusOr<Endpoint> GetEndpointFromHostPort(const std::string host_port);
+absl::StatusOr<Endpoint> GetEndpointFromHostPort(std::string host_port);
 
 }  // namespace krypton
 }  // namespace privacy

@@ -14,6 +14,8 @@
 
 #include "privacy/net/krypton/endpoint.h"
 
+#include <sys/socket.h>
+
 #include <string>
 
 #include "base/logging.h"
@@ -24,6 +26,14 @@
 
 namespace privacy {
 namespace krypton {
+
+absl::StatusOr<Endpoint::SockAddrInfo> Endpoint::GetSockAddr() const {
+  SockAddrInfo sockaddr_info;
+  PPN_ASSIGN_OR_RETURN(auto ip_range, utils::IPRange::Parse(address_));
+  PPN_RETURN_IF_ERROR(ip_range.GenericAddress(port_, &sockaddr_info.sockaddr,
+                                              &sockaddr_info.socklen));
+  return sockaddr_info;
+}
 
 absl::StatusOr<Endpoint> GetEndpointFromHostPort(const std::string host_port) {
   std::string host;

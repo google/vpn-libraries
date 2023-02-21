@@ -28,7 +28,6 @@
 
 #include "base/logging.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
-#include "privacy/net/krypton/utils/ip_range.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/substitute.h"
@@ -189,23 +188,17 @@ absl::Status DatagramSocket::Connect(Endpoint dest) {
     return absl::InternalError("Attempted to write to a closed socket.");
   }
 
-  // Parse the endpoint into an ip_range so that we can use its utility to
-  // convert the address into a sockaddr.
-  PPN_ASSIGN_OR_RETURN(auto ip_range, utils::IPRange::Parse(dest.address()));
-
-  int port = dest.port();
   LOG(INFO) << "Connecting FD=" << fd << " to " << dest.ToString();
 
   // Convert the address into a sockaddr so we can use it with connect().
-  sockaddr_storage addr;
-  socklen_t addr_size = 0;
-  PPN_RETURN_IF_ERROR(ip_range.GenericAddress(port, &addr, &addr_size));
+  PPN_ASSIGN_OR_RETURN(auto sockaddr_info, dest.GetSockAddr());
 
-  if (addr_size == 0) {
+  if (sockaddr_info.socklen == 0) {
     return absl::InternalError("Got addr_size == 0.");
   }
 
-  if (connect(fd, reinterpret_cast<sockaddr*>(&addr), addr_size) != 0) {
+  if (connect(fd, reinterpret_cast<sockaddr*>(&sockaddr_info.sockaddr),
+              sockaddr_info.socklen) != 0) {
     return absl::InternalError(
         absl::StrCat("Error connecting FD=", fd, ": ", strerror(errno)));
   }
