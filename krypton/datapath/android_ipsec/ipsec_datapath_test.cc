@@ -26,6 +26,7 @@
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
+#include "privacy/net/krypton/proto/network_type.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/synchronization/notification.h"
@@ -48,6 +49,7 @@ class MockNotification : public DatapathInterface::NotificationInterface {
   MOCK_METHOD(void, DatapathPermanentFailure, (const absl::Status &),
               (override));
   MOCK_METHOD(void, DoRekey, (), (override));
+  MOCK_METHOD(void, DoMtuUpdate, (int, int), (override));
 };
 
 class IpSecDatapathTest : public ::testing::Test {
@@ -201,6 +203,7 @@ TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
 
   datapath_.Stop();
 }
+
 TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
   // create failure to create network socket.
   EXPECT_CALL(notification_, DatapathFailed).Times(1);
@@ -213,6 +216,17 @@ TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
   EXPECT_OK(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1));
 
   datapath_.Stop();
+}
+
+TEST_F(IpSecDatapathTest, MtuUpdateHandler) {
+  absl::Notification mtu_update_done;
+  EXPECT_CALL(notification_, DoMtuUpdate(1, 2)).WillOnce([&mtu_update_done]() {
+    mtu_update_done.Notify();
+  });
+
+  datapath_.MtuUpdated(1, 2);
+
+  EXPECT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
 }  // namespace

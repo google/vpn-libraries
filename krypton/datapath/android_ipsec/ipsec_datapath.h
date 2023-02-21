@@ -24,6 +24,7 @@
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_packet_forwarder.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
@@ -40,7 +41,8 @@ namespace android {
 // Manages the Ipsec data path.
 // Class is thread safe.
 class IpSecDatapath : public DatapathInterface,
-                      public IpSecPacketForwarder::NotificationInterface {
+                      public IpSecPacketForwarder::NotificationInterface,
+                      public MtuTrackerInterface::NotificationInterface {
  public:
   // Extension to VpnService with methods needed specifically for Android IpSec.
   class IpSecVpnServiceInterface : public virtual VpnServiceInterface {
@@ -89,6 +91,8 @@ class IpSecDatapath : public DatapathInterface,
   void IpSecPacketForwarderConnected() override;
 
   void GetDebugInfo(DatapathDebugInfo* debug_info) override;
+
+  void MtuUpdated(int path_mtu, int tunnel_mtu) override;
 
  private:
   void ShutdownIpSecPacketForwarder() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);

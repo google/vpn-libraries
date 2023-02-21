@@ -36,7 +36,6 @@
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
-#include "privacy/net/krypton/proto/network_type.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/ip_range.h"
@@ -357,7 +356,7 @@ absl::Status Session::BuildTunFdData(TunFdData* tun_fd_data) const {
 
   tun_fd_data->set_is_metered(false);
   if (config_.dynamic_mtu_enabled()) {
-    tun_fd_data->set_mtu(1396);
+    tun_fd_data->set_mtu(tunnel_mtu_);
   }
 
   // Explicitly set the IPv4 DNS
@@ -841,5 +840,18 @@ void Session::DoRekey() {
     SetState(State::kSessionError, status);
   }
 }
+
+void Session::DoMtuUpdate(int path_mtu, int tunnel_mtu) {
+  absl::MutexLock l(&mutex_);
+  if (tunnel_mtu != tunnel_mtu_) {
+    tunnel_mtu_ = tunnel_mtu;
+    // TODO: Recreate the tunnel if necessary
+  }
+  if (path_mtu != path_mtu_) {
+    path_mtu_ = path_mtu;
+    PPN_LOG_IF_ERROR(SendPathInfoUpdate());
+  }
+}
+
 }  // namespace krypton
 }  // namespace privacy

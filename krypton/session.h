@@ -126,6 +126,8 @@ class Session : public Auth::NotificationInterface,
   void DatapathPermanentFailure(const absl::Status& status) override
       ABSL_LOCKS_EXCLUDED(mutex_);
   void DoRekey() override ABSL_LOCKS_EXCLUDED(mutex_);
+  void DoMtuUpdate(int path_mtu, int tunnel_mtu) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   State state() const ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
@@ -165,6 +167,21 @@ class Session : public Auth::NotificationInterface,
   crypto::SessionCrypto* MutableCryptoTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return key_material_.get();
+  }
+
+  int GetPathMtuTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
+    return path_mtu_;
+  }
+
+  int GetTunnelMtuTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
+    return tunnel_mtu_;
+  }
+
+  int GetPathInfoSeqNumTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
+    return path_info_seq_;
   }
 
  private:
@@ -232,6 +249,8 @@ class Session : public Auth::NotificationInterface,
   uint32_t path_info_seq_ ABSL_GUARDED_BY(mutex_) = 0;
   // Path MTU initialized to a commonly used MTU value
   int path_mtu_ ABSL_GUARDED_BY(mutex_) = 1500;
+  // Tunnel MTU initialized to the Path MTU minus an overhead
+  int tunnel_mtu_ ABSL_GUARDED_BY(mutex_) = 1395;
 
   std::unique_ptr<crypto::SessionCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
   std::optional<std::string> rekey_verification_key_ ABSL_GUARDED_BY(mutex_);

@@ -351,7 +351,7 @@ class BridgeOnPpnSession : public SessionTest {
                                             prefix: 128
                                           }
                                           is_metered: false
-                                          mtu: 1396)pb")));
+                                          mtu: 1395)pb")));
 
     NetworkInfo expected_network_info;
     expected_network_info.set_network_id(1234);
@@ -420,7 +420,7 @@ class BridgeOnPpnSession : public SessionTest {
                                             prefix: 128
                                           }
                                           is_metered: false
-                                          mtu: 1396)pb")));
+                                          mtu: 1395)pb")));
 
     NetworkInfo expected_network_info;
     expected_network_info.set_network_type(NetworkType::CELLULAR);
@@ -538,7 +538,7 @@ TEST_F(BridgeOnPpnSession, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
                                           prefix: 128
                                         }
                                         is_metered: false
-                                        mtu: 1396)pb")));
+                                        mtu: 1395)pb")));
 
   NetworkInfo expected_network_info;
   expected_network_info.set_network_type(NetworkType::CELLULAR);
@@ -840,6 +840,15 @@ TEST(UpdatePathInfoTest, UpdatePathInfoToJsonNonDefaultValues) {
   })string";
   absl::StrReplaceAll({{"\n", ""}, {" ", ""}}, &expected);
   EXPECT_EQ(json_str, expected);
+}
+
+TEST_F(SessionTest, MtuUpdateHandler) {
+  EXPECT_EQ(session_->GetPathInfoSeqNumTestOnly(), 0);
+
+  session_->DoMtuUpdate(123, 456);
+  EXPECT_EQ(session_->GetPathMtuTestOnly(), 123);
+  EXPECT_EQ(session_->GetTunnelMtuTestOnly(), 456);
+  EXPECT_EQ(session_->GetPathInfoSeqNumTestOnly(), 1);
 }
 
 }  // namespace

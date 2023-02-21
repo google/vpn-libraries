@@ -24,7 +24,6 @@
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
-#include "privacy/net/krypton/proto/network_type.proto.h"
 #include "third_party/absl/status/status.h"
 
 namespace privacy {
@@ -52,6 +51,8 @@ class DatapathInterface {
     virtual void DatapathPermanentFailure(const absl::Status&) = 0;
     // Datapath needs rekey
     virtual void DoRekey() = 0;
+    // Datapath MTU has been updated
+    virtual void DoMtuUpdate(int path_mtu, int tunnel_mtu) = 0;
   };
 
   // Initialize the data path.  Start takes two parameters, the transform params

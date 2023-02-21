@@ -197,6 +197,13 @@ void IpSecDatapath::IpSecPacketForwarderConnected() {
       [notification]() { notification->DatapathEstablished(); });
 }
 
+void IpSecDatapath::MtuUpdated(int path_mtu, int tunnel_mtu) {
+  auto* notification = notification_;
+  notification_thread_->Post([notification, path_mtu, tunnel_mtu]() {
+    notification->DoMtuUpdate(path_mtu, tunnel_mtu);
+  });
+}
+
 void IpSecDatapath::GetDebugInfo(DatapathDebugInfo* debug_info) {
   absl::MutexLock l(&mutex_);
   if (forwarder_ != nullptr) {
