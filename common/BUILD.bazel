@@ -1,4 +1,16 @@
 proto_library(
+    name = "auth_and_sign_protobuf",
+    srcs = ["auth_and_sign.proto"],
+    deps = [
+        ":key_services_protobuf",
+        ":public_metadata_protobuf",
+        "attestation:attestation_protobuf",
+    ],
+    import_prefix = "privacy/net/common/proto/",
+    strip_import_prefix = "/common/",
+)
+
+proto_library(
     name = "get_initial_data_protobuf",
     srcs = ["get_initial_data.proto"],
     deps = [
@@ -11,11 +23,23 @@ proto_library(
 )
 
 proto_library(
+    name = "key_services_protobuf",
+    srcs = ["key_services.proto"],
+    import_prefix = "privacy/net/common/proto/",
+    strip_import_prefix = "/common/",
+)
+
+proto_library(
     name = "public_metadata_protobuf",
     srcs = ["public_metadata.proto"],
     deps = ["@com_google_protobuf//:timestamp_proto"],
     import_prefix = "privacy/net/common/proto/",
     strip_import_prefix = "/common/",
+)
+
+cc_proto_library(
+    name = "auth_and_sign_cc_protobuf",
+    deps = [":auth_and_sign_protobuf"],
 )
 
 cc_proto_library(
