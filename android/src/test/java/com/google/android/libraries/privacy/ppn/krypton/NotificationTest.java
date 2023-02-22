@@ -391,18 +391,28 @@ public class NotificationTest {
 
   @Test
   public void createTunFd_callsCallback() throws Exception {
-    // TODO Update test so that it exercises the JNI interface for onKryptonNeedsTunFd
-
     // Set up a listener and condition we can wait on.
-    KryptonImpl krypton = createKrypton(new KryptonAdapter());
+    AtomicReference<TunFdData> tunFdDataRef = new AtomicReference<>();
+    int testFd = notification.createSockFdTestOnly();
+    assertThat(testFd).isGreaterThan(0);
+    KryptonImpl krypton =
+        createKrypton(
+            new KryptonAdapter() {
+              @Override
+              public int onKryptonNeedsTunFd(TunFdData tunFdData) {
+                tunFdDataRef.set(tunFdData);
+                return testFd;
+              }
+            });
 
     try {
       krypton.init();
 
       TunFdData tunFdData = TunFdData.newBuilder().setMtu(12345).build();
+      int fd = notification.createTunFd(krypton, tunFdData);
 
-      assertThat(notification.createTunFd(krypton, tunFdData)).isEqualTo(12346);
-
+      assertThat(fd).isEqualTo(testFd);
+      assertThat(tunFdDataRef.get().getMtu()).isEqualTo(12345);
     } finally {
       krypton.stop();
     }

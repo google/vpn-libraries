@@ -68,6 +68,8 @@ public class JniTestNotification {
   public native void resumedNative(Krypton krypton, byte[] resumeStatusBytes)
       throws KryptonException;
 
+  private native int createSockFdTestOnlyNative();
+
   private native int createTunFdNative(Krypton krypton, byte[] tunFdBytes) throws KryptonException;
 
   private native int createNetworkFdNative(Krypton krypton, byte[] networkInfoBytes)
@@ -135,6 +137,10 @@ public class JniTestNotification {
 
   public void resumed(Krypton krypton, ResumeStatus status) throws KryptonException {
     resumedNative(krypton, status.toByteArray());
+  }
+
+  public int createSockFdTestOnly() {
+    return createSockFdTestOnlyNative();
   }
 
   public int createTunFd(Krypton krypton, TunFdData tunFdData) throws KryptonException {

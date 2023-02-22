@@ -218,9 +218,16 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_resume
 }
 
 JNIEXPORT jint JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_createSockFdTestOnlyNative(
+    JNIEnv* /*env*/, jobject /*instance*/) {
+  return socket(AF_INET6, SOCK_DGRAM, 0);
+}
+
+JNIEXPORT jint JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_createTunFdNative(
-    JNIEnv* env, jobject /*instance*/, jobject /*krypton_instance*/,
+    JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
     jbyteArray tun_fd_data_byte_array) {
+  VpnService service(krypton_instance);
   std::string tun_fd_data_bytes =
       ConvertJavaByteArrayToString(env, tun_fd_data_byte_array);
   TunFdData tun_fd_data;
@@ -228,7 +235,24 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
     JniCache::Get()->ThrowKryptonException("invalid TunFdData bytes");
     return -1;
   }
-  return tun_fd_data.mtu() + 1;
+  auto status = service.CreateTunnel(tun_fd_data);
+  if (!status.ok()) {
+    JniCache::Get()->ThrowKryptonException(status.ToString());
+    return -1;
+  }
+  if (service.GetTunnel() == nullptr) {
+    JniCache::Get()->ThrowKryptonException("Tunnel pointer is null");
+    return -1;
+  }
+  auto fd = service.GetTunnelFd();
+  if (!fd.ok()) {
+    JniCache::Get()->ThrowKryptonException(fd.status().ToString());
+    return -1;
+  }
+  service.CloseTunnel();
+  // Return the value that was used for the tunnel fd so the test can verify
+  // Krypton received the correct value from its call to the Java code
+  return *fd;
 }
 
 JNIEXPORT jint JNICALL
