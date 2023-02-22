@@ -15,7 +15,12 @@
 #ifndef PRIVACY_NET_KRYPTON_ENDPOINT_H_
 #define PRIVACY_NET_KRYPTON_ENDPOINT_H_
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <sys/socket.h>
+#endif
 
 #include <string>
 
