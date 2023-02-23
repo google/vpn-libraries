@@ -26,6 +26,7 @@
 #include <string>
 
 #include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mss_mtu_detector_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/syscall_interface.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "third_party/absl/status/status.h"
@@ -39,7 +40,7 @@ namespace android {
 // Obtains MTU from the TCP MSS. All the operations on the TCP socket is
 // non-blocking. This class is thread-unsafe. All the member functions are
 // supposed to be called within a single thread.
-class MssMtuDetector {
+class MssMtuDetector : public MssMtuDetectorInterface {
  public:
   // fd: The TCP socket from which the TCP MSS will be detected.
   // tcp_mss_endpoint: the address of the TCP MSS detection server.
@@ -47,7 +48,7 @@ class MssMtuDetector {
   // MssMtuDetector status.
   MssMtuDetector(int fd, const Endpoint& endpoint, EventsHelper* events_helper,
                  std::unique_ptr<SyscallInterface> syscall_interface);
-  virtual ~MssMtuDetector();
+  ~MssMtuDetector() override;
 
   virtual std::optional<uint32> uplink_mss_mtu() const {
     return uplink_mss_mtu_;
@@ -55,21 +56,16 @@ class MssMtuDetector {
   virtual std::optional<uint32> downlink_mss_mtu() const {
     return downlink_mss_mtu_;
   }
+
   // Starts the MSS detection process. Will connect the socket to the server and
   // register it to events helper. Must be called before HandleEvent().
-  virtual absl::Status Start();
-
-  enum class UpdateResult { kUpdated, kNotUpdated };
-  struct MssMtuUpdateInfo {
-    UpdateResult uplink;
-    UpdateResult downlink;
-  };
+  absl::Status Start() override;
 
   // Handles the file events that are reported for the corresponding TCP socket
   // file descriptor. Returns whether the uplink and downlink MSS MTU have been
   // updated.
-  virtual absl::StatusOr<MssMtuUpdateInfo> HandleEvent(
-      const EventsHelper::Event& ev);
+  absl::StatusOr<MssMtuUpdateInfo> HandleEvent(
+      const EventsHelper::Event& ev) override;
 
   // Disallow copy and assign.
   MssMtuDetector(const MssMtuDetector&) = delete;
