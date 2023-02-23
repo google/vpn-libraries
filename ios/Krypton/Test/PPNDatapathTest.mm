@@ -39,8 +39,8 @@ namespace krypton {
 // A helper for testing notifications send from the datapath.
 class TestNotification : public DatapathInterface::NotificationInterface {
  public:
-  TestNotification() {}
-  ~TestNotification() override {}
+  TestNotification() = default;
+  ~TestNotification() override = default;
 
   XCTestExpectation *ExpectDatapathEstablished() {
     return AddExpectation(@"DatapathEstablished", _establishedExpectations);
@@ -67,6 +67,8 @@ class TestNotification : public DatapathInterface::NotificationInterface {
   }
 
   void DoRekey() override {}
+
+  void DoMtuUpdate(int path_mtu, int tunnel_mtu) override {}
 
   void VerifyNoMoreNotifications() {
     if (_unexpectedNotifications.count > 0) {
