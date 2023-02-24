@@ -37,6 +37,17 @@ proto_library(
     strip_import_prefix = "/common/",
 )
 
+proto_library(
+    name = "spend_token_data_protobuf",
+    srcs = ["spend_token_data.proto"],
+    deps = [
+        ":anonymous_tokens_protobuf",
+        ":public_metadata_protobuf",
+    ],
+    import_prefix = "privacy/net/common/proto/",
+    strip_import_prefix = "/common/",
+)
+
 cc_proto_library(
     name = "auth_and_sign_cc_protobuf",
     deps = [":auth_and_sign_protobuf"],
@@ -44,5 +55,10 @@ cc_proto_library(
 
 cc_proto_library(
     name = "get_initial_data_cc_protobuf",
+    deps = [":get_initial_data_protobuf"],
+)
+
+cc_proto_library(
+    name = "spend_token_data_cc_protobuf",
     deps = [":get_initial_data_protobuf"],
 )

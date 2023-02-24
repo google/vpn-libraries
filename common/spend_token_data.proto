@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package privacy.ppn;
+
+import "privacy/net/common/proto/public_metadata.proto";
+import "privacy/private_membership/anonymous_tokens/public/proto/anonymous_tokens.proto";
+
+option cc_api_version = 2;
+
+message SpendTokenData {
+  // Public metadata associated with the token being spent.
+  // See go/ppn-token-spend and go/ppn-phosphor-at-service for details.
+  PublicMetadataInfo public_metadata = 1;
+  // The unblinded token to be spent which was blind-signed by Phosphor.
+  bytes unblinded_token = 2;
+  // The signature for the token to be spent, obtained from Phosphor and
+  // unblinded.
+  bytes unblinded_token_signature = 3;
+  // The version number of the signing key that was used during blind-signing.
+  int64 signing_key_version = 4;
+  // A use case identifying the caller. Should be a fixed, hardcoded value to
+  // prevent cross-spending tokens.
+  private_membership.anonymous_tokens.AnonymousTokensUseCase use_case = 5;
+}
