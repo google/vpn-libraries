@@ -23,6 +23,8 @@
 
 #include "base/logging.h"
 #include "google/protobuf/duration.proto.h"
+#include "google/protobuf/timestamp.proto.h"
+#include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/common/proto/update_path_info.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
@@ -318,6 +320,21 @@ void Session::PpnDataplaneRequest(bool is_rekey) {
     params.signature = key_material_->GetRekeySignature().value();
   }
   params.uplink_spi = egress_manager_->uplink_spi();
+
+  if (config_.public_metadata_enabled()) {
+    auto get_initial_data_response = auth_->initial_data_response();
+    auto public_metadata =
+        get_initial_data_response.public_metadata_info().public_metadata();
+
+    params.signing_key_version =
+        get_initial_data_response.at_public_metadata_public_key().key_version();
+    params.country = public_metadata.exit_location().country();
+    params.city_geo_id = public_metadata.exit_location().city_geo_id();
+    params.service_type = public_metadata.service_type();
+    // expiration() nanos were verified to be zero in auth.cc
+    params.expiration =
+        absl::FromUnixSeconds(public_metadata.expiration().seconds());
+  }
 
   auto status = egress_manager_->GetEgressNodeForPpnIpSec(params);
   if (!status.ok()) {

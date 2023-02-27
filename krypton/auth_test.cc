@@ -21,7 +21,11 @@
 #include <string>
 
 #include "google/protobuf/duration.proto.h"
+#include "google/protobuf/timestamp.proto.h"
+#include "net/proto2/contrib/parse_proto/parse_text_proto.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
+#include "privacy/net/common/proto/get_initial_data.proto.h"
+#include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/auth_and_sign_request.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/json_keys.h"
@@ -43,6 +47,7 @@
 namespace privacy {
 namespace krypton {
 
+using ::proto2::contrib::parse_proto::ParseTextProtoOrDie;
 using ::testing::EqualsProto;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
@@ -164,6 +169,64 @@ class AuthTest : public ::testing::Test {
     response.mutable_status()->set_code(500);
     response.mutable_status()->set_message("OK");
     return response;
+  }
+
+  ppn::GetInitialDataResponse createGetInitialDataResponse() {
+    // sig_hash_type = HashType::AT_HASH_TYPE_SHA256
+    // mask_gen_function = MaskGenFunction::AT_MGF_SHA256
+    // message_mask_type = MessageMaskType::AT_MESSAGE_MASK_CONCAT
+    ppn::GetInitialDataResponse response = ParseTextProtoOrDie(R"pb(
+      at_public_metadata_public_key: {
+        use_case: "test",
+        key_version: 2,
+        serialized_public_key: "-----BEGIN PUBLIC KEY-----\n"
+                               "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv90Xf/NN1lRGBofJQzJf\n"
+                               "lHvo6GAf25GGQGaMmD9T1ZP71CCbJ69lGIS/6akFBg6ECEHGM2EZ4WFLCdr5byUq\n"
+                               "GCf4mY4WuOn+AcwzwAoDz9ASIFcQOoPclO7JYdfo2SOaumumdb5S/7FkKJ70TGYW\n"
+                               "j9aTOYWsCcaojbjGDY/JEXz3BSRIngcgOvXBmV1JokcJ/LsrJD263WE9iUknZDhB\n"
+                               "K7y4ChjHNqL8yJcw/D8xLNiJtIyuxiZ00p/lOVUInr8C/a2C1UGCgEGuXZAEGAdO\n"
+                               "NVez52n5TLvQP3hRd4MTi7YvfhezRcA4aXyIDOv+TYi4p+OVTYQ+FMbkgoWBm5bq\n"
+                               "wQIDAQAB\n-----END PUBLIC KEY-----\n",
+        expiration_time: { seconds: 900, nanos: 0 },
+        key_validity_start_time: { seconds: 900, nanos: 0 },
+        sig_hash_type: 2,
+        mask_gen_function: 2,
+        salt_length: 2,
+        key_size: 2,
+        message_mask_type: 2,
+        message_mask_size: 2
+      },
+      public_metadata_info: {
+        public_metadata: {
+          exit_location: { country: "US", city_geo_id: "us_ca_san_diego" },
+          service_type: "service_type",
+          expiration: { seconds: 900, nanos: 0 },
+        },
+        validation_version: 1
+      },
+      attestation: {}
+    )pb");
+    return response;
+  }
+
+  HttpResponse buildInitialDataHttpResponse() {
+    HttpResponse response;
+    response.set_proto_body(createGetInitialDataResponse().SerializeAsString());
+    response.mutable_status()->set_code(200);
+    return response;
+  }
+
+  HttpRequest buildInitialDataHttpRequest() {
+    auto use_attestation = true;
+    auto service_type = "service_type";
+    auto granularity = ppn::GetInitialDataRequest::COUNTRY;
+
+    InitialDataRequest request_class(use_attestation, service_type,
+                                     granularity);
+
+    HttpRequest request = request_class.EncodeToProto();
+    request.set_url("http://www.example.com/initial_data");
+    return request;
   }
 
   MockHttpFetcher http_fetcher_;
@@ -450,6 +513,52 @@ TEST_P(AuthParamsTest, AuthWithOauthTokenAsHeader) {
 
   EXPECT_TRUE(
       http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+}
+
+TEST_P(AuthParamsTest, InitialDataResponseGetter) {
+  auto config = CreateKryptonConfig(/*blind_signing=*/true,
+                                    /*enable_attestation=*/false);
+  config.set_public_metadata_enabled(true);
+  ConfigureAuth(config);
+  auto initial_data = auth_->initial_data_response();
+  auth_->Start(/*is_rekey=*/GetParam());
+  EXPECT_EQ(
+      initial_data.at_public_metadata_public_key().expiration_time().nanos(),
+      0);
+}
+
+TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabled) {
+  auto config =
+      CreateKryptonConfig(/*blind_signing=*/true, /*enable_attestation=*/true);
+  config.set_api_key("testApiKey");
+  config.set_public_metadata_enabled(true);
+  config.set_initial_data_url("http://www.example.com/initial_data");
+  ConfigureAuth(config);
+
+  absl::Notification http_fetcher_done;
+  // Step 0: RequestInitialData
+  EXPECT_CALL(http_fetcher_,
+              PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
+      .WillOnce(::testing::Return(buildInitialDataHttpResponse()));
+
+  // Step 1: AuthAndSign
+  EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
+  EXPECT_CALL(http_fetcher_, PostJson(Partially(EqualsProto(
+                                 R"pb(url: "http://www.example.com/auth")pb"))))
+      .WillOnce(::testing::Return(buildResponse()));
+  EXPECT_CALL(auth_notification_, AuthSuccessful(GetParam()))
+      .WillOnce(
+          InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
+
+  // Step 2: Hit it
+  auth_->Start(/*is_rekey=*/GetParam());
+  EXPECT_TRUE(
+      http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+
+  // Step 3: Inspect values returned by initial_data_response
+  auto initial_data_response = auth_->initial_data_response();
+  EXPECT_THAT(initial_data_response,
+              EqualsProto(createGetInitialDataResponse()));
 }
 
 INSTANTIATE_TEST_SUITE_P(AuthWithBlindSigning, AuthParamsTest,

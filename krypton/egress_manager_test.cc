@@ -32,6 +32,7 @@
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/notification.h"
+#include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
@@ -82,6 +83,70 @@ class EgressManagerTest : public ::testing::Test {
       "unblinded_token_signature": "",
       "region_token_and_signature" : ""
     })string"));
+
+    auto keys = crypto_.GetMyKeyMaterial();
+    expected[JsonKeys::kPpn][JsonKeys::kClientNonce] = keys.nonce;
+    expected[JsonKeys::kPpn][JsonKeys::kClientPublicValue] = keys.public_value;
+    expected[JsonKeys::kPpn][JsonKeys::kControlPlaneSockAddr] =
+        "192.168.0.10:1849";
+    expected[JsonKeys::kPpn][JsonKeys::kApnType] = "ppn";
+
+    expected[JsonKeys::kPpn][JsonKeys::kDownlinkSpi] = spi;
+    expected[JsonKeys::kPpn][JsonKeys::kSuite] = "AES128_GCM";
+    expected[JsonKeys::kPpn][JsonKeys::kDataplaneProtocol] = "IPSEC";
+    expected[JsonKeys::kPpn][JsonKeys::kRekeyVerificationKey] =
+        crypto_.GetRekeyVerificationKey().ValueOrDie();
+    return utils::JsonToString(expected);
+  }
+
+  absl::StatusOr<HttpRequest> BuildAddEgressRequestBeryllium(
+      absl::string_view url, uint32_t spi) {
+    HttpRequest request;
+    request.set_url(url);
+    (*request.mutable_headers())["X-Goog-Api-Key"] = "testApiKey";
+    PPN_ASSIGN_OR_RETURN(auto json_body,
+                         BuildJsonBodyForAddEgressRequestBeryllium(spi));
+    request.set_json_body(json_body);
+    return request;
+  }
+
+  // Request from AddEgress.
+  absl::StatusOr<std::string> BuildJsonBodyForAddEgressRequestBeryllium(
+      uint32_t spi) {
+    PPN_ASSIGN_OR_RETURN(auto expected, utils::StringToJson(R"string({
+      "ppn" : {},
+      "unblinded_token" : "",
+      "unblinded_token_signature": "",
+      "region_token_and_signature" : "",
+      "signing_key_version" : "",
+      "public_metadata" : {
+        "exit_location" : {
+          "country" : "",
+          "city_geo_id" : ""
+        },
+        "expiration" : {
+          "seconds" : "",
+          "nanos" : ""
+        },
+        "service_type" : ""
+      }
+    })string"));
+
+    // public metadata enabled specific
+    nlohmann::json exit_location;
+    nlohmann::json public_metadata;
+
+    exit_location[JsonKeys::kCountry] = "US";
+    exit_location[JsonKeys::kCityGeoId] = "us_ca_san_diego";
+
+    public_metadata[JsonKeys::kExitLocation] = exit_location;
+    public_metadata[JsonKeys::kServiceType] = "foo";
+    public_metadata[JsonKeys::kExpiration][JsonKeys::kSeconds] = 1;
+    public_metadata[JsonKeys::kExpiration][JsonKeys::kNanos] = 2000000;
+
+    expected[JsonKeys::kSigningKeyVersion] = 3;
+    expected[JsonKeys::kPublicMetadata] = public_metadata;
+    // end public metadata specific
 
     auto keys = crypto_.GetMyKeyMaterial();
     expected[JsonKeys::kPpn][JsonKeys::kClientNonce] = keys.nonce;
@@ -167,5 +232,50 @@ TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
   egress_manager.Stop();
 }
 
+TEST_F(EgressManagerTest, GetEgressNodeForPpnIpSecWithBerylliumFields) {
+  MockHttpFetcher http_fetcher;
+  config_.set_public_metadata_enabled(true);
+
+  EgressManager egress_manager(config_, &http_fetcher, &looper_thread_);
+  egress_manager.RegisterNotificationHandler(&mock_notification_);
+
+  absl::Notification http_fetcher_done;
+
+  ASSERT_OK_AND_ASSIGN(
+      auto beryllium_request_proto,
+      BuildAddEgressRequestBeryllium("http://www.example.com/addegress",
+                                     crypto_.downlink_spi()));
+  // Response should be same regardless of if request is to beryllium.
+  ASSERT_OK_AND_ASSIGN(auto response_proto,
+                       BuildAddEgressResponseForPpnIpSec());
+  EXPECT_CALL(http_fetcher, PostJson(EqualsProto(beryllium_request_proto)))
+      .WillOnce(Return(response_proto));
+
+  EXPECT_CALL(mock_notification_, EgressAvailable)
+      .WillOnce(
+          InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
+
+  AddEgressRequest::PpnDataplaneRequestParams params;
+  params.crypto = &crypto_;
+  params.copper_control_plane_address = "192.168.0.10";
+  params.dataplane_protocol = KryptonConfig::IPSEC;
+  params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
+  params.is_rekey = false;
+  params.apn_type = "ppn";
+  params.country = "US";
+  params.city_geo_id = "us_ca_san_diego";
+  params.expiration = absl::FromUnixMillis(1002);
+  params.service_type = "foo";
+  params.signing_key_version = 3;
+
+  ASSERT_OK(egress_manager.GetEgressNodeForPpnIpSec(params));
+
+  http_fetcher_done.WaitForNotification();
+
+  EXPECT_EQ(egress_manager.GetState(),
+            EgressManager::State::kEgressSessionCreated);
+
+  egress_manager.Stop();
+}
 }  // namespace krypton
 }  // namespace privacy

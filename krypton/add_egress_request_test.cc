@@ -208,11 +208,11 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   // or uint, so we need to test each value separately.
   EXPECT_EQ(actual["unblinded_token"], "");
   EXPECT_EQ(actual["signing_key_version"], params.signing_key_version);
-  EXPECT_TRUE(actual["region_token_and_signature"].is_null());
+  EXPECT_FALSE(actual["region_token_and_signature"].is_null());
   ASSERT_TRUE(actual["ppn"].is_object());
 
   auto ppn = actual["ppn"];
-  EXPECT_TRUE(ppn["apn_type"].is_null());
+  EXPECT_FALSE(ppn["apn_type"].is_null());
   EXPECT_EQ(ppn["client_public_value"], keys.public_value);
   EXPECT_EQ(ppn["client_nonce"], keys.nonce);
   EXPECT_EQ(ppn["control_plane_sock_addr"],
@@ -225,9 +225,9 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   EXPECT_EQ(ppn["rekey_signature"], params.signature);
   EXPECT_EQ(ppn["previous_uplink_spi"], params.uplink_spi);
   EXPECT_TRUE(ppn["dynamic_mtu_enabled"].is_null());
-  ASSERT_TRUE(ppn["public_metadata"].is_object());
 
-  auto public_metadata = ppn["public_metadata"];
+  ASSERT_TRUE(actual["public_metadata"].is_object());
+  auto public_metadata = actual["public_metadata"];
   EXPECT_EQ(public_metadata["exit_location"]["country"], "US");
   EXPECT_EQ(public_metadata["exit_location"]["city_geo_id"], "us_ca_san_diego");
   EXPECT_EQ(public_metadata["service_type"], "foo");

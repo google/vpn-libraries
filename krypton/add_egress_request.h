@@ -57,8 +57,6 @@ class AddEgressRequest {
     std::string unblinded_token_signature;
     // Whether to enable dynamic mtu on the backend dataplane.
     bool dynamic_mtu_enabled = false;
-
-    // Brass Only
     // This is the APN type from Zinc and used to decide APN in bridge-proxy.
     std::string apn_type;
     // This is the region overriding token and signature for sending to Brass.

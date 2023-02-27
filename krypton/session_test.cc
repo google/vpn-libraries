@@ -20,7 +20,10 @@
 #include <string>
 #include <type_traits>
 
+#include "google/protobuf/timestamp.proto.h"
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
+#include "privacy/net/common/proto/get_initial_data.proto.h"
+#include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
@@ -52,6 +55,7 @@ namespace privacy {
 namespace krypton {
 namespace {
 
+using ::proto2::contrib::parse_proto::ParseTextProtoOrDie;
 using ::testing::_;
 using ::testing::DoAll;
 using ::testing::Eq;
@@ -81,6 +85,8 @@ class MockAuth : public Auth {
   using Auth::Auth;
   MOCK_METHOD(void, Start, (bool), (override));
   MOCK_METHOD(AuthAndSignResponse, auth_response, (), (const, override));
+  MOCK_METHOD(ppn::GetInitialDataResponse, initial_data_response, (),
+              (const, override));
 };
 
 // Mock the Egress Management.
@@ -204,6 +210,44 @@ class SessionTest : public ::testing::Test {
     condition.Wait(&lock);
   }
 
+  ppn::GetInitialDataResponse CreateGetInitialDataResponse() {
+    // sig_hash_type = HashType::AT_HASH_TYPE_SHA256
+    // mask_gen_function = MaskGenFunction::AT_MGF_SHA256
+    // message_mask_type = MessageMaskType::AT_MESSAGE_MASK_CONCAT
+    ppn::GetInitialDataResponse response = ParseTextProtoOrDie(R"pb(
+      at_public_metadata_public_key: {
+        use_case: "test",
+        key_version: 2,
+        serialized_public_key: "-----BEGIN PUBLIC KEY-----\n"
+                               "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv90Xf/NN1lRGBofJQzJf\n"
+                               "lHvo6GAf25GGQGaMmD9T1ZP71CCbJ69lGIS/6akFBg6ECEHGM2EZ4WFLCdr5byUq\n"
+                               "GCf4mY4WuOn+AcwzwAoDz9ASIFcQOoPclO7JYdfo2SOaumumdb5S/7FkKJ70TGYW\n"
+                               "j9aTOYWsCcaojbjGDY/JEXz3BSRIngcgOvXBmV1JokcJ/LsrJD263WE9iUknZDhB\n"
+                               "K7y4ChjHNqL8yJcw/D8xLNiJtIyuxiZ00p/lOVUInr8C/a2C1UGCgEGuXZAEGAdO\n"
+                               "NVez52n5TLvQP3hRd4MTi7YvfhezRcA4aXyIDOv+TYi4p+OVTYQ+FMbkgoWBm5bq\n"
+                               "wQIDAQAB\n-----END PUBLIC KEY-----\n",
+        expiration_time: { seconds: 900, nanos: 0 },
+        key_validity_start_time: { seconds: 900, nanos: 0 },
+        sig_hash_type: 2,
+        mask_gen_function: 2,
+        salt_length: 2,
+        key_size: 2,
+        message_mask_type: 2,
+        message_mask_size: 2
+      },
+      public_metadata_info: {
+        public_metadata: {
+          exit_location: { country: "US", city_geo_id: "us_ca_san_diego" },
+          service_type: "service_type",
+          expiration: { seconds: 900, nanos: 0 },
+        },
+        validation_version: 1
+      },
+      attestation: { attestation_nonce: "some_nonce" }
+    )pb");
+    return response;
+  }
+
   KryptonConfig config_{proto2::contrib::parse_proto::ParseTextProtoOrDie(
       R"pb(zinc_url: "http://www.example.com/auth"
            brass_url: "http://www.example.com/addegress"
@@ -211,7 +255,8 @@ class SessionTest : public ::testing::Test {
            datapath_protocol: BRIDGE
            copper_hostname_suffix: [ 'g-tun.com' ]
            enable_blind_signing: false
-           dynamic_mtu_enabled: true)pb")};
+           dynamic_mtu_enabled: true
+           public_metadata_enabled: true)pb")};
 
   MockSessionNotification notification_;
   MockHttpFetcher http_fetcher_;
@@ -279,10 +324,22 @@ class BridgeOnPpnSession : public SessionTest {
   }
 
   void ExpectSuccessfulAddEgress() {
+    HttpResponse initial_data_proto;
+    initial_data_proto.mutable_status()->set_code(200);
+    initial_data_proto.mutable_status()->set_message("OK");
+    initial_data_proto.set_proto_body(
+        CreateGetInitialDataResponse().SerializeAsString());
+
+    ASSERT_OK_AND_ASSIGN(auto fake_initial_data_response,
+                         DecodeGetInitialDataResponse(initial_data_proto));
+    EXPECT_CALL(auth_, initial_data_response)
+        .WillOnce(Return(fake_initial_data_response));
+
     EXPECT_CALL(egress_manager_, GetEgressNodeForPpnIpSec)
         .WillOnce(Invoke(
             [&](const AddEgressRequest::PpnDataplaneRequestParams& params) {
               EXPECT_EQ(params.dataplane_protocol, config_.datapath_protocol());
+              CheckPublicMetadataParams(params);
               notification_thread_.Post(
                   [this]() { session_->EgressAvailable(is_rekey_); });
 
@@ -290,6 +347,25 @@ class BridgeOnPpnSession : public SessionTest {
             }));
     EXPECT_OK(
         egress_manager_.SaveEgressDetailsTestOnly(fake_add_egress_response_));
+  }
+
+  void CheckPublicMetadataParams(
+      const AddEgressRequest::PpnDataplaneRequestParams& params) {
+    auto expected = CreateGetInitialDataResponse();
+    auto public_metadata = expected.public_metadata_info().public_metadata();
+
+    EXPECT_THAT(params.service_type,
+                testing::Eq(public_metadata.service_type()));
+    EXPECT_THAT(
+        params.signing_key_version,
+        testing::Eq(expected.at_public_metadata_public_key().key_version()));
+    EXPECT_THAT(params.country,
+                testing::Eq(public_metadata.exit_location().country()));
+    EXPECT_THAT(params.city_geo_id,
+                testing::Eq(public_metadata.exit_location().city_geo_id()));
+    EXPECT_THAT(params.expiration,
+                testing::Eq(absl::FromUnixSeconds(
+                    public_metadata.expiration().seconds())));
   }
 
   void ExpectSuccessfulDatapathInit() {
@@ -755,6 +831,25 @@ TEST_F(BridgeOnPpnSession, TestSetKeyMaterials) {
   rekey_done.WaitForNotificationWithTimeout(absl::Seconds(3));
   SessionDebugInfo debug_info;
   session_->GetDebugInfo(&debug_info);
+}
+
+TEST_F(BridgeOnPpnSession, PpnDataplaneRequestPublicMetadataEnabled) {
+  AuthAndSignResponse fake_auth_and_sign_response;
+  EXPECT_CALL(auth_, auth_response)
+      .WillOnce(Return(fake_auth_and_sign_response));
+
+  absl::Notification auth_done;
+  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
+    notification_thread_.Post([this, &auth_done] {
+      session_->AuthSuccessful(is_rekey_);
+      auth_done.Notify();
+    });
+  }));
+  EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
+  ExpectSuccessfulAddEgress();
+
+  session_->Start();
+  auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
 }
 
 TEST_F(SessionTest, TestAuthResponseCopperControllerHostname) {

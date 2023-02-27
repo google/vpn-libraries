@@ -128,6 +128,11 @@ AuthAndSignResponse Auth::auth_response() const {
   return auth_and_sign_response_;
 }
 
+ppn::GetInitialDataResponse Auth::initial_data_response() const {
+  absl::MutexLock l(&mutex_);
+  return get_initial_data_response_;
+}
+
 void Auth::HandlePublicKeyResponse(bool is_rekey,
                                    const HttpResponse& http_response) {
   std::optional<std::string> nonce = std::nullopt;

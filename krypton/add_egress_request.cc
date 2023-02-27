@@ -69,7 +69,7 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
     public_metadata[JsonKeys::kServiceType] = params.service_type;
     public_metadata[JsonKeys::kExpiration] = expiration;
 
-    ppn[JsonKeys::kPublicMetadata] = public_metadata;
+    json_body[JsonKeys::kPublicMetadata] = public_metadata;
 
     json_body[JsonKeys::kSigningKeyVersion] = params.signing_key_version;
   }
@@ -79,18 +79,15 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
   json_body[JsonKeys::kUnblindedTokenSignature] =
       params.unblinded_token_signature;
 
-  if (request_destination_ == RequestDestination::kBrass) {
-    json_body[JsonKeys::kRegionTokenAndSignature] =
-        params.region_token_and_signature;
-  }
+  json_body[JsonKeys::kRegionTokenAndSignature] =
+      params.region_token_and_signature;
 
   auto my_keys = params.crypto->GetMyKeyMaterial();
   ppn[JsonKeys::kClientPublicValue] = my_keys.public_value;
   ppn[JsonKeys::kClientNonce] = my_keys.nonce;
   ppn[JsonKeys::kDownlinkSpi] = params.crypto->downlink_spi();
-  if (request_destination_ == RequestDestination::kBrass) {
-    ppn[JsonKeys::kApnType] = params.apn_type;
-  }
+  ppn[JsonKeys::kApnType] = params.apn_type;
+
   if (params.dynamic_mtu_enabled) {
     ppn[JsonKeys::kDynamicMtuEnabled] = params.dynamic_mtu_enabled;
   }

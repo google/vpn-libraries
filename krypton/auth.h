@@ -94,6 +94,9 @@ class Auth {
 
   virtual AuthAndSignResponse auth_response() const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  virtual ppn::GetInitialDataResponse initial_data_response() const
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   void CollectTelemetry(KryptonTelemetry* telemetry)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -105,7 +108,8 @@ class Auth {
   absl::StatusOr<std::string> fetch_nonce() const ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
-  void RequestKeyForBlindSigning(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
+  void RequestKeyForBlindSigning(bool is_rekey)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   void RequestForInitialData(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -117,7 +121,8 @@ class Auth {
   void SetState(State) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void HandleAuthAndSignResponse(bool is_rekey, const HttpResponse& response)
       ABSL_LOCKS_EXCLUDED(mutex_);
-  void HandlePublicKeyResponse(bool is_rekey, const HttpResponse& http_response)
+  void HandlePublicKeyResponse(bool is_rekey,
+                                       const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
   void HandleInitialDataResponse(bool is_rekey,
                                  const HttpResponse& http_response)
@@ -155,7 +160,8 @@ class Auth {
   absl::Time auth_call_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
   std::string signer_public_key_;
   absl::Duration expiry_increments_ = absl::Minutes(15);
-  ppn::GetInitialDataResponse get_initial_data_response_;
+  ppn::GetInitialDataResponse get_initial_data_response_
+      ABSL_LOCKS_EXCLUDED(mutex_);
 };
 
 }  // namespace krypton
