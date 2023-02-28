@@ -902,8 +902,8 @@ TEST_F(SessionTest, TestEmptyAuthResponseCopperControllerHostname) {
   auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
 }
 
-TEST(UpdatePathInfoTest, UpdatePathInfoToJsonDefaultValues) {
-  ppn::UpdatePathInfo update_path_info;
+TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonDefaultValues) {
+  ppn::UpdatePathInfoRequest update_path_info;
   auto json_str = ProtoToJsonString(update_path_info);
   std::string expected = R"string(
   {
@@ -917,8 +917,8 @@ TEST(UpdatePathInfoTest, UpdatePathInfoToJsonDefaultValues) {
   EXPECT_EQ(json_str, expected);
 }
 
-TEST(UpdatePathInfoTest, UpdatePathInfoToJsonNonDefaultValues) {
-  ppn::UpdatePathInfo update_path_info;
+TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonNonDefaultValues) {
+  ppn::UpdatePathInfoRequest update_path_info;
   update_path_info.set_session_id(1);
   update_path_info.set_sequence_number(2);
   update_path_info.set_mtu(3);

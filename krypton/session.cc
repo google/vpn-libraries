@@ -169,37 +169,40 @@ void Session::CancelDatapathReattemptTimerIfRunning() {
   datapath_reattempt_timer_id_ = kInvalidTimerId;
 }
 
-std::string ProtoToJsonString(const ppn::UpdatePathInfo& update_path_info) {
+std::string ProtoToJsonString(
+    const ppn::UpdatePathInfoRequest& update_path_info_request) {
   std::string verification_key_encoded;
   std::string mtu_update_signature_encoded;
-  absl::Base64Escape(update_path_info.verification_key(),
+  absl::Base64Escape(update_path_info_request.verification_key(),
                      &verification_key_encoded);
-  absl::Base64Escape(update_path_info.mtu_update_signature(),
+  absl::Base64Escape(update_path_info_request.mtu_update_signature(),
                      &mtu_update_signature_encoded);
 
   nlohmann::json json_obj;
-  json_obj[JsonKeys::kSessionId] = update_path_info.session_id();
-  json_obj[JsonKeys::kSequenceNumber] = update_path_info.sequence_number();
-  json_obj[JsonKeys::kMtu] = update_path_info.mtu();
+  json_obj[JsonKeys::kSessionId] = update_path_info_request.session_id();
+  json_obj[JsonKeys::kSequenceNumber] =
+      update_path_info_request.sequence_number();
+  json_obj[JsonKeys::kMtu] = update_path_info_request.mtu();
   json_obj[JsonKeys::kVerificationKey] = verification_key_encoded;
   json_obj[JsonKeys::kMtuUpdateSignature] = mtu_update_signature_encoded;
   return utils::JsonToString(json_obj);
 }
 
 absl::Status Session::SendPathInfoUpdate() {
-  privacy::ppn::UpdatePathInfo mtu_update;
-  mtu_update.set_session_id(egress_manager_->uplink_spi());
-  mtu_update.set_sequence_number(path_info_seq_++);
-  mtu_update.set_mtu(path_mtu_);
+  ppn::UpdatePathInfoRequest update_path_info_request;
+  update_path_info_request.set_session_id(egress_manager_->uplink_spi());
+  update_path_info_request.set_sequence_number(path_info_seq_++);
+  update_path_info_request.set_mtu(path_mtu_);
 
-  std::string signed_data = absl::StrCat("path_info;", mtu_update.session_id(),
-                                         ";", mtu_update.mtu());
+  std::string signed_data =
+      absl::StrCat("path_info;", update_path_info_request.session_id(), ";",
+                   update_path_info_request.mtu());
 
   PPN_ASSIGN_OR_RETURN(auto signature,
                        key_material_->GenerateSignature(signed_data));
-  mtu_update.set_mtu_update_signature(signature);
+  update_path_info_request.set_mtu_update_signature(signature);
 
-  auto path_info_update_json = ProtoToJsonString(mtu_update);
+  auto path_info_update_json = ProtoToJsonString(update_path_info_request);
 
   // TODO: Update to send to Brass or Beryllium once the handler
   // has been set up.

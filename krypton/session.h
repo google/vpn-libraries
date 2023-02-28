@@ -46,7 +46,8 @@ namespace krypton {
 
 class SessionDebugInfo;
 
-std::string ProtoToJsonString(const ppn::UpdatePathInfo& update_path_info);
+std::string ProtoToJsonString(
+    const ppn::UpdatePathInfoRequest& update_path_info_request);
 
 // Session or Krypton session that represents a session to the copper
 // server. This also is the statemachine for establishing the Copper |
