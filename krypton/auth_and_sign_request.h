@@ -49,10 +49,12 @@ class InitialDataRequest {
  public:
   InitialDataRequest(
       bool use_attestation, absl::string_view service_type,
-      ppn::GetInitialDataRequest::LocationGranularity location_granularity)
+      ppn::GetInitialDataRequest::LocationGranularity location_granularity,
+      absl::string_view auth_token)
       : use_attestation_(use_attestation),
         service_type_(service_type),
-        granularity_(location_granularity) {}
+        granularity_(location_granularity),
+        auth_token_(auth_token) {}
   ~InitialDataRequest() = default;
   HttpRequest EncodeToProto() const;
 
@@ -60,6 +62,7 @@ class InitialDataRequest {
   const bool use_attestation_;
   const std::string service_type_;
   ppn::GetInitialDataRequest::LocationGranularity granularity_;
+  const std::string auth_token_;
 };
 
 // A class for constructing http AuthAndSignRequest to Zinc.

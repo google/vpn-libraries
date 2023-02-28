@@ -114,14 +114,18 @@ HttpRequest PublicKeyRequest::EncodeToProto() const {
 }
 
 HttpRequest InitialDataRequest::EncodeToProto() const {
-  HttpRequest request;
+  HttpRequest http_request;
 
-  ppn::GetInitialDataRequest initial_data_proto;
-  initial_data_proto.set_use_attestation(use_attestation_);
-  initial_data_proto.set_service_type(service_type_);
-  initial_data_proto.set_location_granularity(granularity_);
-  request.set_proto_body(initial_data_proto.SerializeAsString());
-  return request;
+  ppn::GetInitialDataRequest initial_data_request;
+  initial_data_request.set_use_attestation(use_attestation_);
+  initial_data_request.set_service_type(service_type_);
+  initial_data_request.set_location_granularity(granularity_);
+  http_request.set_proto_body(initial_data_request.SerializeAsString());
+
+  (*http_request.mutable_headers())["Authorization"] =
+      absl::StrCat("Bearer ", auth_token_);
+
+  return http_request;
 }
 }  // namespace krypton
 }  // namespace privacy

@@ -32,6 +32,7 @@ namespace privacy {
 namespace krypton {
 
 using ::testing::EqualsProto;
+using ::testing::Eq;
 
 // TODO: Write fuzz testing of the JSON body.
 TEST(AuthAndSignRequest, TestAuthAndSignRequest) {
@@ -143,8 +144,10 @@ TEST(AuthAndSignRequest, TestInitialDataRequestProtoEncoding) {
       ppn::GetInitialDataRequest::CITY_GEOS;
   auto request = InitialDataRequest(/*use_attestation=*/true,
                                     /*service_type=*/"123",
-                                    /*location_granularity==*/granularity);
+                                    /*location_granularity=*/granularity,
+                                    /*auth_token=*/"abc");
   HttpRequest proto = request.EncodeToProto();
+  EXPECT_THAT("Bearer abc", Eq(proto.headers().find("Authorization")->second));
 
   // parse out GetInitialDataRequest proto from string
   ppn::GetInitialDataRequest message;

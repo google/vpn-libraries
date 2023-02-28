@@ -222,7 +222,7 @@ class AuthTest : public ::testing::Test {
     auto granularity = ppn::GetInitialDataRequest::COUNTRY;
 
     InitialDataRequest request_class(use_attestation, service_type,
-                                     granularity);
+                                     granularity, "some_token");
 
     HttpRequest request = request_class.EncodeToProto();
     request.set_url("http://www.example.com/initial_data");
@@ -537,12 +537,12 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabled) {
 
   absl::Notification http_fetcher_done;
   // Step 0: RequestInitialData
+  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
   EXPECT_CALL(http_fetcher_,
               PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
       .WillOnce(::testing::Return(buildInitialDataHttpResponse()));
 
   // Step 1: AuthAndSign
-  EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
   EXPECT_CALL(http_fetcher_, PostJson(Partially(EqualsProto(
                                  R"pb(url: "http://www.example.com/auth")pb"))))
       .WillOnce(::testing::Return(buildResponse()));

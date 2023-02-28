@@ -306,6 +306,16 @@ void Auth::RequestForInitialData(bool is_rekey) {
   absl::MutexLock l(&mutex_);
   request_time_ = absl::Now();
 
+  auto auth_token = oauth_->GetOAuthToken();
+  if (!auth_token.ok()) {
+    LOG(ERROR) << "Error fetching oauth token: " << auth_token.status();
+    SetState(State::kUnauthenticated);
+    RaiseAuthFailureNotification(
+        absl::InternalError("Error fetching Oauth token"));
+    return;
+  }
+  RecordLatency(request_time_, &oauth_latencies_, "oauth");
+
   auto use_attestation = config_.integrity_attestation_enabled();
   auto service_type = config_.service_type();
 
@@ -314,7 +324,8 @@ void Auth::RequestForInitialData(bool is_rekey) {
   ppn::GetInitialDataRequest::LocationGranularity granularity =
       ppn::GetInitialDataRequest::COUNTRY;
 
-  InitialDataRequest request(use_attestation, service_type, granularity);
+  InitialDataRequest request(use_attestation, service_type, granularity,
+                             *auth_token);
   auto get_initial_data_proto = request.EncodeToProto();
   get_initial_data_proto.set_url(config_.initial_data_url());
   http_fetcher_.PostJsonAsync(
