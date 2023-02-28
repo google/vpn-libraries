@@ -51,6 +51,8 @@ NSDictionary<NSString *, id> *PPNKryptonConfigToNSDictionary(
                          encoding:NSUTF8StringEncoding];
   dictionary[@"brass_url"] = [NSString stringWithCString:config.brass_url().c_str()
                                                 encoding:NSUTF8StringEncoding];
+  dictionary[@"initial_data_url"] = [NSString stringWithCString:config.initial_data_url().c_str()
+                                                       encoding:NSUTF8StringEncoding];
   dictionary[@"service_type"] = [NSString stringWithCString:config.service_type().c_str()
                                                    encoding:NSUTF8StringEncoding];
   dictionary[@"reconnector_config"] =
@@ -61,6 +63,8 @@ NSDictionary<NSString *, id> *PPNKryptonConfigToNSDictionary(
   dictionary[@"copper_hostname_override"] =
       [NSString stringWithCString:config.copper_hostname_override().c_str()
                          encoding:NSUTF8StringEncoding];
+  dictionary[@"api_key"] = [NSString stringWithCString:config.api_key().c_str()
+                                              encoding:NSUTF8StringEncoding];
 
   NSMutableArray<NSString *> *array = [[NSMutableArray alloc] init];
   for (const std::string &suffix : config.copper_hostname_suffix()) {
@@ -72,6 +76,7 @@ NSDictionary<NSString *, id> *PPNKryptonConfigToNSDictionary(
   dictionary[@"rekey_duration"] = @(PPNDurationToNSTimeInterval(config.rekey_duration()));
   dictionary[@"enable_blind_signing"] = @(config.enable_blind_signing());
   dictionary[@"safe_disconnect_enabled"] = @(config.safe_disconnect_enabled());
+  dictionary[@"public_metadata_enabled"] = @(config.public_metadata_enabled());
 
   switch (config.datapath_protocol()) {
     case privacy::krypton::KryptonConfig::DEFAULT:

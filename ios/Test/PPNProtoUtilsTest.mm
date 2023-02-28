@@ -31,6 +31,7 @@
   kryptonConfig.set_zinc_url("zinc_url");
   kryptonConfig.add_copper_hostname_suffix("foo");
   kryptonConfig.set_datapath_protocol(privacy::krypton::KryptonConfig::IPSEC);
+  kryptonConfig.set_initial_data_url("initial_data_url");
 
   privacy::krypton::ReconnectorDebugInfo reconnectorDebugInfo;
   reconnectorDebugInfo.set_session_restart_counter(1);
@@ -89,6 +90,7 @@
   NSDictionary<NSString *, id> *expectedDictionary = @{
     @"krypton_config" : @{
       @"brass_url" : @"",
+      @"api_key" : @"",
       @"cipher_suite_key_length" : @256,
       @"copper_controller_address" : @"",
       @"copper_hostname_override" : @"",
@@ -99,9 +101,11 @@
       @"reconnector_config" : @{},
       @"rekey_duration" : @0,
       @"safe_disconnect_enabled" : @0,
+      @"public_metadata_enabled" : @0,
       @"service_type" : @"",
       @"use_objc_datapath" : @1,
       @"zinc_public_signing_key_url" : @"",
+      @"initial_data_url" : @"initial_data_url",
       @"zinc_url" : @"zinc_url",
     },
     @"cancelled" : @1,
