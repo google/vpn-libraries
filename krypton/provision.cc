@@ -24,6 +24,8 @@
 #include <utility>
 
 #include "base/logging.h"
+#include "google/protobuf/timestamp.proto.h"
+#include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
@@ -116,6 +118,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
   params.region_token_and_signature =
       auth_response.region_token_and_signatures();
   params.apn_type = auth_response.apn_type();
+  params.dynamic_mtu_enabled = config_.dynamic_mtu_enabled();
   if (config_.enable_blind_signing()) {
     params.blind_message = key_material_->original_message();
     std::string blinded_signature;
@@ -146,6 +149,21 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
     params.signature = key_material_->GetRekeySignature().value();
   }
   params.uplink_spi = egress_manager_->uplink_spi();
+
+  if (config_.public_metadata_enabled()) {
+    auto get_initial_data_response = auth_->initial_data_response();
+    auto public_metadata =
+        get_initial_data_response.public_metadata_info().public_metadata();
+
+    params.signing_key_version =
+        get_initial_data_response.at_public_metadata_public_key().key_version();
+    params.country = public_metadata.exit_location().country();
+    params.city_geo_id = public_metadata.exit_location().city_geo_id();
+    params.service_type = public_metadata.service_type();
+    // expiration() nanos were verified to be zero in auth.cc
+    params.expiration =
+        absl::FromUnixSeconds(public_metadata.expiration().seconds());
+  }
 
   auto status = egress_manager_->GetEgressNodeForPpnIpSec(params);
   if (!status.ok()) {
