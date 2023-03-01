@@ -125,6 +125,8 @@ HttpRequest InitialDataRequest::EncodeToProto() const {
   (*http_request.mutable_headers())["Authorization"] =
       absl::StrCat("Bearer ", auth_token_);
 
+  (*http_request.mutable_headers())["Content-Type"] = "application/x-protobuf";
+
   return http_request;
 }
 }  // namespace krypton

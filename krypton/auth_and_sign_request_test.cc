@@ -148,6 +148,8 @@ TEST(AuthAndSignRequest, TestInitialDataRequestProtoEncoding) {
                                     /*auth_token=*/"abc");
   HttpRequest proto = request.EncodeToProto();
   EXPECT_THAT("Bearer abc", Eq(proto.headers().find("Authorization")->second));
+  EXPECT_THAT("application/x-protobuf",
+              Eq(proto.headers().find("Content-Type")->second));
 
   // parse out GetInitialDataRequest proto from string
   ppn::GetInitialDataRequest message;
