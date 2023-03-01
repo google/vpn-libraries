@@ -28,7 +28,8 @@ message AuthAndSignRequest {
       [];
 
   // A sha256 of the public key PEM used in generated `blinded_token`. This
-  // Ensures the signer signs with the matching key.
+  // Ensures the signer signs with the matching key. Only required if key_type
+  // is ZINC_KEY_TYPE.
   string public_key_hash = 5 [];
 
   oneof attestation_data {
