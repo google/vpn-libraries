@@ -1,0 +1,26 @@
+cc_library(
+    name = "fingerprint",
+    srcs = ["fingerprint.cc"],
+    hdrs = ["fingerprint.h"],
+    deps = [
+        "@boringssl//:crypto",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:timestamp_proto",
+        "@com_google_vpnlibraries//:public_metadata_cc_protobuf",
+    ],
+)
+
+cc_test(
+    name = "fingerprint_test",
+    srcs = ["fingerprint_test.cc"],
+    deps = [
+        ":fingerprint",
+        "@boringssl//:crypto",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@com_google_protobuf//:any_proto",
+        "@com_google_protobuf//:timestamp_proto",
+        "@com_google_vpnlibraries//:public_metadata_cc_protobuf",
+    ],
+)
