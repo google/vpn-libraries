@@ -143,14 +143,9 @@ absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
   COPY_STRING_ARRAY(json, kEgressPointSockAddr, response,
                     egress_point_sock_addr);
 
-  // Technically, we're storing the base64 encoded values instead of the bytes
-  // themselves, and then we pass the base64 on the wire back to the backend.
-  // That's fine for now, and saves us from decoding and encoding. But if we
-  // switch to using binary protos instead of JSON, we'll need to make sure we
-  // treat these fields consistently.
-  COPY_STRING_VALUE(json, kEgressPointPublicValue, response,
-                    egress_point_public_value);
-  COPY_STRING_VALUE(json, kServerNonce, response, server_nonce);
+  COPY_BYTES_VALUE(json, kEgressPointPublicValue, response,
+                   egress_point_public_value);
+  COPY_BYTES_VALUE(json, kServerNonce, response, server_nonce);
 
   COPY_INT_VALUE(json, kUplinkSpi, response, uplink_spi);
 

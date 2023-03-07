@@ -42,8 +42,8 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
       "egress_point_sock_addr": [
         "addr1"
       ],
-      "egress_point_public_value": "1234567890abcdef",
-      "server_nonce": "abcd",
+      "egress_point_public_value": "MTIzNDU2Nzg5MGFiY2RlZg==",
+      "server_nonce": "YWJjZA==",
       "uplink_spi": 123,
       "expiry": "2020-08-07T01:06:13+00:00",
       "mss_detection_sock_addr": [

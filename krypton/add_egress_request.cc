@@ -84,8 +84,13 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
       params.region_token_and_signature;
 
   auto my_keys = params.crypto->GetMyKeyMaterial();
-  ppn[JsonKeys::kClientPublicValue] = my_keys.public_value;
-  ppn[JsonKeys::kClientNonce] = my_keys.nonce;
+  std::string public_value_encoded;
+  std::string nonce_encoded;
+  absl::Base64Escape(my_keys.public_value, &public_value_encoded);
+  absl::Base64Escape(my_keys.nonce, &nonce_encoded);
+
+  ppn[JsonKeys::kClientPublicValue] = public_value_encoded;
+  ppn[JsonKeys::kClientNonce] = nonce_encoded;
   ppn[JsonKeys::kDownlinkSpi] = params.crypto->downlink_spi();
   ppn[JsonKeys::kApnType] = params.apn_type;
 

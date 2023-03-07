@@ -87,11 +87,16 @@ class EgressManagerTest : public ::testing::Test {
     auto keys = crypto_.GetMyKeyMaterial();
     PPN_ASSIGN_OR_RETURN(auto verification_key,
                          crypto_.GetRekeyVerificationKey());
+    std::string public_value_encoded;
+    std::string nonce_encoded;
     std::string verification_key_encoded;
+    absl::Base64Escape(keys.public_value, &public_value_encoded);
+    absl::Base64Escape(keys.nonce, &nonce_encoded);
     absl::Base64Escape(verification_key, &verification_key_encoded);
 
-    expected[JsonKeys::kPpn][JsonKeys::kClientNonce] = keys.nonce;
-    expected[JsonKeys::kPpn][JsonKeys::kClientPublicValue] = keys.public_value;
+    expected[JsonKeys::kPpn][JsonKeys::kClientPublicValue] =
+        public_value_encoded;
+    expected[JsonKeys::kPpn][JsonKeys::kClientNonce] = nonce_encoded;
     expected[JsonKeys::kPpn][JsonKeys::kControlPlaneSockAddr] =
         "192.168.0.10:1849";
     expected[JsonKeys::kPpn][JsonKeys::kApnType] = "ppn";
@@ -156,11 +161,16 @@ class EgressManagerTest : public ::testing::Test {
     auto keys = crypto_.GetMyKeyMaterial();
     PPN_ASSIGN_OR_RETURN(auto verification_key,
                          crypto_.GetRekeyVerificationKey());
+    std::string public_value_encoded;
+    std::string nonce_encoded;
     std::string verification_key_encoded;
+    absl::Base64Escape(keys.public_value, &public_value_encoded);
+    absl::Base64Escape(keys.nonce, &nonce_encoded);
     absl::Base64Escape(verification_key, &verification_key_encoded);
 
-    expected[JsonKeys::kPpn][JsonKeys::kClientNonce] = keys.nonce;
-    expected[JsonKeys::kPpn][JsonKeys::kClientPublicValue] = keys.public_value;
+    expected[JsonKeys::kPpn][JsonKeys::kClientPublicValue] =
+        public_value_encoded;
+    expected[JsonKeys::kPpn][JsonKeys::kClientNonce] = nonce_encoded;
     expected[JsonKeys::kPpn][JsonKeys::kControlPlaneSockAddr] =
         "192.168.0.10:1849";
     expected[JsonKeys::kPpn][JsonKeys::kApnType] = "ppn";
@@ -190,9 +200,15 @@ class EgressManagerTest : public ::testing::Test {
         "expiry": "2020-08-07T01:06:13+00:00"
       }
     })json"));
+
+    std::string public_value_encoded;
+    std::string nonce_encoded;
+    absl::Base64Escape(keys.public_value, &public_value_encoded);
+    absl::Base64Escape(keys.nonce, &nonce_encoded);
+
     json_body[JsonKeys::kPpn][JsonKeys::kEgressPointPublicValue] =
-        keys.public_value;
-    json_body[JsonKeys::kPpn][JsonKeys::kServerNonce] = keys.nonce;
+        public_value_encoded;
+    json_body[JsonKeys::kPpn][JsonKeys::kServerNonce] = nonce_encoded;
 
     HttpResponse response;
     response.mutable_status()->set_code(200);

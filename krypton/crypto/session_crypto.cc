@@ -145,14 +145,12 @@ SessionCrypto::SessionCrypto(const KryptonConfig &config)
   key_handle_ = std::move(key_handle).ValueOrDie();
 }
 
-void SessionCrypto::SetLocalNonceBase64TestOnly(
-    absl::string_view client_nonce) {
-  absl::Base64Unescape(client_nonce, &local_nonce_);
+void SessionCrypto::SetLocalNonceTestOnly(absl::string_view client_nonce) {
+  local_nonce_ = std::string(client_nonce);
 }
 
-void SessionCrypto::SetRemoteNonceBase64TestOnly(
-    absl::string_view server_nonce) {
-  absl::Base64Unescape(server_nonce, &remote_nonce_);
+void SessionCrypto::SetRemoteNonceTestOnly(absl::string_view server_nonce) {
+  remote_nonce_ = std::string(server_nonce);
 }
 
 absl::StatusOr<std::string> SessionCrypto::GetRekeyVerificationKey() const {
@@ -194,30 +192,18 @@ absl::Status SessionCrypto::SetRemoteKeyMaterial(
     absl::string_view remote_public_value, absl::string_view remote_nonce) {
   LOG(INFO) << "Remote key material received";
 
-  std::string remote_public;
-  if (!absl::Base64Unescape(remote_public_value, &remote_public)) {
-    return absl::FailedPreconditionError(
-        "Base64 unescape failed, Remote public should be in base64");
-  }
-
-  if (remote_public.length() != X25519_PUBLIC_VALUE_LEN) {
+  if (remote_public_value.length() != X25519_PUBLIC_VALUE_LEN) {
     return absl::FailedPreconditionError(
         absl::StrCat("PublicValue length should be 32 bytes, received ",
-                     remote_public.length()));
+                     remote_public_value.length()));
   }
 
-  remote_public_value_ = remote_public;
+  remote_public_value_ = std::string(remote_public_value);
 
-  std::string nonce;
-  if (!absl::Base64Unescape(remote_nonce, &nonce)) {
-    return absl::FailedPreconditionError(
-        "Base64 unescape failed, remote nonce should be in base 64");
-  }
-
-  if (nonce.length() != kNonceLength) {
+  if (remote_nonce.length() != kNonceLength) {
     return absl::FailedPreconditionError("Nonce should be 16 bytes");
   }
-  remote_nonce_ = nonce;
+  remote_nonce_ = std::string(remote_nonce);
   return absl::OkStatus();
 }
 
@@ -258,8 +244,8 @@ absl::StatusOr<TransformParams> SessionCrypto::ComputeIpSecKeyMaterial() {
 
 SessionCrypto::KeyMaterial SessionCrypto::GetMyKeyMaterial() const {
   SessionCrypto::KeyMaterial keys;
-  keys.public_value = absl::Base64Escape(public_value_);
-  keys.nonce = absl::Base64Escape(local_nonce_);
+  keys.public_value = public_value_;
+  keys.nonce = local_nonce_;
   return keys;
 }
 

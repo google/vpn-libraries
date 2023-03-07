@@ -54,7 +54,7 @@ class SessionCrypto {
   KeyMaterial GetMyKeyMaterial() const;
 
   // Returns the public value.
-  std::string public_value() const { return absl::Base64Escape(public_value_); }
+  std::string public_value() const { return public_value_; }
 
   // Set the remote public value. Remote public & salt should be in base64.
   absl::Status SetRemoteKeyMaterial(absl::string_view remote_public_value,
@@ -76,8 +76,8 @@ class SessionCrypto {
   absl::StatusOr<std::string> SharedKeyBase64TestOnly() const;
 
   // Test Only: override the salt.
-  void SetLocalNonceBase64TestOnly(absl::string_view client_nonce);
-  void SetRemoteNonceBase64TestOnly(absl::string_view server_nonce);
+  void SetLocalNonceTestOnly(absl::string_view client_nonce);
+  void SetRemoteNonceTestOnly(absl::string_view server_nonce);
 
   // Private key.
   std::string PrivateKeyTestOnly() const { return private_key_; }

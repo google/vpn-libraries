@@ -72,7 +72,11 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
                        utils::StringToJson(http_request.json_body()));
 
   ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  std::string public_value_encoded;
+  std::string nonce_encoded;
   std::string verification_key_encoded;
+  absl::Base64Escape(keys.public_value, &public_value_encoded);
+  absl::Base64Escape(keys.nonce, &nonce_encoded);
   absl::Base64Escape(verification_key, &verification_key_encoded);
 
   // Round-tripping through serialization causes int values to randomly be int
@@ -81,8 +85,8 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
   EXPECT_EQ(actual["unblinded_token_signature"], "raw message signature");
   EXPECT_EQ(actual["region_token_and_signature"], "raw region and sig");
   EXPECT_EQ(actual["ppn"]["apn_type"], "ppn");
-  EXPECT_EQ(actual["ppn"]["client_public_value"], keys.public_value);
-  EXPECT_EQ(actual["ppn"]["client_nonce"], keys.nonce);
+  EXPECT_EQ(actual["ppn"]["client_public_value"], public_value_encoded);
+  EXPECT_EQ(actual["ppn"]["client_nonce"], nonce_encoded);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
             absl::StrCat(kCopperControlPlaneAddress, ":1849"));
   EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
@@ -126,7 +130,11 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
                        utils::StringToJson(http_request.json_body()));
 
   ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  std::string public_value_encoded;
+  std::string nonce_encoded;
   std::string verification_key_encoded;
+  absl::Base64Escape(keys.public_value, &public_value_encoded);
+  absl::Base64Escape(keys.nonce, &nonce_encoded);
   absl::Base64Escape(verification_key, &verification_key_encoded);
 
   // Round-tripping through serialization causes int values to randomly be int
@@ -135,8 +143,8 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
   EXPECT_EQ(actual["unblinded_token_signature"], "raw message signature");
   EXPECT_EQ(actual["region_token_and_signature"], "raw region and sig");
   EXPECT_EQ(actual["ppn"]["apn_type"], "ppn");
-  EXPECT_EQ(actual["ppn"]["client_public_value"], keys.public_value);
-  EXPECT_EQ(actual["ppn"]["client_nonce"], keys.nonce);
+  EXPECT_EQ(actual["ppn"]["client_public_value"], public_value_encoded);
+  EXPECT_EQ(actual["ppn"]["client_nonce"], nonce_encoded);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
             absl::StrCat(kCopperControlPlaneAddress, ":1849"));
   EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
@@ -168,16 +176,20 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
                        utils::StringToJson(http_request.json_body()));
 
   ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  std::string public_value_encoded;
+  std::string nonce_encoded;
   std::string verification_key_encoded;
   std::string signature_encoded;
+  absl::Base64Escape(keys.public_value, &public_value_encoded);
+  absl::Base64Escape(keys.nonce, &nonce_encoded);
   absl::Base64Escape(verification_key, &verification_key_encoded);
   absl::Base64Escape(params.signature, &signature_encoded);
 
   // Round-tripping through serialization causes int values to randomly be int
   // or uint, so we need to test each value separately.
   EXPECT_EQ(actual["unblinded_token"], "");
-  EXPECT_EQ(actual["ppn"]["client_public_value"], keys.public_value);
-  EXPECT_EQ(actual["ppn"]["client_nonce"], keys.nonce);
+  EXPECT_EQ(actual["ppn"]["client_public_value"], public_value_encoded);
+  EXPECT_EQ(actual["ppn"]["client_nonce"], nonce_encoded);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
             absl::StrCat(kCopperControlPlaneAddress, ":1849"));
   EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
@@ -213,8 +225,12 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   auto http_request = request.EncodeToProtoForPpn(params);
 
   ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  std::string public_value_encoded;
+  std::string nonce_encoded;
   std::string verification_key_encoded;
   std::string signature_encoded;
+  absl::Base64Escape(keys.public_value, &public_value_encoded);
+  absl::Base64Escape(keys.nonce, &nonce_encoded);
   absl::Base64Escape(verification_key, &verification_key_encoded);
   absl::Base64Escape(params.signature, &signature_encoded);
 
@@ -230,8 +246,8 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
 
   auto ppn = actual["ppn"];
   EXPECT_FALSE(ppn["apn_type"].is_null());
-  EXPECT_EQ(ppn["client_public_value"], keys.public_value);
-  EXPECT_EQ(ppn["client_nonce"], keys.nonce);
+  EXPECT_EQ(ppn["client_public_value"], public_value_encoded);
+  EXPECT_EQ(ppn["client_nonce"], nonce_encoded);
   EXPECT_EQ(ppn["control_plane_sock_addr"],
             absl::StrCat(kCopperControlPlaneAddress, ":1849"));
   EXPECT_EQ(ppn["downlink_spi"], crypto.downlink_spi());
