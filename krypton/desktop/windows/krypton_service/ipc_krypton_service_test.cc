@@ -69,7 +69,7 @@ class IpcKryptonServiceTest : public ::testing::Test {
 
   void SetUp() override {
     ipc_krypton_service = std::make_unique<IpcKryptonService>(
-        &mock_named_pipe, &mock_windows_api);
+        &mock_ppn_service, &mock_named_pipe, &mock_windows_api);
   }
 
  protected:
@@ -84,15 +84,14 @@ TEST_F(IpcKryptonServiceTest, TestReadAndWriteToPipe_ReadFromPipeSuccessful) {
   request.set_type(desktop::KryptonControlMessage::START_KRYPTON);
   ON_CALL(mock_named_pipe, IpcReadSyncMessage())
       .WillByDefault(testing::Return(request));
-  absl::Status status =
-      ipc_krypton_service->ReadAndWriteToPipe(&mock_ppn_service);
+  absl::Status status = ipc_krypton_service->ReadAndWriteToPipe();
   EXPECT_OK(status);
 }
 
 TEST_F(IpcKryptonServiceTest, TestReadAndWriteToPipe_ReadFromPipeFailed) {
   ON_CALL(mock_named_pipe, IpcReadSyncMessage())
       .WillByDefault(testing::Return(absl::InternalError("Failed")));
-  EXPECT_THAT(ipc_krypton_service->ReadAndWriteToPipe(&mock_ppn_service),
+  EXPECT_THAT(ipc_krypton_service->ReadAndWriteToPipe(),
               ::testing::status::StatusIs(absl::StatusCode::kInternal));
 }
 
@@ -106,7 +105,7 @@ TEST_F(IpcKryptonServiceTest, TestReadAndWriteToPipe_ValidStartKryptonMessage) {
   EXPECT_CALL(mock_ppn_service, Start(testing::_)).Times(1);
   ON_CALL(mock_named_pipe, IpcReadSyncMessage())
       .WillByDefault(testing::Return(request));
-  ipc_krypton_service->ReadAndWriteToPipe(&mock_ppn_service);
+  ipc_krypton_service->ReadAndWriteToPipe();
 }
 
 TEST_F(IpcKryptonServiceTest, TestReadAndWriteToPipe_SendToPipeFailed) {
@@ -116,7 +115,7 @@ TEST_F(IpcKryptonServiceTest, TestReadAndWriteToPipe_SendToPipeFailed) {
       .WillByDefault(testing::Return(request));
   ON_CALL(mock_named_pipe, IpcSendSyncMessage(testing::_))
       .WillByDefault(testing::Return(absl::InternalError("Failed")));
-  EXPECT_THAT(ipc_krypton_service->ReadAndWriteToPipe(&mock_ppn_service),
+  EXPECT_THAT(ipc_krypton_service->ReadAndWriteToPipe(),
               ::testing::status::StatusIs(absl::StatusCode::kInternal));
 }
 
@@ -128,7 +127,7 @@ TEST_F(IpcKryptonServiceTest, TestReadAndWriteToPipe_CloseEventTriggered) {
       privacy::krypton::desktop::KryptonControlMessage::START_KRYPTON);
   ON_CALL(mock_named_pipe, IpcReadSyncMessage())
       .WillByDefault(testing::Return(request));
-  EXPECT_THAT(ipc_krypton_service->PollOnPipe(&mock_ppn_service),
+  EXPECT_THAT(ipc_krypton_service->PollOnPipe(),
               testing::status::StatusIs(absl::StatusCode::kCancelled));
 }
 
@@ -140,8 +139,7 @@ TEST_F(IpcKryptonServiceTest, TestProcessAppToServiceMessage_ValidStopMessage) {
         ->mutable_status()) = utils::GetRpcStatusforStatus(absl::OkStatus());
   EXPECT_CALL(mock_ppn_service, Stop(testing::_)).Times(1);
   desktop::KryptonControlMessage response =
-      ipc_krypton_service->ProcessAppToServiceMessage(&mock_ppn_service,
-                                                      request);
+      ipc_krypton_service->ProcessKryptonControlMessage(request);
   desktop::KryptonControlMessage expected_response;
   expected_response.set_type(desktop::KryptonControlMessage::STOP_KRYPTON);
   google::rpc::Status* status = new google::rpc::Status();
@@ -156,8 +154,7 @@ TEST_F(IpcKryptonServiceTest,
   request.set_type(desktop::KryptonControlMessage::START_KRYPTON);
   EXPECT_CALL(mock_ppn_service, Start(testing::_)).Times(0);
   desktop::KryptonControlMessage response =
-      ipc_krypton_service->ProcessAppToServiceMessage(&mock_ppn_service,
-                                                      request);
+      ipc_krypton_service->ProcessKryptonControlMessage(request);
   EXPECT_EQ(response.response().status().code(), google::rpc::Code::INTERNAL);
 }
 
@@ -167,8 +164,7 @@ TEST_F(IpcKryptonServiceTest,
   request.set_type(desktop::KryptonControlMessage::STOP_KRYPTON);
   EXPECT_CALL(mock_ppn_service, Stop(testing::_)).Times(0);
   desktop::KryptonControlMessage response =
-      ipc_krypton_service->ProcessAppToServiceMessage(&mock_ppn_service,
-                                                      request);
+      ipc_krypton_service->ProcessKryptonControlMessage(request);
   EXPECT_EQ(response.response().status().code(), google::rpc::Code::INTERNAL);
 }
 
@@ -177,8 +173,7 @@ TEST_F(IpcKryptonServiceTest,
   desktop::KryptonControlMessage request;
   request.set_type(desktop::KryptonControlMessage::MESSAGE_TYPE_UNSPECIFIED);
   desktop::KryptonControlMessage response =
-      ipc_krypton_service->ProcessAppToServiceMessage(&mock_ppn_service,
-                                                      request);
+      ipc_krypton_service->ProcessKryptonControlMessage(request);
   EXPECT_EQ(response.response().status().code(),
             google::rpc::Code::UNIMPLEMENTED);
   EXPECT_EQ(response.response().status().message(),

@@ -137,8 +137,7 @@ void KryptonService::ServiceMain(DWORD dwArgc, LPTSTR* lpszArgv) {
   LOG(INFO) << "Krypton initialised successfully";
 
   krypton_service_->ipc_looper_.Post([] {
-    krypton_service_->app_to_service_pipe_ipc_handler_->PollOnPipe(
-        krypton_service_);
+    krypton_service_->app_to_service_pipe_ipc_handler_->PollOnPipe();
   });
 
   krypton_service_->ReportServiceStatus(SERVICE_RUNNING, NO_ERROR, 1000);
@@ -220,12 +219,12 @@ absl::Status KryptonService::InitializeIpcPipesAndHandlers() {
 
 void KryptonService::SetAppToServiceIpcHandler(NamedPipeInterface* pipe) {
   app_to_service_pipe_ipc_handler_ =
-      std::make_unique<IpcKryptonService>(pipe, &windows_api_);
+      std::make_unique<IpcKryptonService>(this, pipe, &windows_api_);
 }
 
 void KryptonService::SetServiceToAppIpcHandler(NamedPipeInterface* pipe) {
   service_to_app_pipe_ipc_handler_ =
-      std::make_unique<IpcKryptonService>(pipe, &windows_api_);
+      std::make_unique<IpcKryptonService>(this, pipe, &windows_api_);
 }
 
 void KryptonService::Start(const KryptonConfig& config) {

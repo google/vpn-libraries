@@ -19,6 +19,7 @@
 
 #include "privacy/net/krypton/desktop/desktop_oauth_interface.h"
 #include "privacy/net/krypton/desktop/windows/ipc/named_pipe_interface.h"
+#include "privacy/net/krypton/desktop/windows/ipc_service.h"
 #include "privacy/net/krypton/desktop/windows/krypton_service/windows_api_interface.h"
 #include "privacy/net/krypton/desktop/windows/ppn_notification_interface.h"
 #include "privacy/net/krypton/utils/looper.h"
@@ -30,19 +31,18 @@ namespace windows {
 /**
  * Handles the Ipc Calls made from the ppn service.
  **/
-class IpcPpnService {
+class IpcPpnService : public IpcService {
  public:
   explicit IpcPpnService(krypton::utils::LooperThread* ppn_notification_looper,
                          PpnNotificationInterface* ppn_notification,
                          desktop::DesktopOAuthInterface* oauth,
                          NamedPipeInterface* named_pipe_interface,
                          WindowsApiInterface* windows_api)
-      : ppn_notification_looper_(ppn_notification_looper),
+      : IpcService(named_pipe_interface, windows_api),
+        ppn_notification_looper_(ppn_notification_looper),
         ppn_notification_(ppn_notification),
-        oauth_(oauth),
-        named_pipe_interface_(named_pipe_interface),
-        windows_api_(windows_api) {}
-  ~IpcPpnService();
+        oauth_(oauth) {}
+  ~IpcPpnService() override;
 
   // Deleting copy and move constructors.
   IpcPpnService(const IpcPpnService& arg) = delete;
@@ -50,37 +50,18 @@ class IpcPpnService {
   IpcPpnService(IpcPpnService&& arg) = delete;
   IpcPpnService& operator=(IpcPpnService&& rhs) = delete;
 
-  /**
-   * Continuously calls ReadAndWriteToPipe (i.e reads data from the pipe,
-   * processes it and writes the response back to the pipe), until close event
-   * on pipe is not signaled.
-   **/
-  absl::Status PollOnPipe();
-   /**
-   * Calls Pipe with request and waits for the response back.
-   **/
-  absl::StatusOr<desktop::KryptonControlMessage> CallPipe(
-      desktop::KryptonControlMessage request);
-  /**
-   * Triggers stop event for IPC pipe handled here.
-   **/
-  void Stop();
-
  private:
-  /**
-   * Waits for data, reads it, processes it and writes back.
-   **/
-  absl::Status ReadAndWriteToPipe();
   /**
    * Process the message passed in and performs needed action on Krypton via
    * PpnServiceInterface.
    **/
-  desktop::KryptonControlMessage ProcessAppToServiceMessage(
-      desktop::KryptonControlMessage message);
+  desktop::KryptonControlMessage ProcessKryptonControlMessage(
+      desktop::KryptonControlMessage message) override;
   /**
    * Validates Request received from the pipe.
    **/
-  absl::Status ValidateRequest(krypton::desktop::KryptonControlMessage message);
+  absl::Status ValidateRequest(
+      krypton::desktop::KryptonControlMessage message) override;
   /**
    * Enqueue Notification in the request for processing and respond back.
    **/
@@ -93,8 +74,6 @@ class IpcPpnService {
   PpnNotificationInterface* ppn_notification_;
   // Oauth Interface to fetch ouath token when asked by service.
   desktop::DesktopOAuthInterface* oauth_;
-  NamedPipeInterface* named_pipe_interface_;
-  WindowsApiInterface* windows_api_;
 };
 
 }  // namespace windows

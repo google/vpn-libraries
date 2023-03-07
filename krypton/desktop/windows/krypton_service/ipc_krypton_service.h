@@ -21,7 +21,8 @@
 
 #include "privacy/net/krypton/desktop/proto/krypton_control_message.proto.h"
 #include "privacy/net/krypton/desktop/windows/ipc/named_pipe_interface.h"
-#include "privacy/net/krypton/desktop/windows/krypton_service/windows_api.h"
+#include "privacy/net/krypton/desktop/windows/ipc_service.h"
+#include "privacy/net/krypton/desktop/windows/krypton_service/windows_api_interface.h"
 #include "privacy/net/krypton/desktop/windows/ppn_service_interface.h"
 #include "third_party/absl/status/status.h"
 
@@ -32,47 +33,36 @@ namespace windows {
 /**
  * Class to control IPC Communication with Krypton.
  **/
-class IpcKryptonService {
+class IpcKryptonService : public IpcService {
  public:
-  explicit IpcKryptonService(NamedPipeInterface* named_pipe_interface,
+  explicit IpcKryptonService(PpnServiceInterface* ppn_service,
+                             NamedPipeInterface* named_pipe_interface,
                              WindowsApiInterface* windows_api)
-      : named_pipe_interface_(ABSL_DIE_IF_NULL(named_pipe_interface)),
-        windows_api_(windows_api) {}
-  ~IpcKryptonService() = default;
+      : IpcService(ABSL_DIE_IF_NULL(named_pipe_interface), windows_api),
+        ppn_service_(ppn_service) {}
+  ~IpcKryptonService() override;
 
-  /**
-   * Continuously calls ReadAndWriteToPipe (i.e reads data from the pipe,
-   * processes it and writes the response back to the pipe), until close event
-   *on pipe is not signaled.
-   **/
-  absl::Status PollOnPipe(PpnServiceInterface* service);
-  /**
-   * Waits for data, reads it, processes it and writes back.
-   **/
-  absl::Status ReadAndWriteToPipe(PpnServiceInterface* service);
-  /**
-   * Calls Pipe with request and waits for the response back.
-   **/
-  absl::StatusOr<desktop::KryptonControlMessage> CallPipe(
-      desktop::KryptonControlMessage request);
+  // Deleting copy and move constructors.
+  IpcKryptonService(const IpcKryptonService& arg) = delete;
+  IpcKryptonService& operator=(const IpcKryptonService& rhs) = delete;
+  IpcKryptonService(IpcKryptonService&& arg) = delete;
+  IpcKryptonService& operator=(IpcKryptonService&& rhs) = delete;
 
   /**
    * Process the message passed in and performs needed action on Krypton via
    * PpnServiceInterface.
    **/
-  desktop::KryptonControlMessage ProcessAppToServiceMessage(
-      PpnServiceInterface* service, desktop::KryptonControlMessage message);
-
-  void Stop();
+  desktop::KryptonControlMessage ProcessKryptonControlMessage(
+      desktop::KryptonControlMessage message) override;
 
  private:
   /**
    * Validates Request received from the pipe.
    **/
-  absl::Status ValidateRequest(krypton::desktop::KryptonControlMessage message);
+  absl::Status ValidateRequest(
+      krypton::desktop::KryptonControlMessage message) override;
 
-  NamedPipeInterface* named_pipe_interface_;
-  WindowsApiInterface* windows_api_;
+  PpnServiceInterface* ppn_service_;
 };
 
 }  // namespace windows
