@@ -508,7 +508,7 @@ absl::Status Session::Rekey() {
   // the old crypto keys.
   auto new_key_material = std::make_unique<crypto::SessionCrypto>(config_);
   PPN_ASSIGN_OR_RETURN(auto signature,
-                       key_material_->GeneratePublicValueSignature(
+                       key_material_->GenerateSignature(
                            new_key_material->public_value()));
   new_key_material->SetSignature(signature);
   key_material_.reset();

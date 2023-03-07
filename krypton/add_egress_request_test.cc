@@ -71,6 +71,10 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
 
+  ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  std::string verification_key_encoded;
+  absl::Base64Escape(verification_key, &verification_key_encoded);
+
   // Round-tripping through serialization causes int values to randomly be int
   // or uint, so we need to test each value separately.
   EXPECT_EQ(actual["unblinded_token"], "raw message");
@@ -84,8 +88,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
   EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
-  EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
-            crypto.GetRekeyVerificationKey().ValueOrDie());
+  EXPECT_EQ(actual["ppn"]["rekey_verification_key"], verification_key_encoded);
   EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"].is_null());
   EXPECT_TRUE(actual["ppn"]["public_metadata"].is_null());
   EXPECT_TRUE(actual["signing_key_version"].is_null());
@@ -122,6 +125,10 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
 
+  ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  std::string verification_key_encoded;
+  absl::Base64Escape(verification_key, &verification_key_encoded);
+
   // Round-tripping through serialization causes int values to randomly be int
   // or uint, so we need to test each value separately.
   EXPECT_EQ(actual["unblinded_token"], "raw message");
@@ -135,8 +142,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
   EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
-  EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
-            crypto.GetRekeyVerificationKey().ValueOrDie());
+  EXPECT_EQ(actual["ppn"]["rekey_verification_key"], verification_key_encoded);
   EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"]);
   EXPECT_TRUE(actual["ppn"]["public_metadata"].is_null());
   EXPECT_TRUE(actual["signing_key_version"].is_null());
@@ -161,6 +167,12 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
 
+  ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  std::string verification_key_encoded;
+  std::string signature_encoded;
+  absl::Base64Escape(verification_key, &verification_key_encoded);
+  absl::Base64Escape(params.signature, &signature_encoded);
+
   // Round-tripping through serialization causes int values to randomly be int
   // or uint, so we need to test each value separately.
   EXPECT_EQ(actual["unblinded_token"], "");
@@ -171,9 +183,8 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
   EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
-  EXPECT_EQ(actual["ppn"]["rekey_verification_key"],
-            crypto.GetRekeyVerificationKey().ValueOrDie());
-  EXPECT_EQ(actual["ppn"]["rekey_signature"], params.signature);
+  EXPECT_EQ(actual["ppn"]["rekey_verification_key"], verification_key_encoded);
+  EXPECT_EQ(actual["ppn"]["rekey_signature"], signature_encoded);
   EXPECT_EQ(actual["ppn"]["previous_uplink_spi"], params.uplink_spi);
   EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"].is_null());
   EXPECT_TRUE(actual["ppn"]["public_metadata"].is_null());
@@ -201,6 +212,12 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   params.signing_key_version = 3;
   auto http_request = request.EncodeToProtoForPpn(params);
 
+  ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  std::string verification_key_encoded;
+  std::string signature_encoded;
+  absl::Base64Escape(verification_key, &verification_key_encoded);
+  absl::Base64Escape(params.signature, &signature_encoded);
+
   EXPECT_EQ(http_request.headers().find("X-Goog-Api-Key")->second, "apiKey");
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
@@ -220,9 +237,8 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   EXPECT_EQ(ppn["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(ppn["suite"], "AES128_GCM");
   EXPECT_EQ(ppn["dataplane_protocol"], "BRIDGE");
-  EXPECT_EQ(ppn["rekey_verification_key"],
-            crypto.GetRekeyVerificationKey().ValueOrDie());
-  EXPECT_EQ(ppn["rekey_signature"], params.signature);
+  EXPECT_EQ(ppn["rekey_verification_key"], verification_key_encoded);
+  EXPECT_EQ(ppn["rekey_signature"], signature_encoded);
   EXPECT_EQ(ppn["previous_uplink_spi"], params.uplink_spi);
   EXPECT_TRUE(ppn["dynamic_mtu_enabled"].is_null());
 

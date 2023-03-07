@@ -25,7 +25,6 @@
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/types/optional.h"
-#include "third_party/openssl/base.h"
 #include "third_party/openssl/bn.h"
 #include "third_party/openssl/curve25519.h"
 #include "third_party/tink/cc/public_key_verify.h"
@@ -226,23 +225,18 @@ TEST_F(SessionCryptoTest, VerifyRekey) {
   // Step 3: Validate the current public value signature matches.
   SessionCrypto previous(bridge_config_aes_128_);
   SessionCrypto current(bridge_config_aes_128_);
-  std::string verification_key;
-  std::string signature;
   std::string current_public_value;
 
   absl::Base64Unescape(current.GetMyKeyMaterial().public_value,
                        &current_public_value);
 
-  ASSERT_OK_AND_ASSIGN(auto escaped_verification_key,
+  ASSERT_OK_AND_ASSIGN(auto verification_key,
                        previous.GetRekeyVerificationKey());
-  absl::Base64Unescape(escaped_verification_key, &verification_key);
 
   // Use previous ed25519 to generate a signature using the current public
   // value.
-  ASSERT_OK_AND_ASSIGN(auto escaped_signature,
-                       previous.GeneratePublicValueSignature(
-                           current.GetMyKeyMaterial().public_value));
-  absl::Base64Unescape(escaped_signature, &signature);
+  ASSERT_OK_AND_ASSIGN(auto signature,
+                       previous.GenerateSignature(current_public_value));
 
   // Step 3: Time for validation.
   // Validate the signature by getting the keyset_handle from the previous
@@ -371,13 +365,8 @@ TEST_F(SessionCryptoTest, VerifySignature) {
   SessionCrypto crypto(bridge_config_aes_128_);
   std::string data = "foo";
 
-  ASSERT_OK_AND_ASSIGN(auto escaped_verification_key,
-                       crypto.GetRekeyVerificationKey());
-  std::string verification_key;
-  absl::Base64Unescape(escaped_verification_key, &verification_key);
-
+  ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
   ASSERT_OK_AND_ASSIGN(auto signature, crypto.GenerateSignature(data));
-
   ASSERT_OK_AND_ASSIGN(
       const auto handle,
       ::crypto::tink::KeysetHandle::ReadNoSecret(verification_key));

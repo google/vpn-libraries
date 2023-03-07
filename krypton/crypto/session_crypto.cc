@@ -156,18 +156,7 @@ void SessionCrypto::SetRemoteNonceBase64TestOnly(
 }
 
 absl::StatusOr<std::string> SessionCrypto::GetRekeyVerificationKey() const {
-  PPN_ASSIGN_OR_RETURN(auto rekey_verification_key,
-                       SerializePublicKeyset(*key_handle_));
-  return absl::Base64Escape(rekey_verification_key);
-}
-
-absl::StatusOr<std::string> SessionCrypto::GeneratePublicValueSignature(
-    absl::string_view other_public_value) {
-  std::string other_public_value_unescaped;
-  absl::Base64Unescape(other_public_value, &other_public_value_unescaped);
-  PPN_ASSIGN_OR_RETURN(auto signature_unescaped,
-                       GenerateSignature(other_public_value_unescaped));
-  return absl::Base64Escape(signature_unescaped);
+  return SerializePublicKeyset(*key_handle_);
 }
 
 absl::StatusOr<std::string> SessionCrypto::GenerateSignature(

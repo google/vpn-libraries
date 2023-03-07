@@ -85,6 +85,11 @@ class EgressManagerTest : public ::testing::Test {
     })string"));
 
     auto keys = crypto_.GetMyKeyMaterial();
+    PPN_ASSIGN_OR_RETURN(auto verification_key,
+                         crypto_.GetRekeyVerificationKey());
+    std::string verification_key_encoded;
+    absl::Base64Escape(verification_key, &verification_key_encoded);
+
     expected[JsonKeys::kPpn][JsonKeys::kClientNonce] = keys.nonce;
     expected[JsonKeys::kPpn][JsonKeys::kClientPublicValue] = keys.public_value;
     expected[JsonKeys::kPpn][JsonKeys::kControlPlaneSockAddr] =
@@ -95,7 +100,7 @@ class EgressManagerTest : public ::testing::Test {
     expected[JsonKeys::kPpn][JsonKeys::kSuite] = "AES128_GCM";
     expected[JsonKeys::kPpn][JsonKeys::kDataplaneProtocol] = "IPSEC";
     expected[JsonKeys::kPpn][JsonKeys::kRekeyVerificationKey] =
-        crypto_.GetRekeyVerificationKey().ValueOrDie();
+        verification_key_encoded;
     return utils::JsonToString(expected);
   }
 
@@ -149,6 +154,11 @@ class EgressManagerTest : public ::testing::Test {
     // end public metadata specific
 
     auto keys = crypto_.GetMyKeyMaterial();
+    PPN_ASSIGN_OR_RETURN(auto verification_key,
+                         crypto_.GetRekeyVerificationKey());
+    std::string verification_key_encoded;
+    absl::Base64Escape(verification_key, &verification_key_encoded);
+
     expected[JsonKeys::kPpn][JsonKeys::kClientNonce] = keys.nonce;
     expected[JsonKeys::kPpn][JsonKeys::kClientPublicValue] = keys.public_value;
     expected[JsonKeys::kPpn][JsonKeys::kControlPlaneSockAddr] =
@@ -159,7 +169,7 @@ class EgressManagerTest : public ::testing::Test {
     expected[JsonKeys::kPpn][JsonKeys::kSuite] = "AES128_GCM";
     expected[JsonKeys::kPpn][JsonKeys::kDataplaneProtocol] = "IPSEC";
     expected[JsonKeys::kPpn][JsonKeys::kRekeyVerificationKey] =
-        crypto_.GetRekeyVerificationKey().ValueOrDie();
+        verification_key_encoded;
     return utils::JsonToString(expected);
   }
 
@@ -224,7 +234,8 @@ TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
 
   ASSERT_OK(egress_manager.GetEgressNodeForPpnIpSec(params));
 
-  http_fetcher_done.WaitForNotification();
+  EXPECT_TRUE(
+      http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(5)));
 
   EXPECT_EQ(egress_manager.GetState(),
             EgressManager::State::kEgressSessionCreated);
@@ -270,7 +281,8 @@ TEST_F(EgressManagerTest, GetEgressNodeForPpnIpSecWithBerylliumFields) {
 
   ASSERT_OK(egress_manager.GetEgressNodeForPpnIpSec(params));
 
-  http_fetcher_done.WaitForNotification();
+  EXPECT_TRUE(
+      http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(5)));
 
   EXPECT_EQ(egress_manager.GetState(),
             EgressManager::State::kEgressSessionCreated);

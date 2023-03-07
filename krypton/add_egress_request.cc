@@ -26,6 +26,7 @@
 #include "privacy/net/krypton/utils/json_util.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
@@ -102,12 +103,18 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
         ip_range->HostPortString(kCopperPort);
   }
 
-  if (params.crypto->GetRekeyVerificationKey().ok()) {
-    ppn[JsonKeys::kRekeyVerificationKey] =
-        params.crypto->GetRekeyVerificationKey().value();
+  auto verification_key = params.crypto->GetRekeyVerificationKey();
+  if (verification_key.ok()) {
+    std::string verification_key_encoded;
+    absl::Base64Escape(*verification_key, &verification_key_encoded);
+
+    ppn[JsonKeys::kRekeyVerificationKey] = verification_key_encoded;
   }
   if (params.is_rekey) {
-    ppn[JsonKeys::kSignature] = params.signature;
+    std::string signature_encoded;
+    absl::Base64Escape(params.signature, &signature_encoded);
+
+    ppn[JsonKeys::kSignature] = signature_encoded;
     ppn[JsonKeys::kPreviousUplinkSpi] = params.uplink_spi;
   }
 

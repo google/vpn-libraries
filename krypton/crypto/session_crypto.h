@@ -63,22 +63,13 @@ class SessionCrypto {
   // Provides the parameters needed for packet transform params.
   absl::StatusOr<TransformParams> GetTransformParams();
 
-  // Generate a signature based on a public value. Here is an example:
-  // Crypto key 1 : Used in initiation
-  // Crypto key 2 : Used in rekey
-  // Crypto key 2 public value is signed by Crypto Key 1.
-  // public value should be base64 encoded.
-  // The returned value will be base 64 encoded.
-  absl::StatusOr<std::string> GeneratePublicValueSignature(
-      absl::string_view other_public_value);
-
   // Generate a signature based on a string of data. The data being signed
   // should not be base64 encoded. The returned value will not be base 64
   // encoded.
   absl::StatusOr<std::string> GenerateSignature(absl::string_view data);
 
-  // Get the base64 RekeyVerificationKey. This is used by the server to verify
-  // the next request.
+  // Get the RekeyVerificationKey. This is used by the server to verify the next
+  // request.
   absl::StatusOr<std::string> GetRekeyVerificationKey() const;
 
   // Test Only: Get the shared secret.
