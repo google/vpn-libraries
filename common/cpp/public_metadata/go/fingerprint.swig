@@ -1,8 +1,11 @@
 %include "base/swig/google.swig"
 %include "net/proto/swig/go/protofunc.swig"
+%import "util/task/go/status.swig"
 
 %{
 #include "privacy/net/common/cpp/public_metadata/fingerprint.h"
+#include "util/task/status.h"
+#include "util/task/status.proto.h"
 %}
 
 PROTO_INPUT(privacy::ppn::PublicMetadata,
