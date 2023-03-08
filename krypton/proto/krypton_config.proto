@@ -50,6 +50,7 @@ message KryptonConfig {
   optional string service_type = 3;
   // TODO Add PpnOptions for initial_data_url field
   optional string initial_data_url = 31;
+  optional string update_path_info_url = 32;
 
   optional ReconnectorConfig reconnector_config = 4;
 
