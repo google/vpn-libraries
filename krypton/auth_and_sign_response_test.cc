@@ -22,11 +22,11 @@
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
-#include "privacy/private_membership/anonymous_tokens/public/proto/anonymous_tokens.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
+#include "third_party/anonymous_tokens/proto/anonymous_tokens.proto.h"
 
 namespace privacy {
 namespace krypton {

@@ -3,7 +3,7 @@ syntax = "proto3";
 package privacy.ppn;
 
 import "privacy/net/common/proto/public_metadata.proto";
-import "privacy/private_membership/anonymous_tokens/public/proto/anonymous_tokens.proto";
+import "third_party/anonymous_tokens/proto/anonymous_tokens.proto";
 
 option cc_api_version = 2;
 

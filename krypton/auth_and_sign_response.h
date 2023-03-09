@@ -28,12 +28,12 @@
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/zinc/rpc/zinc.proto.h"
 // anonymous_tokens.proto will release under https://github.com/google/quiche
-#include "privacy/private_membership/anonymous_tokens/public/proto/anonymous_tokens.proto.h"
 #include "third_party/absl/container/flat_hash_map.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
+#include "third_party/anonymous_tokens/proto/anonymous_tokens.proto.h"
 #include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
