@@ -40,13 +40,6 @@ namespace privacy {
 namespace krypton {
 namespace datapath {
 namespace android {
-namespace {
-
-std::string OptionalToStr(std::optional<uint32> opt) {
-  return opt.has_value() ? absl::StrCat(opt.value()) : "<no value>";
-}
-
-}  // namespace
 
 std::string MssMtuDetector::StateStr(State state) {
   switch (state) {
@@ -64,31 +57,29 @@ std::string MssMtuDetector::StateStr(State state) {
 }
 
 MssMtuDetector::MssMtuDetector(
-    int fd, const Endpoint& endpoint, EventsHelper* events_helper,
-    std::unique_ptr<SyscallInterface> syscall_interface)
+    int fd, const Endpoint& endpoint,
+    std::unique_ptr<SyscallInterface> syscall_interface,
+    NotificationInterface* notification,
+    utils::LooperThread* notification_thread)
     : fd_(fd),
       endpoint_(endpoint),
-      events_helper_(events_helper),
-      syscall_interface_(std::move(syscall_interface)) {}
+      syscall_interface_(std::move(syscall_interface)),
+      notification_(notification),
+      notification_thread_(notification_thread),
+      thread_("MSS MTU Detector Thread") {}
 
-MssMtuDetector::~MssMtuDetector() { CloseFd(); }
+MssMtuDetector::~MssMtuDetector() { Stop(); }
 
-absl::Status MssMtuDetector::Start() {
+void MssMtuDetector::Start() {
   absl::Status status = StartInternal();
-  if (!status.ok()) {
-    Error();
+  if (status.ok()) {
+    thread_.Post([&]() { HandleEvents(); });
+  } else {
+    Error(status);
   }
-  return status;
 }
 
-absl::StatusOr<MssMtuDetector::MssMtuUpdateInfo> MssMtuDetector::HandleEvent(
-    const EventsHelper::Event& ev) {
-  auto update_info_or = HandleEventInternal(ev);
-  if (!update_info_or.ok()) {
-    Error();
-  }
-  return update_info_or;
-}
+void MssMtuDetector::Stop() { CleanUp(/*stop_thread=*/true); }
 
 absl::Status MssMtuDetector::StartInternal() {
   absl::Status status = SetSocketNonBlocking(fd_);
@@ -106,9 +97,14 @@ absl::Status MssMtuDetector::StartInternal() {
                                             " failed"));
   }
 
-  status = events_helper_->AddFile(fd_, EventsHelper::EventWritableFlags());
+  status = events_helper_.AddFile(fd_, EventsHelper::EventWritableFlags());
   if (!status.ok()) return status;
-  added_to_events_helper_ = true;
+  sock_fd_added_to_events_ = true;
+
+  status = events_helper_.AddFile(stop_event_.fd(),
+                                  EventsHelper::EventReadableFlags());
+  if (!status.ok()) return status;
+  stop_fd_added_to_events_ = true;
 
   state_ = State::kConnectStarted;
   return absl::OkStatus();
@@ -138,15 +134,15 @@ MssMtuDetector::HandleEventInternal(const EventsHelper::Event& ev) {
     auto uplink_result_or = UpdateUplinkMssMtu();
     if (!uplink_result_or.ok()) return uplink_result_or.status();
 
-    status = events_helper_->RemoveFile(fd_);
+    status = events_helper_.RemoveFile(fd_);
     if (!status.ok()) return status;
-    added_to_events_helper_ = false;
+    sock_fd_added_to_events_ = false;
 
     state_ = State::kConnected;
 
-    status = events_helper_->AddFile(fd_, EventsHelper::EventReadableFlags());
+    status = events_helper_.AddFile(fd_, EventsHelper::EventReadableFlags());
     if (!status.ok()) return status;
-    added_to_events_helper_ = true;
+    sock_fd_added_to_events_ = true;
 
     return MssMtuUpdateInfo{uplink_result_or.value(),
                             UpdateResult::kNotUpdated};
@@ -171,21 +167,68 @@ MssMtuDetector::HandleEventInternal(const EventsHelper::Event& ev) {
   return absl::InternalError(absl::StrCat("unexpected state: ", DebugString()));
 }
 
+void MssMtuDetector::HandleEvents() {
+  EventsHelper::Event event;
+  int num_events;
+  while (true) {
+    auto status = events_helper_.Wait(&event, 1, -1, &num_events);
+    if (!status.ok()) {
+      Error(status);
+      break;
+    }
+    if (EventsHelper::FileFromEvent(event) == stop_event_.fd()) {
+      Error(absl::AbortedError("Stop called during MSS MTU Detection."));
+      break;
+    }
+
+    auto update_info = HandleEventInternal(event);
+    if (!update_info.ok()) {
+      Error(update_info.status());
+      break;
+    }
+
+    if (state_ == State::kFinished) {
+      auto notification = notification_;
+      auto uplink_mss_mtu = uplink_mss_mtu_;
+      auto downlink_mss_mtu = downlink_mss_mtu_;
+      notification_thread_->Post(
+          [notification, uplink_mss_mtu, downlink_mss_mtu] {
+            notification->MssMtuSuccess(uplink_mss_mtu, downlink_mss_mtu);
+          });
+      break;
+    }
+  }
+}
+
+void MssMtuDetector::CleanUp(bool stop_thread) {
+  if (stop_fd_added_to_events_) {
+    if (stop_thread) {
+      PPN_LOG_IF_ERROR(stop_event_.Notify(1));
+      thread_.Stop();
+      thread_.Join();
+    }
+
+    PPN_LOG_IF_ERROR(events_helper_.RemoveFile(stop_event_.fd()));
+    stop_fd_added_to_events_ = false;
+  }
+
+  CloseFd();
+}
+
 std::string MssMtuDetector::DebugString() const {
   return absl::Substitute(
       "state: $0, fd: $1, endpoint: $2, uplink_mss_mtu: $3, downlink_mss_mtu: "
       "$4, bytes_in_buffer: $5 ($6)",
-      StateStr(state_), fd_, endpoint_.ToString(),
-      OptionalToStr(uplink_mss_mtu_), OptionalToStr(downlink_mss_mtu_),
-      bytes_in_buffer_,
+      StateStr(state_), fd_, endpoint_.ToString(), uplink_mss_mtu_,
+      downlink_mss_mtu_, bytes_in_buffer_,
       absl::BytesToHexString(absl::string_view(
           downlink_mss_mtu_buffer_, static_cast<size_t>(bytes_in_buffer_))));
 }
 
 void MssMtuDetector::CloseFd() {
-  if (added_to_events_helper_) {
-    PPN_LOG_IF_ERROR(events_helper_->RemoveFile(fd_));
-    added_to_events_helper_ = false;
+  if (sock_fd_added_to_events_) {
+    PPN_LOG_IF_ERROR(events_helper_.RemoveFile(fd_));
+    sock_fd_added_to_events_ = false;
   }
   if (!fd_closed_) {
     shutdown(fd_, SHUT_RDWR);
@@ -194,9 +237,13 @@ void MssMtuDetector::CloseFd() {
   }
 }
 
-void MssMtuDetector::Error() {
-  CloseFd();
+void MssMtuDetector::Error(const absl::Status& status) {
+  CleanUp(/*stop_thread=*/false);
   state_ = State::kError;
+
+  auto notification = notification_;
+  notification_thread_->Post(
+      [notification, status] { notification->MssMtuFailure(status); });
 }
 
 absl::StatusOr<MssMtuDetector::UpdateResult>
@@ -211,7 +258,7 @@ MssMtuDetector::UpdateUplinkMssMtu() {
     return absl::InternalError(absl::StrCat("getpeername failed on fd ", fd_));
   }
 
-  uint32 mss;
+  uint32_t mss;
   socklen_t mss_len = sizeof(mss);
   ret = syscall_interface_->GetSockOpt(fd_, IPPROTO_TCP, TCP_MAXSEG, &mss,
                                        &mss_len);

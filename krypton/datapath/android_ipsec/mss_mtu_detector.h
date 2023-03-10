@@ -25,10 +25,12 @@
 #include <optional>
 #include <string>
 
+#include "privacy/net/krypton/datapath/android_ipsec/event_fd.h"
 #include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mss_mtu_detector_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/syscall_interface.h"
 #include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 
@@ -46,26 +48,20 @@ class MssMtuDetector : public MssMtuDetectorInterface {
   // tcp_mss_endpoint: the address of the TCP MSS detection server.
   // notification_interface: pointer to a notification interface to handle
   // MssMtuDetector status.
-  MssMtuDetector(int fd, const Endpoint& endpoint, EventsHelper* events_helper,
-                 std::unique_ptr<SyscallInterface> syscall_interface);
+  MssMtuDetector(int fd, const Endpoint& endpoint,
+                 std::unique_ptr<SyscallInterface> syscall_interface,
+                 NotificationInterface* notification,
+                 utils::LooperThread* notification_thread);
   ~MssMtuDetector() override;
 
-  virtual std::optional<uint32> uplink_mss_mtu() const {
-    return uplink_mss_mtu_;
-  }
-  virtual std::optional<uint32> downlink_mss_mtu() const {
-    return downlink_mss_mtu_;
-  }
-
   // Starts the MSS detection process. Will connect the socket to the server and
-  // register it to events helper. Must be called before HandleEvent().
-  absl::Status Start() override;
+  // start the MSS MTU Detection in a new thread.
+  void Start() override;
 
-  // Handles the file events that are reported for the corresponding TCP socket
-  // file descriptor. Returns whether the uplink and downlink MSS MTU have been
-  // updated.
-  absl::StatusOr<MssMtuUpdateInfo> HandleEvent(
-      const EventsHelper::Event& ev) override;
+  // Stops the MSS detection process. If the MSS detection was not completed
+  // MssMtuFailure will be called on the notification handler with an aborted
+  // error.
+  void Stop() override;
 
   // Disallow copy and assign.
   MssMtuDetector(const MssMtuDetector&) = delete;
@@ -76,12 +72,16 @@ class MssMtuDetector : public MssMtuDetectorInterface {
   absl::StatusOr<MssMtuUpdateInfo> HandleEventInternal(
       const EventsHelper::Event& ev);
 
+  void HandleEvents();
+
+  void CleanUp(bool stop_thread);
+
   enum class State { kUnknown, kError, kConnectStarted, kConnected, kFinished };
   static std::string StateStr(State state);
   std::string DebugString() const;
 
   // Marks the state as error and cleans up.
-  void Error();
+  void Error(const absl::Status& status);
 
   // Closes the socket if not closed yet and unregisters it from the events
   // helper if not unregistered. It is safe to call this function multiple
@@ -98,21 +98,29 @@ class MssMtuDetector : public MssMtuDetectorInterface {
   const int fd_;
   // Dataplane address of server.
   const Endpoint endpoint_;
-  EventsHelper* const events_helper_;
+  EventsHelper events_helper_;
   State state_ = State::kUnknown;
   bool fd_closed_ = false;
-  bool added_to_events_helper_ = false;
+  bool sock_fd_added_to_events_ = false;
+  bool stop_fd_added_to_events_ = false;
 
   std::unique_ptr<SyscallInterface> syscall_interface_;
 
-  std::optional<uint32> uplink_mss_mtu_;
-  std::optional<uint32> downlink_mss_mtu_;
+  NotificationInterface* notification_;  // Not owned.
+
+  // This thread will be used to send notifications "up the stack" to listeners.
+  // It should not be used for anything else.
+  utils::LooperThread* notification_thread_;  // Not owned.
+
+  uint32_t uplink_mss_mtu_;
+  uint32_t downlink_mss_mtu_;
+
+  EventFd stop_event_;
+  utils::LooperThread thread_;
 
   static constexpr int kDownlinkMssMtuBufferSize = 4;
   char downlink_mss_mtu_buffer_[kDownlinkMssMtuBufferSize];
   int bytes_in_buffer_ = 0;
-
-  friend class MssMtuDetectorTest;
 };
 
 }  // namespace android

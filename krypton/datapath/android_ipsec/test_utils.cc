@@ -150,10 +150,17 @@ LocalTcpSocket::~LocalTcpSocket() {
 LocalTcpMssMtuServer::LocalTcpMssMtuServer(LocalTcpSocket* sock, uint32_t data,
                                            bool send_data,
                                            absl::Notification* server_up)
+    : LocalTcpMssMtuServer(sock, data, send_data, server_up, nullptr) {}
+
+LocalTcpMssMtuServer::LocalTcpMssMtuServer(LocalTcpSocket* sock, uint32_t data,
+                                           bool send_data,
+                                           absl::Notification* server_up,
+                                           absl::Notification* start_send_data)
     : sock_(sock),
       data_(data),
       send_data_(send_data),
       server_up_(server_up),
+      start_send_data_(start_send_data),
       server_thread_("LocalTcpMssMtuServer") {
   server_thread_.Post([this] { Serve(); });
 }
@@ -173,6 +180,10 @@ void LocalTcpMssMtuServer::Serve() {
   absl::Cleanup new_sock_cleanup = [new_sock]() { close(new_sock); };
 
   LOG(INFO) << "server accepted a connection.";
+
+  if (start_send_data_ != nullptr) {
+    start_send_data_->WaitForNotification();
+  }
 
   if (!send_data_) {
     LOG(INFO) << "server thread stopped without sending data to the client.";

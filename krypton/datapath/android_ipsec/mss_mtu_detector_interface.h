@@ -15,9 +15,7 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MSS_MTU_DETECTOR_INTERFACE_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MSS_MTU_DETECTOR_INTERFACE_H_
 
-#include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/status/statusor.h"
 
 namespace privacy {
 namespace krypton {
@@ -26,6 +24,15 @@ namespace android {
 
 class MssMtuDetectorInterface {
  public:
+  class NotificationInterface {
+   public:
+    virtual ~NotificationInterface() = default;
+
+    virtual void MssMtuSuccess(int uplink_mss_mtu, int downlink_mss_mtu) = 0;
+
+    virtual void MssMtuFailure(absl::Status status) = 0;
+  };
+
   enum class UpdateResult { kUpdated, kNotUpdated };
   struct MssMtuUpdateInfo {
     UpdateResult uplink;
@@ -34,10 +41,9 @@ class MssMtuDetectorInterface {
 
   virtual ~MssMtuDetectorInterface() = default;
 
-  virtual absl::Status Start() = 0;
+  virtual void Start() = 0;
 
-  virtual absl::StatusOr<MssMtuUpdateInfo> HandleEvent(
-      const EventsHelper::Event& ev) = 0;
+  virtual void Stop() = 0;
 };
 
 }  // namespace android

@@ -40,12 +40,7 @@ constexpr uint32_t kMssIpv6 = 1220;
 }  // namespace
 
 using ::testing::_;
-using ::testing::Eq;
 using ::testing::HasSubstr;
-using ::testing::IsFalse;
-using ::testing::IsTrue;
-using ::testing::Optional;
-using ::testing::status::IsOk;
 using ::testing::status::StatusIs;
 
 class MockSyscallInterface : public SyscallInterface {
@@ -54,13 +49,19 @@ class MockSyscallInterface : public SyscallInterface {
               (override));
 };
 
+class MockNotification : public MssMtuDetectorInterface::NotificationInterface {
+ public:
+  MOCK_METHOD(void, MssMtuSuccess, (int, int), (override));
+  MOCK_METHOD(void, MssMtuFailure, (absl::Status), (override));
+};
+
 class MssMtuDetectorTest
     : public ::testing::TestWithParam<std::tuple<IPProtocol, IPProtocol>> {
  protected:
   MssMtuDetectorTest()
       : client_sock_(LocalSocketFamily(), kTimeoutMs, SocketMode::kNonBlocking),
-        server_sock_(ServerAddressFamily(), kTimeoutMs, SocketMode::kBlocking) {
-  }
+        server_sock_(ServerAddressFamily(), kTimeoutMs, SocketMode::kBlocking),
+        thread_("MSS MTU Detector Test") {}
 
   void SetUp() override {
     auto mock_syscall = std::make_unique<MockSyscallInterface>();
@@ -90,11 +91,9 @@ class MssMtuDetectorTest
         });
 
     mss_mtu_detector_ = std::make_unique<MssMtuDetector>(
-        client_sock_.DetachFd(), server_sock_.endpoint(), &events_helper_,
-        std::move(mock_syscall));
+        client_sock_.DetachFd(), server_sock_.endpoint(),
+        std::move(mock_syscall), &notification_, &thread_);
   }
-
-  int fd() const { return mss_mtu_detector_->fd_; }
 
   IPProtocol LocalSocketFamily() const { return std::get<0>(GetParam()); }
 
@@ -107,21 +106,10 @@ class MssMtuDetectorTest
     return kMssIpv4 + sizeof(tcphdr) + sizeof(iphdr);
   }
 
-  bool ConnectStarted() const {
-    return mss_mtu_detector_->state_ == MssMtuDetector::State::kConnectStarted;
-  }
-
-  bool Connected() const {
-    return mss_mtu_detector_->state_ == MssMtuDetector::State::kConnected;
-  }
-
-  bool Error() const {
-    return mss_mtu_detector_->state_ == MssMtuDetector::State::kError;
-  }
-
   LocalTcpSocket client_sock_;
   LocalTcpSocket server_sock_;
-  EventsHelper events_helper_;
+  MockNotification notification_;
+  utils::LooperThread thread_;
   std::unique_ptr<MssMtuDetector> mss_mtu_detector_;
 };
 
@@ -132,132 +120,74 @@ INSTANTIATE_TEST_SUITE_P(
                       std::tuple<IPProtocol, IPProtocol>(IPProtocol::kIPv6,
                                                          IPProtocol::kIPv6)));
 
-TEST_P(MssMtuDetectorTest, fd) { EXPECT_THAT(fd(), Eq(client_sock_.fd())); }
-
-TEST_P(MssMtuDetectorTest, StateAfterStart) {
-  ASSERT_THAT(mss_mtu_detector_->Start(), IsOk());
-
-  EXPECT_THAT(ConnectStarted(), IsTrue());
-}
-
-TEST_P(MssMtuDetectorTest, EmptyMtusIfNotAvailable) {
-  ASSERT_THAT(mss_mtu_detector_->Start(), IsOk());
-
-  EXPECT_THAT(mss_mtu_detector_->uplink_mss_mtu(), Eq(std::nullopt));
-  EXPECT_THAT(mss_mtu_detector_->downlink_mss_mtu(), Eq(std::nullopt));
-}
-
-TEST_P(MssMtuDetectorTest, UplinkMtuAfterConnected) {
+TEST_P(MssMtuDetectorTest, MssDetectionSuccessful) {
   absl::Notification server_up;
-  LocalTcpMssMtuServer server(&server_sock_, Mtu(), /* send_data = */ false,
+  LocalTcpMssMtuServer server(&server_sock_, Mtu(), /*send_data =*/true,
                               &server_up);
   server_up.WaitForNotification();
-  ASSERT_THAT(mss_mtu_detector_->Start(), IsOk());
 
-  EventsHelper::Event event;
-  int num_events = 0;
-  absl::Status status = events_helper_.Wait(
-      &event, /* max_events = */ 1, /* timeout_ms = */ 500, &num_events);
-  ASSERT_THAT(status, IsOk()) << "events_helper_.Wait failed: " << status;
-  ASSERT_THAT(num_events, Eq(1));
-  ASSERT_THAT(EventsHelper::FileFromEvent(event), Eq(fd()));
-  EXPECT_THAT(EventsHelper::FileCanWrite(event), IsTrue());
-  auto update_info_or = mss_mtu_detector_->HandleEvent(event);
-  EXPECT_THAT(update_info_or.status(), IsOk());
-  EXPECT_THAT(update_info_or.value().uplink,
-              MssMtuDetector::UpdateResult::kUpdated);
-  EXPECT_THAT(update_info_or.value().downlink,
-              MssMtuDetector::UpdateResult::kNotUpdated);
+  absl::Notification mss_mtu_done;
+  EXPECT_CALL(notification_, MssMtuSuccess(_, Mtu()))
+      .WillOnce(testing::InvokeWithoutArgs(&mss_mtu_done,
+                                           &absl::Notification::Notify));
 
-  EXPECT_THAT(Error(), IsFalse());
-  EXPECT_THAT(Connected(), IsTrue());
-  EXPECT_THAT(mss_mtu_detector_->uplink_mss_mtu(), Optional(Mtu()));
-}
+  mss_mtu_detector_->Start();
 
-TEST_P(MssMtuDetectorTest, DownlinkMtuAfterReceived) {
-  absl::Notification server_up;
-  LocalTcpMssMtuServer server(&server_sock_, Mtu(), /* send_data = */ true,
-                              &server_up);
-  server_up.WaitForNotification();
-  ASSERT_THAT(mss_mtu_detector_->Start(), IsOk());
-
-  constexpr int kMaxEvents = 4;
-  EventsHelper::Event events[kMaxEvents];
-  int num_events = 0;
-  MssMtuDetector::UpdateResult downlink_mss_mtu_update_result =
-      MssMtuDetector::UpdateResult::kNotUpdated;
-  while (downlink_mss_mtu_update_result !=
-         MssMtuDetector::UpdateResult::kUpdated) {
-    absl::Status status = events_helper_.Wait(
-        events, kMaxEvents, /* timeout_ms = */ 500, &num_events);
-    ASSERT_THAT(status, IsOk()) << "events_helper_.Wait failed: " << status;
-    for (int i = 0; i < num_events; i++) {
-      ASSERT_THAT(EventsHelper::FileFromEvent(events[i]), Eq(fd()));
-      auto update_info_or = mss_mtu_detector_->HandleEvent(events[i]);
-      EXPECT_THAT(update_info_or.status(), IsOk());
-      EXPECT_THAT(Error(), IsFalse());
-      downlink_mss_mtu_update_result = update_info_or.value().downlink;
-    }
-  }
-
-  EXPECT_THAT(mss_mtu_detector_->downlink_mss_mtu(), Optional(Mtu()));
+  EXPECT_TRUE(mss_mtu_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
 TEST_P(MssMtuDetectorTest, NoServer) {
-  ASSERT_THAT(mss_mtu_detector_->Start(), IsOk());
+  absl::Notification mss_mtu_done;
+  EXPECT_CALL(notification_,
+              MssMtuFailure(StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("Connection refused"))))
+      .WillOnce(testing::InvokeWithoutArgs(&mss_mtu_done,
+                                           &absl::Notification::Notify));
 
-  EventsHelper::Event event;
-  int num_events = 0;
-  absl::Status status = events_helper_.Wait(
-      &event, /* max_events = */ 1, /* timeout_ms = */ 500, &num_events);
-  ASSERT_THAT(status, IsOk()) << "events_helper_.Wait failed: " << status;
-  ASSERT_THAT(num_events, Eq(1));
-  ASSERT_THAT(EventsHelper::FileFromEvent(event), Eq(fd()));
+  mss_mtu_detector_->Start();
 
-  EXPECT_THAT(EventsHelper::FileHasError(event), IsTrue());
-  EXPECT_THAT(mss_mtu_detector_->HandleEvent(event),
-              StatusIs(absl::StatusCode::kInternal, HasSubstr("Error event")));
-
-  EXPECT_THAT(Error(), IsTrue());
-  EXPECT_THAT(Connected(), IsFalse());
-  EXPECT_THAT(mss_mtu_detector_->uplink_mss_mtu(), Eq(std::nullopt));
-  EXPECT_THAT(mss_mtu_detector_->downlink_mss_mtu(), Eq(std::nullopt));
+  EXPECT_TRUE(mss_mtu_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
 TEST_P(MssMtuDetectorTest, DownlinkMtuNotReceived) {
   absl::Notification server_up;
-  LocalTcpMssMtuServer server(&server_sock_, Mtu(), /* send_data = */ false,
+  LocalTcpMssMtuServer server(&server_sock_, Mtu(), /*send_data =*/false,
                               &server_up);
   server_up.WaitForNotification();
-  ASSERT_THAT(mss_mtu_detector_->Start(), IsOk());
 
-  EventsHelper::Event event;
-  int num_events = 0;
-  absl::Status status;
-  absl::StatusOr<MssMtuDetector::MssMtuUpdateInfo> update_info_or;
-  while (true) {
-    status = events_helper_.Wait(&event, /* max_events = */ 1,
-                                 /* timeout_ms = */ 500, &num_events);
-    ASSERT_THAT(status, IsOk()) << "events_helper_.Wait failed: " << status;
-    if (num_events <= 0) {
-      continue;
-    }
-    ASSERT_THAT(EventsHelper::FileFromEvent(event), Eq(fd()));
-    update_info_or = mss_mtu_detector_->HandleEvent(event);
-    if (!update_info_or.status().ok()) {
-      break;
-    }
-    EXPECT_THAT(update_info_or.value().downlink,
-                Eq(MssMtuDetector::UpdateResult::kNotUpdated));
-  }
+  absl::Notification mss_mtu_done;
+  EXPECT_CALL(
+      notification_,
+      MssMtuFailure(StatusIs(absl::StatusCode::kInternal,
+                             HasSubstr("Server has closed the connection"))))
+      .WillOnce(testing::InvokeWithoutArgs(&mss_mtu_done,
+                                           &absl::Notification::Notify));
 
-  EXPECT_THAT(update_info_or.status(),
-              StatusIs(util::error::INTERNAL,
-                       HasSubstr("recv returns 0. Server has closed "
-                                 "the connection unexpectedly")));
-  EXPECT_THAT(Error(), IsTrue());
-  EXPECT_THAT(mss_mtu_detector_->uplink_mss_mtu(), Optional(Mtu()));
-  EXPECT_THAT(mss_mtu_detector_->downlink_mss_mtu(), Eq(std::nullopt));
+  mss_mtu_detector_->Start();
+
+  EXPECT_TRUE(mss_mtu_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
+}
+
+TEST_P(MssMtuDetectorTest, StopBeforeMssDetectionComplete) {
+  absl::Notification server_up;
+  absl::Notification start_send_data;
+  LocalTcpMssMtuServer server(&server_sock_, Mtu(), /*send_data =*/false,
+                              &server_up, &start_send_data);
+  server_up.WaitForNotification();
+
+  absl::Notification mss_mtu_done;
+  EXPECT_CALL(notification_,
+              MssMtuFailure(StatusIs(absl::StatusCode::kAborted)))
+      .WillOnce(testing::InvokeWithoutArgs(&mss_mtu_done,
+                                           &absl::Notification::Notify));
+
+  mss_mtu_detector_->Start();
+
+  mss_mtu_detector_->Stop();
+
+  EXPECT_TRUE(mss_mtu_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
+
+  start_send_data.Notify();
 }
 
 }  // namespace android

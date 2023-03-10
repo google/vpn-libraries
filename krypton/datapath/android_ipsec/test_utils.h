@@ -85,6 +85,18 @@ class LocalTcpMssMtuServer {
   LocalTcpMssMtuServer(LocalTcpSocket* sock, uint32_t data, bool send_data,
                        absl::Notification* server_up);
 
+  // sock: pointer to the socket that is to be used by this server.
+  // data: 4-byte data to be sent from the server.
+  // send_data: If true, this server will send data_ over sock_ after accepting
+  //            a connection. If false, this server will shut down after
+  //            accepting the connection without sending the data.
+  // server_up: to be notified after this server is ready to accept connections.
+  // start_send_data: to be notified when this server should allow data to be
+  //                  sent to the client.
+  LocalTcpMssMtuServer(LocalTcpSocket* sock, uint32_t data, bool send_data,
+                       absl::Notification* server_up,
+                       absl::Notification* start_send_data);
+
   ~LocalTcpMssMtuServer() {
     server_thread_.Stop();
     server_thread_.Join();
@@ -107,6 +119,8 @@ class LocalTcpMssMtuServer {
   bool send_data_;
   // To be notified after this server is ready to accept connections.
   absl::Notification* server_up_;
+  // To be notified when this server should allow data to be sent to the client.
+  absl::Notification* start_send_data_;
   utils::LooperThread server_thread_;
 };
 
