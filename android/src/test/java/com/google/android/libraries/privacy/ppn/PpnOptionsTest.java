@@ -222,6 +222,38 @@ public class PpnOptionsTest {
   }
 
   @Test
+  public void setUpdatePathInfoUrl_hasDefault() {
+    PpnOptions options = new PpnOptions.Builder().build();
+
+    assertThat(options.getUpdatePathInfoUrl()).isNotNull();
+    assertThat(options.getUpdatePathInfoUrl()).isNotEmpty();
+  }
+
+  @Test
+  public void setUpdatePathInfoUrl_storesUrl() {
+    String url = "http://example.com/updatepathinfo";
+    PpnOptions options = new PpnOptions.Builder().setUpdatePathInfoUrl(url).build();
+
+    assertThat(options.getUpdatePathInfoUrl()).isEqualTo(url);
+  }
+
+  @Test
+  public void setUpdatePathInfoUrl_ignoresNull() {
+    PpnOptions options = new PpnOptions.Builder().setUpdatePathInfoUrl(null).build();
+
+    assertThat(options.getUpdatePathInfoUrl()).isNotNull();
+    assertThat(options.getUpdatePathInfoUrl()).isNotEmpty();
+  }
+
+  @Test
+  public void setUpdatePathInfoUrl_ignoresEmpty() {
+    PpnOptions options = new PpnOptions.Builder().setUpdatePathInfoUrl("").build();
+
+    assertThat(options.getUpdatePathInfoUrl()).isNotNull();
+    assertThat(options.getUpdatePathInfoUrl()).isNotEmpty();
+  }
+
+  @Test
   public void testConnectivityCheckUrl_hasDefault() {
     PpnOptions options = new PpnOptions.Builder().build();
 
@@ -569,6 +601,7 @@ public class PpnOptionsTest {
             .setIpv6KeepaliveInterval(Duration.ofMillis(16))
             .setPublicMetadataEnabled(true)
             .setInitialDataUrl("h")
+            .setUpdatePathInfoUrl("i")
             .build();
 
     KryptonConfig config = options.createKryptonConfigBuilder().build();
@@ -605,6 +638,7 @@ public class PpnOptionsTest {
     assertThat(config.getIpv6KeepaliveInterval().getNanos()).isEqualTo(16000000);
     assertThat(config.getPublicMetadataEnabled()).isTrue();
     assertThat(config.getInitialDataUrl()).isEqualTo("h");
+    assertThat(config.getUpdatePathInfoUrl()).isEqualTo("i");
   }
 
   @Test
@@ -637,6 +671,7 @@ public class PpnOptionsTest {
     assertThat(config.hasIpv6KeepaliveInterval()).isFalse();
     assertThat(config.getPublicMetadataEnabled()).isFalse();
     assertThat(config.getInitialDataUrl()).isNotEmpty();
+    assertThat(config.getUpdatePathInfoUrl()).isNotEmpty();
   }
 
   @Test

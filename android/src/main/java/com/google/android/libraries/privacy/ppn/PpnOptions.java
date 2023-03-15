@@ -45,6 +45,8 @@ public class PpnOptions {
   private static final String DEFAULT_ZINC_SERVICE_TYPE = "g1";
   private static final String DEFAULT_INITIAL_DATA_URL =
       "https://staging-phosphor-pa.sandbox.googleapis.com/v1/getInitialData";
+  private static final String DEFAULT_BRASS_UPDATE_PATH_INFO_URL =
+      "https://staging.brass.cloud.cupronickel.goog:443/updatepathinfo";
 
   // Default URL to use for checking for internet connectivity. This gstatic url returns no content
   // so it's a very low latency connection check.
@@ -61,6 +63,7 @@ public class PpnOptions {
   private final String zincOAuthScopes;
   private final String zincServiceType;
   private final String initialDataUrl;
+  private final String updatePathInfoUrl;
 
   private final String connectivityCheckUrl;
   private final Duration connectivityCheckRetryDelay;
@@ -108,6 +111,7 @@ public class PpnOptions {
     this.zincOAuthScopes = builder.zincOAuthScopes;
     this.zincServiceType = builder.zincServiceType;
     this.initialDataUrl = builder.initialDataUrl;
+    this.updatePathInfoUrl = builder.updatePathInfoUrl;
 
     this.connectivityCheckUrl = builder.connectivityCheckUrl;
     this.connectivityCheckRetryDelay = builder.connectivityCheckRetryDelay;
@@ -173,6 +177,10 @@ public class PpnOptions {
 
   public String getInitialDataUrl() {
     return initialDataUrl;
+  }
+
+  public String getUpdatePathInfoUrl() {
+    return updatePathInfoUrl;
   }
 
   public String getConnectivityCheckUrl() {
@@ -311,6 +319,7 @@ public class PpnOptions {
             .setBrassUrl(getBrassUrl())
             .setServiceType(getZincServiceType())
             .setInitialDataUrl(getInitialDataUrl())
+            .setUpdatePathInfoUrl(getUpdatePathInfoUrl())
             .setReconnectorConfig(reconnectorConfig);
 
     if (getCopperControllerAddress().isPresent()) {
@@ -397,6 +406,7 @@ public class PpnOptions {
     private String zincOAuthScopes = DEFAULT_ZINC_OAUTH_SCOPES;
     private String zincServiceType = DEFAULT_ZINC_SERVICE_TYPE;
     private String initialDataUrl = DEFAULT_INITIAL_DATA_URL;
+    private String updatePathInfoUrl = DEFAULT_BRASS_UPDATE_PATH_INFO_URL;
     private String connectivityCheckUrl = DEFAULT_CONNECTIVITY_CHECK_URL;
     private Duration connectivityCheckRetryDelay = DEFAULT_CONNECTIVITY_CHECK_RETRY_DELAY;
     private int connectivityCheckMaxRetries = DEFAULT_CONNECTIVITY_CHECK_MAX_RETRIES;
@@ -526,6 +536,22 @@ public class PpnOptions {
     public Builder setInitialDataUrl(String url) {
       if (!isNullOrEmpty(url)) {
         this.initialDataUrl = url;
+      }
+      return this;
+    }
+
+    /**
+     * Sets the url to use for connecting to the Brass or Beryllium backend for /updatepathinfo
+     * endpoint such as "https://staging.brass.cloud.cupronickel.goog:443/updatepathinfo".
+     *
+     * <p>If this is not set, it will default to a reasonable 'Brass' server address.
+     *
+     * <p>If null or an empty string is passed in, it will be ignored.
+     */
+    @CanIgnoreReturnValue
+    public Builder setUpdatePathInfoUrl(String url) {
+      if (!isNullOrEmpty(url)) {
+        this.updatePathInfoUrl = url;
       }
       return this;
     }
