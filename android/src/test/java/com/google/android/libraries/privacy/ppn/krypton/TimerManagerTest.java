@@ -47,12 +47,8 @@ public final class TimerManagerTest {
   public void setUp() {
     WorkManagerTestInitHelper.initializeTestWorkManager(
         ApplicationProvider.getApplicationContext());
-    timerIdManager =
-        new TimerIdManager(
-            timerExpiryListener,
-            (WorkManager)
-                WorkManagerTestInitHelper.getTestDriver(
-                    ApplicationProvider.getApplicationContext()));
+    WorkManager workManager = WorkManager.getInstance(ApplicationProvider.getApplicationContext());
+    timerIdManager = new TimerIdManager(timerExpiryListener, workManager);
   }
 
   @Test
