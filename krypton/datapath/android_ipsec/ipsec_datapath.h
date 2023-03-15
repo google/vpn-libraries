@@ -92,7 +92,7 @@ class IpSecDatapath : public DatapathInterface,
 
   void GetDebugInfo(DatapathDebugInfo* debug_info) override;
 
-  void MtuUpdated(int path_mtu, int tunnel_mtu) override;
+  void UplinkMtuUpdated(int uplink_mtu, int tunnel_mtu) override;
 
  private:
   void ShutdownIpSecPacketForwarder() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);

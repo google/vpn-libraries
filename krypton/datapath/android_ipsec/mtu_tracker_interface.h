@@ -23,23 +23,23 @@ namespace datapath {
 namespace android {
 
 // Interface which encapsulates bookkeeping around the maximum transmission unit
-// (MTU) for a connection. Tracks both the Path MTU, for the network connection,
-// and the Tunnel MTU, for the VPN Tunnel.
+// (MTU) for a connection. Tracks both the uplink MTU, for the network
+// connection, and the tunnel MTU, for the VPN Tunnel.
 class MtuTrackerInterface {
  public:
   class NotificationInterface {
    public:
     virtual ~NotificationInterface() = default;
 
-    virtual void MtuUpdated(int path_mtu, int tunnel_mtu) = 0;
+    virtual void UplinkMtuUpdated(int uplink_mtu, int tunnel_mtu) = 0;
   };
 
   virtual ~MtuTrackerInterface() = default;
 
-  // Updates both the Path MTU and Tunnel MTU based on a provided Path MTU.
-  virtual void UpdateMtu(int path_mtu) = 0;
+  // Updates both the uplink MTU and tunnel MTU based on the uplink MTU value.
+  virtual void UpdateUplinkMtu(int uplink_mtu) = 0;
 
-  virtual int GetPathMtu() const = 0;
+  virtual int GetUplinkMtu() const = 0;
 
   virtual int GetTunnelMtu() const = 0;
 

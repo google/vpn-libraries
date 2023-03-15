@@ -68,7 +68,9 @@ class TestNotification : public DatapathInterface::NotificationInterface {
 
   void DoRekey() override {}
 
-  void DoMtuUpdate(int path_mtu, int tunnel_mtu) override {}
+  void DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) override {}
+
+  void DoDownlinkMtuUpdate(int downlink_mtu) override {}
 
   void VerifyNoMoreNotifications() {
     if (_unexpectedNotifications.count > 0) {

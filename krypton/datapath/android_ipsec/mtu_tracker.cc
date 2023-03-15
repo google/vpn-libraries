@@ -41,20 +41,21 @@ constexpr int kMaxIpv6Overhead = kAesGcm128Overhead + kGenericEspOverheadMaxV6;
 MtuTracker::MtuTracker(IPProtocol dest_ip_protocol)
     : MtuTracker(dest_ip_protocol, kDefaultMtu) {}
 
-MtuTracker::MtuTracker(IPProtocol dest_ip_protocol, int initial_path_mtu)
+MtuTracker::MtuTracker(IPProtocol dest_ip_protocol, int initial_uplink_mtu)
     : tunnel_overhead_(dest_ip_protocol == IPProtocol::kIPv6
                            ? kMaxIpv6Overhead
                            : kMaxIpv4Overhead),
-      path_mtu_(initial_path_mtu),
-      tunnel_mtu_(path_mtu_ - tunnel_overhead_),
+      uplink_mtu_(initial_uplink_mtu),
+      tunnel_mtu_(uplink_mtu_ - tunnel_overhead_),
       notification_(nullptr),
       notification_thread_(nullptr) {}
 
-void MtuTracker::UpdateMtu(int path_mtu) {
-  if (path_mtu < path_mtu_) {
-    LOG(INFO) << "Updating Path MTU from " << path_mtu_ << " to " << path_mtu;
-    path_mtu_ = path_mtu;
-    int tunnel_mtu = path_mtu_ - tunnel_overhead_;
+void MtuTracker::UpdateUplinkMtu(int uplink_mtu) {
+  if (uplink_mtu < uplink_mtu_) {
+    LOG(INFO) << "Updating Path MTU from " << uplink_mtu_ << " to "
+              << uplink_mtu;
+    uplink_mtu_ = uplink_mtu;
+    int tunnel_mtu = uplink_mtu_ - tunnel_overhead_;
     LOG(INFO) << "Updating Tunnel MTU from " << tunnel_mtu_ << " to "
               << tunnel_mtu;
     tunnel_mtu_ = tunnel_mtu;
@@ -63,13 +64,13 @@ void MtuTracker::UpdateMtu(int path_mtu) {
       return;
     }
     auto notification = notification_;
-    notification_thread_->Post([notification, path_mtu, tunnel_mtu] {
-      notification->MtuUpdated(path_mtu, tunnel_mtu);
+    notification_thread_->Post([notification, uplink_mtu, tunnel_mtu] {
+      notification->UplinkMtuUpdated(uplink_mtu, tunnel_mtu);
     });
   }
 }
 
-int MtuTracker::GetPathMtu() const { return path_mtu_; }
+int MtuTracker::GetUplinkMtu() const { return uplink_mtu_; }
 
 int MtuTracker::GetTunnelMtu() const { return tunnel_mtu_; }
 

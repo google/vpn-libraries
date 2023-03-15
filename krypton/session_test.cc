@@ -907,10 +907,10 @@ TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonDefaultValues) {
   auto json_str = ProtoToJsonString(update_path_info);
   std::string expected = R"string(
   {
-    "mtu":0,
+    "downlink_mtu":0,
     "mtu_update_signature":"",
-    "sequence_number":0,
     "session_id":0,
+    "uplink_mtu":0,
     "verification_key":""
   })string";
   absl::StrReplaceAll({{"\n", ""}, {" ", ""}}, &expected);
@@ -920,30 +920,32 @@ TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonDefaultValues) {
 TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonNonDefaultValues) {
   ppn::UpdatePathInfoRequest update_path_info;
   update_path_info.set_session_id(1);
-  update_path_info.set_sequence_number(2);
-  update_path_info.set_mtu(3);
+  update_path_info.set_uplink_mtu(2);
+  update_path_info.set_downlink_mtu(3);
   update_path_info.set_verification_key("foo");
   update_path_info.set_mtu_update_signature("bar");
   auto json_str = ProtoToJsonString(update_path_info);
   std::string expected = R"string(
   {
-    "mtu":3,
+    "downlink_mtu":3,
     "mtu_update_signature":"YmFy",
-    "sequence_number":2,
     "session_id":1,
+    "uplink_mtu":2,
     "verification_key":"Zm9v"
   })string";
   absl::StrReplaceAll({{"\n", ""}, {" ", ""}}, &expected);
   EXPECT_EQ(json_str, expected);
 }
 
-TEST_F(SessionTest, MtuUpdateHandler) {
-  EXPECT_EQ(session_->GetPathInfoSeqNumTestOnly(), 0);
-
-  session_->DoMtuUpdate(123, 456);
-  EXPECT_EQ(session_->GetPathMtuTestOnly(), 123);
+TEST_F(SessionTest, UplinkMtuUpdateHandler) {
+  session_->DoUplinkMtuUpdate(123, 456);
+  EXPECT_EQ(session_->GetUplinkMtuTestOnly(), 123);
   EXPECT_EQ(session_->GetTunnelMtuTestOnly(), 456);
-  EXPECT_EQ(session_->GetPathInfoSeqNumTestOnly(), 1);
+}
+
+TEST_F(SessionTest, DownlinkMtuUpdateHandler) {
+  session_->DoDownlinkMtuUpdate(123);
+  EXPECT_EQ(session_->GetDownlinkMtuTestOnly(), 123);
 }
 
 }  // namespace

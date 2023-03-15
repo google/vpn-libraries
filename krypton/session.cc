@@ -180,9 +180,8 @@ std::string ProtoToJsonString(
 
   nlohmann::json json_obj;
   json_obj[JsonKeys::kSessionId] = update_path_info_request.session_id();
-  json_obj[JsonKeys::kSequenceNumber] =
-      update_path_info_request.sequence_number();
-  json_obj[JsonKeys::kMtu] = update_path_info_request.mtu();
+  json_obj[JsonKeys::kUplinkMtu] = update_path_info_request.uplink_mtu();
+  json_obj[JsonKeys::kDownlinkMtu] = update_path_info_request.downlink_mtu();
   json_obj[JsonKeys::kVerificationKey] = verification_key_encoded;
   json_obj[JsonKeys::kMtuUpdateSignature] = mtu_update_signature_encoded;
   return utils::JsonToString(json_obj);
@@ -191,12 +190,13 @@ std::string ProtoToJsonString(
 absl::Status Session::SendPathInfoUpdate() {
   ppn::UpdatePathInfoRequest update_path_info_request;
   update_path_info_request.set_session_id(egress_manager_->uplink_spi());
-  update_path_info_request.set_sequence_number(path_info_seq_++);
-  update_path_info_request.set_mtu(path_mtu_);
+  update_path_info_request.set_uplink_mtu(uplink_mtu_);
+  update_path_info_request.set_downlink_mtu(downlink_mtu_);
 
   std::string signed_data =
       absl::StrCat("path_info;", update_path_info_request.session_id(), ";",
-                   update_path_info_request.mtu());
+                   update_path_info_request.uplink_mtu(), ";",
+                   update_path_info_request.downlink_mtu());
 
   PPN_ASSIGN_OR_RETURN(auto signature,
                        key_material_->GenerateSignature(signed_data));
@@ -507,9 +507,8 @@ absl::Status Session::Rekey() {
   // Generate the rekey parameters that are needed and generate a signature from
   // the old crypto keys.
   auto new_key_material = std::make_unique<crypto::SessionCrypto>(config_);
-  PPN_ASSIGN_OR_RETURN(auto signature,
-                       key_material_->GenerateSignature(
-                           new_key_material->public_value()));
+  PPN_ASSIGN_OR_RETURN(auto signature, key_material_->GenerateSignature(
+                                           new_key_material->public_value()));
   new_key_material->SetSignature(signature);
   key_material_.reset();
   key_material_ = std::move(new_key_material);
@@ -861,14 +860,22 @@ void Session::DoRekey() {
   }
 }
 
-void Session::DoMtuUpdate(int path_mtu, int tunnel_mtu) {
+void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
   absl::MutexLock l(&mutex_);
   if (tunnel_mtu != tunnel_mtu_) {
     tunnel_mtu_ = tunnel_mtu;
     // TODO: Recreate the tunnel if necessary
   }
-  if (path_mtu != path_mtu_) {
-    path_mtu_ = path_mtu;
+  if (uplink_mtu != uplink_mtu_) {
+    uplink_mtu_ = uplink_mtu;
+    PPN_LOG_IF_ERROR(SendPathInfoUpdate());
+  }
+}
+
+void Session::DoDownlinkMtuUpdate(int downlink_mtu) {
+  absl::MutexLock l(&mutex_);
+  if (downlink_mtu != downlink_mtu_) {
+    downlink_mtu_ = downlink_mtu;
     PPN_LOG_IF_ERROR(SendPathInfoUpdate());
   }
 }

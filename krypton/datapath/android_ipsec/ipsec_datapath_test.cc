@@ -49,7 +49,8 @@ class MockNotification : public DatapathInterface::NotificationInterface {
   MOCK_METHOD(void, DatapathPermanentFailure, (const absl::Status &),
               (override));
   MOCK_METHOD(void, DoRekey, (), (override));
-  MOCK_METHOD(void, DoMtuUpdate, (int, int), (override));
+  MOCK_METHOD(void, DoUplinkMtuUpdate, (int, int), (override));
+  MOCK_METHOD(void, DoDownlinkMtuUpdate, (int), (override));
 };
 
 class IpSecDatapathTest : public ::testing::Test {
@@ -218,13 +219,12 @@ TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
   datapath_.Stop();
 }
 
-TEST_F(IpSecDatapathTest, MtuUpdateHandler) {
+TEST_F(IpSecDatapathTest, UplinkMtuUpdateHandler) {
   absl::Notification mtu_update_done;
-  EXPECT_CALL(notification_, DoMtuUpdate(1, 2)).WillOnce([&mtu_update_done]() {
-    mtu_update_done.Notify();
-  });
+  EXPECT_CALL(notification_, DoUplinkMtuUpdate(1, 2))
+      .WillOnce([&mtu_update_done]() { mtu_update_done.Notify(); });
 
-  datapath_.MtuUpdated(1, 2);
+  datapath_.UplinkMtuUpdated(1, 2);
 
   EXPECT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }

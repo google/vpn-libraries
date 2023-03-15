@@ -59,10 +59,10 @@ const char JsonKeys::kServerAddress[] = "server_address";
 // Attestation
 const char JsonKeys::kAttestationNonce[] = "attestation_nonce";
 
-// UpdatePathInfo
+// UpdatePathInfoRequest
 const char JsonKeys::kSessionId[] = "session_id";
-const char JsonKeys::kSequenceNumber[] = "sequence_number";
-const char JsonKeys::kMtu[] = "mtu";
+const char JsonKeys::kUplinkMtu[] = "uplink_mtu";
+const char JsonKeys::kDownlinkMtu[] = "downlink_mtu";
 const char JsonKeys::kVerificationKey[] = "verification_key";
 const char JsonKeys::kMtuUpdateSignature[] = "mtu_update_signature";
 

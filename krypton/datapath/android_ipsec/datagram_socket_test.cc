@@ -44,9 +44,10 @@ using ::testing::status::StatusIs;
 
 class MockMtuTracker : public MtuTrackerInterface {
  public:
-  MOCK_METHOD(void, UpdateMtu, (int), (override));
-  MOCK_METHOD(int, GetPathMtu, (), (const override));
+  MOCK_METHOD(void, UpdateUplinkMtu, (int), (override));
+  MOCK_METHOD(int, GetUplinkMtu, (), (const override));
   MOCK_METHOD(int, GetTunnelMtu, (), (const override));
+  MOCK_METHOD(int, GetDownlinkMtu, (), (const override));
   MOCK_METHOD(void, RegisterNotificationHandler,
               (NotificationInterface * notification,
                krypton::utils::LooperThread* notification_thread),
@@ -311,7 +312,7 @@ TEST(DatagramSocketTest, DynamicMtuCreateAndConnect) {
   auto mtu_tracker = std::make_unique<MockMtuTracker>();
   MockMtuTracker* mtu_tracker_ptr = mtu_tracker.get();
 
-  EXPECT_CALL(*mtu_tracker_ptr, UpdateMtu(_)).Times(1);
+  EXPECT_CALL(*mtu_tracker_ptr, UpdateUplinkMtu(_)).Times(1);
 
   // Create the socket.
   ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket(std::move(mtu_tracker)));
@@ -360,7 +361,7 @@ TEST(DatagramSocketTest, DynamicMtuWriteSocketFailureDueToMtu) {
   MockMtuTracker* mtu_tracker_ptr = mtu_tracker.get();
 
   EXPECT_CALL(*mtu_tracker_ptr, GetTunnelMtu()).WillRepeatedly(Return(70000));
-  EXPECT_CALL(*mtu_tracker_ptr, UpdateMtu(65536)).Times(2);
+  EXPECT_CALL(*mtu_tracker_ptr, UpdateUplinkMtu(65536)).Times(2);
 
   // Create the socket.
   ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket(std::move(mtu_tracker)));

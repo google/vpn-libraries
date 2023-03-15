@@ -52,7 +52,8 @@ class DatapathInterface {
     // Datapath needs rekey
     virtual void DoRekey() = 0;
     // Datapath MTU has been updated
-    virtual void DoMtuUpdate(int path_mtu, int tunnel_mtu) = 0;
+    virtual void DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) = 0;
+    virtual void DoDownlinkMtuUpdate(int downlink_mtu) = 0;
   };
 
   // Initialize the data path.  Start takes two parameters, the transform params

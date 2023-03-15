@@ -171,7 +171,7 @@ absl::Status DatagramSocket::WritePackets(std::vector<Packet> packets) {
         // update the MTU tracker.
         absl::MutexLock lock(&mutex_);
         PPN_RETURN_IF_ERROR(ProcessSocketErrorQueue());
-        mtu_tracker_->UpdateMtu(kernel_mtu_);
+        mtu_tracker_->UpdateUplinkMtu(kernel_mtu_);
         ++uplink_packets_dropped_;
         continue;
       }
@@ -342,7 +342,7 @@ absl::Status DatagramSocket::UpdateMtuFromKernel(IPProtocol ip_protocol) {
         "Failed to read the kernel MTU on fd ", fd, ": ", strerror(errno)));
   }
 
-  mtu_tracker_->UpdateMtu(kernel_mtu_);
+  mtu_tracker_->UpdateUplinkMtu(kernel_mtu_);
   return absl::OkStatus();
 }
 

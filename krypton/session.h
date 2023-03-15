@@ -127,7 +127,9 @@ class Session : public Auth::NotificationInterface,
   void DatapathPermanentFailure(const absl::Status& status) override
       ABSL_LOCKS_EXCLUDED(mutex_);
   void DoRekey() override ABSL_LOCKS_EXCLUDED(mutex_);
-  void DoMtuUpdate(int path_mtu, int tunnel_mtu) override
+  void DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+  void DoDownlinkMtuUpdate(int downlink_mtu) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   State state() const ABSL_LOCKS_EXCLUDED(mutex_) {
@@ -170,19 +172,19 @@ class Session : public Auth::NotificationInterface,
     return key_material_.get();
   }
 
-  int GetPathMtuTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+  int GetUplinkMtuTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
-    return path_mtu_;
+    return uplink_mtu_;
+  }
+
+  int GetDownlinkMtuTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
+    return downlink_mtu_;
   }
 
   int GetTunnelMtuTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return tunnel_mtu_;
-  }
-
-  int GetPathInfoSeqNumTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock l(&mutex_);
-    return path_info_seq_;
   }
 
  private:
@@ -247,10 +249,12 @@ class Session : public Auth::NotificationInterface,
   int datapath_reattempt_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   std::atomic_int datapath_reattempt_count_ ABSL_GUARDED_BY(mutex_) = 0;
 
-  uint32_t path_info_seq_ ABSL_GUARDED_BY(mutex_) = 0;
-  // Path MTU initialized to a commonly used MTU value
-  int path_mtu_ ABSL_GUARDED_BY(mutex_) = 1500;
-  // Tunnel MTU initialized to the Path MTU minus an overhead
+  // Initialize uplink and downlink MTU values to 0 so that the initial update
+  // will always cause the value to change.
+  int uplink_mtu_ ABSL_GUARDED_BY(mutex_) = 0;
+  int downlink_mtu_ ABSL_GUARDED_BY(mutex_) = 0;
+  // Value of MTU for the TUN interface when dynamic MTU is enabled. Initialized
+  // to a commonly used MTU value of 1500, minus some overhead.
   int tunnel_mtu_ ABSL_GUARDED_BY(mutex_) = 1395;
 
   std::unique_ptr<crypto::SessionCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
