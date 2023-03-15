@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#import <Foundation/Foundation.h>
+#include <string>
+
 #include "googlemac/iPhone/Shared/PPN/Krypton/API/PPNHttpFetcher.h"
 
 #import "privacy/net/krypton/proto/http_fetcher.proto.h"
@@ -32,6 +35,7 @@ PPNHttpFetcher::PPNHttpFetcher()
       request_timeout_(kDefaultRequestTimeout) {}
 
 HttpResponse PPNHttpFetcher::PostJson(const HttpRequest &request) {
+  bool jsonRequest = request.has_json_body();
   NSString *URLString = [[NSString alloc] initWithUTF8String:request.url().c_str()];
   NSMutableDictionary<NSString *, NSString *> *headers = [[NSMutableDictionary alloc] init];
   for (auto const &[key, value] : request.headers()) {
@@ -39,22 +43,29 @@ HttpResponse PPNHttpFetcher::PostJson(const HttpRequest &request) {
     NSString *valueString = [[NSString alloc] initWithUTF8String:value.c_str()];
     headers[keyString] = valueString;
   }
-  NSString *jsonBody = [[NSString alloc] initWithUTF8String:request.json_body().c_str()];
+
+  std::string requestBody = jsonRequest ? request.json_body() : request.proto_body();
+  NSData *bodyData = [NSData dataWithBytes:requestBody.data() length:requestBody.size()];
 
   // Create a Http fetcher with the URL string.
   GTMSessionFetcher *fetcher = [fetcher_service_ fetcherWithURLString:URLString];
   fetcher.callbackQueue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
   // Add request headers.
-  [fetcher setRequestValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+  if (jsonRequest) {
+    [fetcher setRequestValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+  } else {
+    [fetcher setRequestValue:@"application/x-protobuf" forHTTPHeaderField:@"Content-Type"];
+  }
+
   [headers enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) {
     [fetcher setRequestValue:value forHTTPHeaderField:key];
   }];
   // Add request body data.
-  NSData *bodyData = [jsonBody dataUsingEncoding:NSUTF8StringEncoding];
   fetcher.bodyData = bodyData;
 
   dispatch_semaphore_t fetchSemaphore = dispatch_semaphore_create(0);
-  NSString *__block responseJsonBodyString = nil;
+  NSData *__block responseBodyData;
+  NSDictionary<NSString *, NSString *> *__block responseHeaders;
   // Default status code to be 500.
   __block int statusCode = 500;
   [fetcher
@@ -64,9 +75,10 @@ HttpResponse PPNHttpFetcher::PostJson(const HttpRequest &request) {
             statusCode = error.code;
           }
         } else if (receivedData != nil) {
-          responseJsonBodyString = [[NSString alloc] initWithData:receivedData
-                                                         encoding:NSUTF8StringEncoding];
-          statusCode = 200;
+          // check response content-types matches expected
+          responseBodyData = receivedData;
+          statusCode = fetcher.statusCode;
+          responseHeaders = fetcher.responseHeaders;
         }
 
         dispatch_semaphore_signal(fetchSemaphore);
@@ -87,10 +99,17 @@ HttpResponse PPNHttpFetcher::PostJson(const HttpRequest &request) {
     return response;
   }
 
-  if (responseJsonBodyString != nil) {
-    std::string responseJsonBody = std::string(responseJsonBodyString.UTF8String);
-    response.set_json_body(responseJsonBody);
+  if ([responseHeaders[@"Content-Type"] isEqual:@"application/x-protobuf"]) {
+    char *responseBodyChars = (char *)responseBodyData.bytes;
+    std::string responseBody(responseBodyChars, responseBodyData.length);
+    response.set_proto_body(responseBody);
+  } else {
+    NSString *__block responseBodyString = [[NSString alloc] initWithData:responseBodyData
+                                                                 encoding:NSUTF8StringEncoding];
+    std::string responseBody = std::string(responseBodyString.UTF8String);
+    response.set_json_body(responseBody);
   }
+
   NSString *statusMessageString = [NSHTTPURLResponse localizedStringForStatusCode:statusCode];
   std::string statusMessage = std::string(statusMessageString.UTF8String);
   response.mutable_status()->set_code(statusCode);
