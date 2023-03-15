@@ -121,11 +121,8 @@ HttpRequest InitialDataRequest::EncodeToProto() const {
   initial_data_request.set_service_type(service_type_);
   initial_data_request.set_location_granularity(granularity_);
   http_request.set_proto_body(initial_data_request.SerializeAsString());
-
   (*http_request.mutable_headers())["Authorization"] =
       absl::StrCat("Bearer ", auth_token_);
-
-  (*http_request.mutable_headers())["Content-Type"] = "application/x-protobuf";
 
   return http_request;
 }

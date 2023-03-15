@@ -48,6 +48,7 @@ HttpResponse CreateErrorResponse(absl::string_view description) {
 
 HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
   LOG(INFO) << "Calling HttpFetcher postJson Windows method";
+  bool json_request = request.has_json_body();
 
   // From the server URL, we need a hostname, path.
   URL_COMPONENTS url_server_components;
@@ -112,9 +113,14 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
   // Add headers to the request
   const int kHeaderLength = 1024;
   WCHAR headers[kHeaderLength] = L"";
-  StringCchCopyW(headers, kHeaderLength,
-                 L"Accept: application/json\r\n"
-                 L"Content-Type: application/json; charset=utf-8\r\n");
+  if (json_request) {
+    StringCchCopyW(headers, kHeaderLength,
+                   L"Accept: application/json\r\n"
+                   L"Content-Type: application/json; charset=utf-8\r\n");
+  } else {
+    StringCchCopyW(headers, kHeaderLength,
+                  L"Content-Type: application/x-protobuf\r\n");
+  }
 
   for (auto const& header : request.headers()) {
     auto cat_result = StringCbCatW(
@@ -132,12 +138,12 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
     return CreateErrorResponse("WinHttpAddRequestHeaders failed");
   }
 
-  const char* post_data = request.json_body().c_str();
-  int post_data_length = strlen(post_data);
+  std::string post_data =
+      json_request ? request.json_body() : request.proto_body();
 
   if (WinHttpSendRequest(request_handle, WINHTTP_NO_ADDITIONAL_HEADERS,
-                         /* dwHeadersLength= */ 0, (LPVOID)post_data,
-                         post_data_length, post_data_length,
+                         /* dwHeadersLength= */ 0, (LPVOID)post_data.data(),
+                         post_data.size(), post_data.size(),
                          /* dwContext= */ 0) == 0) {
     return CreateErrorResponse("WinHttpSendRequest failed");
   }
@@ -173,7 +179,7 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
   }
 
   // Read response
-  std::string json_result;
+  std::string post_result;
   DWORD available_data_size = 0;
   while (true) {
     if (WinHttpQueryDataAvailable(request_handle, &available_data_size) == 0) {
@@ -194,11 +200,16 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
     if (bytes_read != available_data_size) {
       return CreateErrorResponse("Error reading response");
     }
-    json_result += temp;
+    post_result += temp;
   }
 
   LOG(INFO) << "HttpFetcher::PostJson Windows succeeded";
-  response.set_json_body(json_result);
+  if (json_request) {
+    response.set_json_body(post_result);
+  } else {
+    response.set_proto_body(post_result);
+  }
+
   return response;
 }
 
