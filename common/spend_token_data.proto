@@ -21,4 +21,6 @@ message SpendTokenData {
   // A use case identifying the caller. Should be a fixed, hardcoded value to
   // prevent cross-spending tokens.
   private_membership.anonymous_tokens.AnonymousTokensUseCase use_case = 5;
+  // Nonce used to mask plaintext message before cryptographic verification.
+  bytes message_mask = 6;
 }
