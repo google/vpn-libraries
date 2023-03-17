@@ -22,12 +22,12 @@
 
 #include "base/logging.h"
 #include "google/protobuf/timestamp.proto.h"
+#include "privacy/net/common/proto/auth_and_sign.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/status.h"
-#include "privacy/net/zinc/rpc/zinc.proto.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/match.h"
 #include "third_party/absl/strings/str_cat.h"

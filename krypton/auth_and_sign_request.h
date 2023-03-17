@@ -19,9 +19,9 @@
 #include <string>
 
 #include "privacy/net/attestation/proto/attestation.proto.h"
+#include "privacy/net/common/proto/auth_and_sign.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
-#include "privacy/net/zinc/rpc/zinc.proto.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/json/include/nlohmann/json_fwd.hpp"
