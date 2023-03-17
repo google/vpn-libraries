@@ -172,6 +172,22 @@ public class KryptonImpl implements Krypton, TimerListener {
   @Override
   public native boolean isSafeDisconnectEnabled() throws KryptonException;
 
+  /** Update the level of IP geo used by PPN. Will cause a reconnect. */
+  @Override
+  public void setIpGeoLevel(KryptonConfig.IpGeoLevel level) throws KryptonException {
+    setIpGeoLevelNative(level.getNumber());
+  }
+
+  /** Gets the IP geo level currently in use. */
+  @Override
+  public KryptonConfig.IpGeoLevel getIpGeoLevel() throws KryptonException {
+    return KryptonConfig.IpGeoLevel.forNumber(getIpGeoLevelNative());
+  }
+
+  private native void setIpGeoLevelNative(int level) throws KryptonException;
+
+  private native int getIpGeoLevelNative() throws KryptonException;
+
   /** Native method for putting Krypton into a horrible wedged state. */
   @Override
   public native void setSimulatedNetworkFailure(boolean simulatedNetworkFailure)

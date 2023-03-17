@@ -67,34 +67,14 @@ public class KryptonTest {
   private final MockZinc mockZinc = new MockZinc();
   private final MockBrass mockBrass = new MockBrass();
 
-  private static KryptonConfig createConfig(String zincUrl, String brassUrl) {
-    return createConfigSafeDisconnect(zincUrl, brassUrl, false);
-  }
-
-  private static KryptonConfig createConfigSafeDisconnect(
-      String zincUrl, String brassUrl, boolean enable) {
+  private static KryptonConfig.Builder createConfig(String zincUrl, String brassUrl) {
     return KryptonConfig.newBuilder()
         .setZincUrl(zincUrl)
         .setZincPublicSigningKeyUrl(zincUrl)
         .setBrassUrl(brassUrl)
         .setServiceType("some_service_type")
         .setDatapathProtocol(DatapathProtocol.BRIDGE)
-        .setEnableBlindSigning(true)
-        .setSafeDisconnectEnabled(enable)
-        .build();
-  }
-
-  private static KryptonConfig createConfigWithAttestationEnabled(String zincUrl, String brassUrl) {
-    return KryptonConfig.newBuilder()
-        .setZincUrl(zincUrl)
-        .setZincPublicSigningKeyUrl(zincUrl)
-        .setBrassUrl(brassUrl)
-        .setServiceType("some_service_type")
-        .setDatapathProtocol(DatapathProtocol.BRIDGE)
-        .setEnableBlindSigning(true)
-        .setSafeDisconnectEnabled(false)
-        .setIntegrityAttestationEnabled(true)
-        .build();
+        .setEnableBlindSigning(true);
   }
 
   Krypton createKrypton() {
@@ -128,6 +108,7 @@ public class KryptonTest {
             return proto.toByteArray();
           }
         };
+
     return new KryptonImpl(
         ApplicationProvider.getApplicationContext(),
         httpFetcher,
@@ -155,7 +136,7 @@ public class KryptonTest {
         .onKryptonDisconnected(any(DisconnectionStatus.class));
 
     try {
-      krypton.start(createConfig(INVALID_URL, INVALID_URL));
+      krypton.start(createConfig(INVALID_URL, INVALID_URL).build());
       assertThat(condition.block(1000)).isTrue();
       // Validate the calls to onKryptonDisconnected
       assertThat(firstStatus.get().getCode()).isEqualTo(PpnStatus.Code.INTERNAL.getCode());
@@ -187,7 +168,7 @@ public class KryptonTest {
         .onKryptonPermanentFailure(any(PpnStatus.class));
 
     try {
-      krypton.start(createConfig(mockZinc.url(), INVALID_URL));
+      krypton.start(createConfig(mockZinc.url(), INVALID_URL).build());
       assertThat(condition.block(1000)).isTrue();
       // Validate the Status
       assertThat(status.get().getCode()).isEqualTo(PpnStatus.Code.PERMISSION_DENIED);
@@ -222,7 +203,7 @@ public class KryptonTest {
         .onKryptonDisconnected(any(DisconnectionStatus.class));
 
     try {
-      krypton.start(createConfig(mockZinc.url(), INVALID_URL));
+      krypton.start(createConfig(mockZinc.url(), INVALID_URL).build());
       assertThat(condition.block(1000)).isTrue();
 
       // Validate the calls to onKryptonDisconnected
@@ -276,7 +257,7 @@ public class KryptonTest {
         .onKryptonControlPlaneConnected();
 
     try {
-      krypton.start(createConfig(mockZinc.url(), mockBrass.url()));
+      krypton.start(createConfig(mockZinc.url(), mockBrass.url()).build());
       assertThat(condition.block(1000)).isTrue();
 
       // Validate the PublicKeyRequest
@@ -346,7 +327,7 @@ public class KryptonTest {
         .onKryptonControlPlaneConnected();
 
     try {
-      krypton.start(createConfig(mockZinc.url(), mockBrass.url()));
+      krypton.start(createConfig(mockZinc.url(), mockBrass.url()).build());
 
       assertThat(restartCondition.block(2000)).isTrue();
 
@@ -386,7 +367,8 @@ public class KryptonTest {
         .onKryptonControlPlaneConnected();
 
     try {
-      krypton.start(createConfigSafeDisconnect(mockZinc.url(), mockBrass.url(), true));
+      krypton.start(
+          createConfig(mockZinc.url(), mockBrass.url()).setSafeDisconnectEnabled(true).build());
       assertThat(condition.block(1000)).isTrue();
 
       // Validate the Safe Disconnect config value.
@@ -395,6 +377,48 @@ public class KryptonTest {
       // Update Safe Disconnect while Krypton is alive.
       krypton.setSafeDisconnectEnabled(false);
       assertThat(krypton.isSafeDisconnectEnabled()).isFalse();
+    } finally {
+      krypton.stop();
+    }
+  }
+
+  @Test
+  public void start_passesIpGeoLevel() throws Exception {
+    Krypton krypton = createKrypton();
+    final ConditionVariable condition = new ConditionVariable(false);
+
+    mockZinc.start();
+    mockZinc.enqueuePositivePublicKeyResponse();
+    mockZinc.enqueuePositiveAuthResponse();
+    mockBrass.start();
+    mockBrass.enqueuePositiveResponse();
+
+    doAnswer(
+            invocation -> {
+              condition.open();
+              return null;
+            })
+        .when(kryptonListener)
+        .onKryptonControlPlaneConnected();
+
+    try {
+      krypton.start(createConfig(mockZinc.url(), mockBrass.url()).build());
+      assertThat(condition.block(1000)).isTrue();
+
+      // TODO: Change this to test a value passed in using PpnOptions.
+      assertThat(krypton.getIpGeoLevel()).isEqualTo(KryptonConfig.IpGeoLevel.COUNTRY);
+
+      condition.close();
+      mockZinc.enqueuePositivePublicKeyResponse();
+      mockZinc.enqueuePositiveAuthResponse();
+      mockBrass.enqueuePositiveResponse();
+
+      // Update IP Geo Level while Krypton is alive.
+      krypton.setIpGeoLevel(KryptonConfig.IpGeoLevel.CITY);
+      assertThat(krypton.getIpGeoLevel()).isEqualTo(KryptonConfig.IpGeoLevel.CITY);
+
+      assertThat(condition.block(1000)).isTrue();
+
     } finally {
       krypton.stop();
     }
@@ -423,7 +447,7 @@ public class KryptonTest {
         .onKryptonControlPlaneConnected();
 
     try {
-      krypton.start(createConfig(mockZinc.url(), mockBrass.url()));
+      krypton.start(createConfig(mockZinc.url(), mockBrass.url()).build());
       assertThat(condition.block(1000)).isTrue();
 
       krypton.disableKryptonKeepalive();
@@ -452,7 +476,7 @@ public class KryptonTest {
         .onKryptonControlPlaneConnected();
 
     try {
-      krypton.start(createConfig(mockZinc.url(), mockBrass.url()));
+      krypton.start(createConfig(mockZinc.url(), mockBrass.url()).build());
       assertThat(connectedCondition.block(1000)).isTrue();
 
       JSONObject debugInfo = krypton.getDebugJson();
@@ -496,7 +520,10 @@ public class KryptonTest {
         .when(kryptonListener)
         .onKryptonControlPlaneConnected();
     try {
-      krypton.start(createConfigWithAttestationEnabled(mockZinc.url(), mockBrass.url()));
+      krypton.start(
+          createConfig(mockZinc.url(), mockBrass.url())
+              .setIntegrityAttestationEnabled(true)
+              .build());
       assertThat(connectedCondition.block(1000)).isTrue();
 
       // Validate the PublicKeyRequest

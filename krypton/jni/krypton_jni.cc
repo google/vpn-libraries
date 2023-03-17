@@ -108,6 +108,16 @@ JNIEXPORT bool JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_isSafeDisconnectEnabled(
     JNIEnv* env, jobject krypton_instance);
 
+// SetIpGeoLevel
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setIpGeoLevelNative(
+    JNIEnv* env, jobject krypton_instance, jint level);
+
+// GetIpGeoLevel
+JNIEXPORT jint JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_getIpGeoLevelNative(
+    JNIEnv* env, jobject krypton_instance);
+
 // SetSimulatedNetworkFailure
 JNIEXPORT void JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setSimulatedNetworkFailure(
@@ -363,6 +373,30 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_isSafeDisconne
     return false;
   }
   return krypton_cache->krypton->IsSafeDisconnectEnabled();
+}
+
+// SetIpGeoLevel
+JNIEXPORT void JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setIpGeoLevelNative(
+    JNIEnv* /*env*/, jobject /*krypton_instance*/, jint level) {
+  LOG(INFO) << "setIpGeoLevel is called";
+  if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
+    JniCache::Get()->ThrowKryptonException("Krypton is not running");
+    return;
+  }
+  krypton_cache->krypton->SetIpGeoLevel(KryptonConfig::IpGeoLevel(level));
+}
+
+// GetIpGeoLevel
+JNIEXPORT jint JNICALL
+Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_getIpGeoLevelNative(
+    JNIEnv* /*env*/, jobject /*krypton_instance*/) {
+  LOG(INFO) << "getIpGeoLevel is called";
+  if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
+    JniCache::Get()->ThrowKryptonException("Krypton is not running");
+    return KryptonConfig::IP_GEO_LEVEL_UNSPECIFIED;
+  }
+  return krypton_cache->krypton->GetIpGeoLevel();
 }
 
 JNIEXPORT void JNICALL

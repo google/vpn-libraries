@@ -78,6 +78,12 @@ public interface Krypton {
   /** Returns whether Safe Disconnect is enabled in Krypton. */
   boolean isSafeDisconnectEnabled() throws KryptonException;
 
+  /** Update the level of IP geo used by PPN. Will cause a reconnect. */
+  void setIpGeoLevel(KryptonConfig.IpGeoLevel level) throws KryptonException;
+
+  /** Gets the IP geo level currently in use. */
+  KryptonConfig.IpGeoLevel getIpGeoLevel() throws KryptonException;
+
   /** Puts Krypton in a horrible wedged state, for testing app bypass, etc. */
   void setSimulatedNetworkFailure(boolean simulatedNetworkFailure) throws KryptonException;
 
