@@ -42,6 +42,7 @@ SessionManager::SessionManager(const KryptonConfig& config,
                                OAuthInterface* oauth,
                                utils::LooperThread* krypton_notification_thread)
     : config_(config),
+      ip_geo_level_(config_.ip_geo_level()),
       http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher)),
       timer_manager_(ABSL_DIE_IF_NULL(timer_manager)),
       vpn_service_(ABSL_DIE_IF_NULL(vpn_service)),

@@ -14,14 +14,12 @@
 
 #include "privacy/net/krypton/krypton.h"
 
-#include <atomic>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "base/logging.h"
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
@@ -31,7 +29,6 @@
 #include "privacy/net/krypton/tunnel_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
@@ -39,11 +36,25 @@
 namespace privacy {
 namespace krypton {
 
+std::string IpGeoLevelDebugString(KryptonConfig::IpGeoLevel level) {
+  switch (level) {
+    case KryptonConfig::IP_GEO_LEVEL_UNSPECIFIED:
+      return "UNSPECIFIED";
+    case KryptonConfig::CITY:
+      return "CITY";
+    case KryptonConfig::COUNTRY:
+      return "COUNTRY";
+    default:
+      "(OTHER)";
+  }
+}
+
 void Krypton::Start(const KryptonConfig& config) {
   LOG(INFO) << "Starting Krypton with zinc=" << config.zinc_url()
             << " brass=" << config.brass_url()
             << " service_type=" << config.service_type()
-            << " safe_disconnect_enabled=" << config.safe_disconnect_enabled();
+            << " safe_disconnect_enabled=" << config.safe_disconnect_enabled()
+            << " ip_geo_level=" << IpGeoLevelDebugString(config.ip_geo_level());
 
   config_ = config;
   notification_thread_ =
@@ -158,6 +169,8 @@ void Krypton::Init() {
   reconnector_->Start();
 
   LOG(INFO) << "Initialization done";
+  auto notification = notification_;
+  notification_thread_->Post([notification]() { notification->Initialized(); });
 }
 
 absl::Status Krypton::SetNetwork(const NetworkInfo& network_info) {
@@ -174,6 +187,27 @@ void Krypton::SetSafeDisconnectEnabled(bool enable) {
 
 bool Krypton::IsSafeDisconnectEnabled() {
   return tunnel_manager_->IsSafeDisconnectEnabled();
+}
+
+void Krypton::SetIpGeoLevel(KryptonConfig::IpGeoLevel level) {
+  if (session_manager_ == nullptr) {
+    LOG(WARNING) << "Ignoring call to SetIpGeoLevel on Krypton, "
+                    "because it is not started.";
+    return;
+  }
+  session_manager_->SetIpGeoLevel(level);
+
+  if (reconnector_ == nullptr) {
+    return;
+  }
+  reconnector_->ForceReconnect();
+}
+
+KryptonConfig::IpGeoLevel Krypton::GetIpGeoLevel() {
+  if (session_manager_ == nullptr) {
+    return KryptonConfig::IP_GEO_LEVEL_UNSPECIFIED;
+  }
+  return session_manager_->GetIpGeoLevel();
 }
 
 void Krypton::SetSimulatedNetworkFailure(bool simulated_network_failure) {

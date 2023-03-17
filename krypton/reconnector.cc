@@ -26,6 +26,7 @@
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
+#include "privacy/net/krypton/proto/connection_status.proto.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/session.h"
@@ -170,6 +171,30 @@ void Reconnector::ControlPlaneDisconnected(const absl::Status& reason) {
   successive_control_plane_failures_ += 1;
   ++telemetry_data_.control_plane_failures;
   StartReconnection();
+}
+
+void Reconnector::ForceReconnect() {
+  absl::MutexLock l(&mutex_);
+  if (state_ != kConnected) {
+    LOG(INFO) << "Not forcing reconnect, because datapath is not connected.";
+    return;
+  }
+  LOG(INFO) << "Forcing reconnection.";
+  TerminateSession(absl::OkStatus(), /*forceFailOpen=*/false);
+
+  SetState(kWaitingToReconnect);
+  auto notification = notification_;
+  ReconnectionStatus status;
+  if (set_network_called_) {
+    status.set_has_available_networks(active_network_info_.has_value());
+  }
+  status.set_is_blocking_traffic(tunnel_manager_->IsTunnelActive());
+  status.mutable_time_to_reconnect()->set_seconds(0);
+  status.mutable_time_to_reconnect()->set_nanos(0);
+  notification_thread_->Post(
+      [notification, status] { notification->WaitingToReconnect(status); });
+
+  EstablishSession();
 }
 
 void Reconnector::StartReconnection() {

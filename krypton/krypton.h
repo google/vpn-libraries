@@ -85,10 +85,16 @@ class Krypton {
   absl::Status SetNoNetworkAvailable();
 
   // Set state of the Safe Disconnect feature.
-  void SetSafeDisconnectEnabled(bool enable);
+  void SetSafeDisconnectEnabled(bool enabled);
 
   // Returns state of the Safe Disconnect feature.
   bool IsSafeDisconnectEnabled();
+
+  // Sets whether to use city-level IPs for IP-geolocation.
+  void SetIpGeoLevel(KryptonConfig::IpGeoLevel level);
+
+  // Returns whether to use city-level IPs for IP-geolocation.
+  KryptonConfig::IpGeoLevel GetIpGeoLevel();
 
   // Puts Krypton into a horrible wedged state. For testing.
   void SetSimulatedNetworkFailure(bool simulated_network_failure);

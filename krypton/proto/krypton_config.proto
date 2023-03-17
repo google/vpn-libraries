@@ -120,4 +120,11 @@ message KryptonConfig {
   // Enabling public metadata determines use of GetInitialData vs PublicKey RPC
   // in session auth, as well as which fields are populated in AddEgressRequest.
   optional bool public_metadata_enabled = 30 [default = false];
+
+  enum IpGeoLevel {
+    IP_GEO_LEVEL_UNSPECIFIED = 0;
+    CITY = 1;
+    COUNTRY = 2;
+  }
+  optional IpGeoLevel ip_geo_level = 33 [default = COUNTRY];
 }

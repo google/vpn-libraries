@@ -31,13 +31,14 @@
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/notification.h"
-#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
+
 using testing::_;
 using testing::EqualsProto;
 using testing::Return;
+using testing::proto::Partially;
 
 class MockDatapath : public DatapathInterface {
  public:
@@ -90,48 +91,83 @@ class KryptonTest : public testing::Test {
 TEST_F(KryptonTest, InitializationTest) {
   Krypton krypton(&http_fetcher_, &notification_, &vpn_service_, &oauth_,
                   &timer_manager_);
-  // TODO: Fix this test so that the notification is notified and
-  // verified.
   absl::Notification done;
   EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+  EXPECT_CALL(notification_, Initialized).WillOnce([&done]() {
+    done.Notify();
+  });
   krypton.Start(config_);
-  done.WaitForNotificationWithTimeout(absl::Seconds(2));
+  done.WaitForNotification();
   krypton.Stop();
 }
 
 TEST_F(KryptonTest, DebugInfoTest) {
   Krypton krypton(&http_fetcher_, &notification_, &vpn_service_, &oauth_,
                   &timer_manager_);
-  // TODO: Fix this test so that the notification is notified and
-  // verified.
   absl::Notification done;
   EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+  EXPECT_CALL(notification_, Initialized).WillOnce([&done]() {
+    done.Notify();
+  });
   krypton.Start(config_);
-  done.WaitForNotificationWithTimeout(absl::Seconds(2));
+  done.WaitForNotification();
 
   KryptonDebugInfo debug_info;
   krypton.GetDebugInfo(&debug_info);
 
-  EXPECT_THAT(debug_info, EqualsProto(R"pb(
+  EXPECT_THAT(debug_info, Partially(EqualsProto(R"pb(
                 config {
                   zinc_url: "http://www.example.com/auth"
                   brass_url: "http://brass.example.com/addegress"
                   service_type: "some_type"
                 }
-                reconnector {
-                  state: "WaitingToReconnect"
-                  session_restart_counter: 1
-                  successive_control_plane_failures: 2
-                  successive_data_plane_failures: 1
-                }
-              )pb"));
+                reconnector {}
+              )pb")));
 
   KryptonTelemetry telemetry;
   krypton.CollectTelemetry(&telemetry);
 
-  EXPECT_THAT(telemetry, EqualsProto(R"pb(control_plane_failures: 1
-                                          data_plane_failures: 0
-                                          session_restarts: 1)pb"));
+  EXPECT_THAT(telemetry, Partially(EqualsProto(R"pb(
+                data_plane_failures: 0
+                session_restarts: 1
+              )pb")));
+  krypton.Stop();
+}
+
+TEST_F(KryptonTest, CityLevelIpTestConfig) {
+  Krypton krypton(&http_fetcher_, &notification_, &vpn_service_, &oauth_,
+                  &timer_manager_);
+  absl::Notification done;
+  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+  EXPECT_CALL(notification_, Initialized).WillOnce([&done]() {
+    done.Notify();
+  });
+  config_.set_ip_geo_level(KryptonConfig::CITY);
+  krypton.Start(config_);
+  done.WaitForNotification();
+
+  EXPECT_EQ(krypton.GetIpGeoLevel(), KryptonConfig::CITY);
+  krypton.SetIpGeoLevel(KryptonConfig::COUNTRY);
+  EXPECT_EQ(krypton.GetIpGeoLevel(), KryptonConfig::COUNTRY);
+
+  krypton.Stop();
+}
+
+TEST_F(KryptonTest, CityLevelIpTestSetter) {
+  Krypton krypton(&http_fetcher_, &notification_, &vpn_service_, &oauth_,
+                  &timer_manager_);
+  absl::Notification done;
+  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+  EXPECT_CALL(notification_, Initialized).WillOnce([&done]() {
+    done.Notify();
+  });
+  krypton.Start(config_);
+  done.WaitForNotification();
+
+  EXPECT_EQ(krypton.GetIpGeoLevel(), KryptonConfig::COUNTRY);
+  krypton.SetIpGeoLevel(KryptonConfig::CITY);
+  EXPECT_EQ(krypton.GetIpGeoLevel(), KryptonConfig::CITY);
+
   krypton.Stop();
 }
 

@@ -28,6 +28,7 @@ namespace krypton {
 // Mock interface for Notification.  Used for testing.
 class MockNotification : public KryptonNotificationInterface {
  public:
+  MOCK_METHOD(void, Initialized, (), (override));
   MOCK_METHOD(void, Connected, (const ConnectionStatus&), (override));
   MOCK_METHOD(void, Connecting, (const ConnectingStatus&), (override));
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));

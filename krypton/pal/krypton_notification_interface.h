@@ -31,6 +31,7 @@ class KryptonNotificationInterface {
   virtual ~KryptonNotificationInterface() = default;
 
   // Lifecycle events.
+  virtual void Initialized() {}
   virtual void Connected(const ConnectionStatus& status) = 0;
   virtual void Connecting(const ConnectingStatus& status) = 0;
   virtual void ControlPlaneConnected() = 0;

@@ -617,8 +617,7 @@ TEST_F(DatapathReconnectorTest, TestMultipleDatapathDisconnectNotifications) {
 }
 
 TEST_F(DatapathReconnectorTest, TestDatapathReconnectorReattempts) {
-  int reconnect_time_id;
-  // int reconnect_time_secs = 1;
+  int reconnect_timer_id;
   int connection_deadline_timer_id;
   int session_reconnect_count = 0;
 
@@ -632,7 +631,7 @@ TEST_F(DatapathReconnectorTest, TestDatapathReconnectorReattempts) {
 
     // Datapath watchdog expiry will result in termination of the session and
     // starting the timer.
-    ExpectStartTimer(absl::Seconds(std::pow(2, i)), &reconnect_time_id);
+    ExpectStartTimer(absl::Seconds(std::pow(2, i)), &reconnect_timer_id);
     EXPECT_CALL(session_manager_, TerminateSession);
     timer_interface_.TimerExpiry(datapath_timer_id);
 
@@ -642,13 +641,29 @@ TEST_F(DatapathReconnectorTest, TestDatapathReconnectorReattempts) {
                 EstablishSession(++session_reconnect_count, &tunnel_manager_,
                                  Eq(std::nullopt)));
 
-    timer_interface_.TimerExpiry(reconnect_time_id);
+    timer_interface_.TimerExpiry(reconnect_timer_id);
 
     // Session moving to connected.
     WaitForNotifications();
     EXPECT_CALL(timer_interface_, CancelTimer(connection_deadline_timer_id));
     reconnector_->ControlPlaneConnected();
   }
+}
+
+TEST_F(DatapathReconnectorTest, TestForceReconnect) {
+  EXPECT_CALL(krypton_notification_interface_,
+              WaitingToReconnect(EqualsProto(R"pb(
+                is_blocking_traffic: false
+                time_to_reconnect { seconds: 0 nanos: 0 }
+              )pb")));
+  EXPECT_CALL(session_manager_, TerminateSession);
+  EXPECT_CALL(krypton_notification_interface_, Disconnected(_));
+  EXPECT_CALL(session_manager_,
+              EstablishSession(1, &tunnel_manager_, Eq(std::nullopt)));
+  int timer_id;
+  ExpectStartTimer(absl::Seconds(30), &timer_id);
+  reconnector_->ForceReconnect();
+  WaitForNotifications();
 }
 
 }  // namespace

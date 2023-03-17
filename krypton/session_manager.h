@@ -31,9 +31,7 @@
 #include "privacy/net/krypton/session_manager_interface.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
-#include "third_party/absl/base/call_once.h"
 #include "third_party/absl/base/thread_annotations.h"
-#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
@@ -71,10 +69,22 @@ class SessionManager : public SessionManagerInterface {
 
   void GetDebugInfo(KryptonDebugInfo* debug_info) ABSL_LOCKS_EXCLUDED(mutex_);
 
+  KryptonConfig::IpGeoLevel GetIpGeoLevel() ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
+    return ip_geo_level_;
+  }
+
+  void SetIpGeoLevel(KryptonConfig::IpGeoLevel level)
+      ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
+    ip_geo_level_ = level;
+  }
+
  private:
   mutable absl::Mutex mutex_;
 
   KryptonConfig config_;
+  KryptonConfig::IpGeoLevel ip_geo_level_ ABSL_GUARDED_BY(mutex_);
 
   HttpFetcherInterface* http_fetcher_;                // Not owned.
   Session::NotificationInterface* notification_;      // Not owned.

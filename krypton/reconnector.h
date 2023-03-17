@@ -76,23 +76,20 @@ class Reconnector : public Session::NotificationInterface {
   };
 
   static constexpr int kInvalidTimerId = -1;
-  // Start Reconnector
   void Start() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Stop Reconnector
   void Stop() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Register the notification interface.
+  // Forces the VPN to reconnect, if it was already connected.
+  void ForceReconnect() ABSL_LOCKS_EXCLUDED(mutex_);
+
   void RegisterNotificationInterface(
       KryptonNotificationInterface* notification_interface);
 
-  // Snooze
   absl::Status Snooze(absl::Duration duration) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Resume
   absl::Status Resume() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Extends Snooze
   absl::Status ExtendSnooze(absl::Duration extend_duration)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
