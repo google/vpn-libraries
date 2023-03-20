@@ -23,6 +23,9 @@ std::string OmitDefault(T value) {
 
 absl::Status FingerprintPublicMetadata(const PublicMetadata& metadata,
                                        uint64_t* fingerprint) {
+  // copybara.strip_begin(internal)
+  // LINT.IfChange
+  // copybara.strip_end
   const EVP_MD* hasher = EVP_sha256();
   std::string digest;
   digest.resize(EVP_MAX_MD_SIZE);
@@ -43,11 +46,11 @@ absl::Status FingerprintPublicMetadata(const PublicMetadata& metadata,
     return absl::InternalError("EVP_Digest failed");
   }
   // Return the first uint64_t of the SHA-256 hash.
-  const std::string hex_hash = absl::BytesToHexString(digest);
-  if (!absl::SimpleHexAtoi(hex_hash.substr(0, 16), fingerprint)) {
-    return absl::InternalError("SimpleHexAtoi failed");
-  }
+  memcpy(fingerprint, digest.data(), sizeof(*fingerprint));
   return absl::OkStatus();
+  // copybara.strip_begin(internal)
+  // LINT.ThenChange(//depot/google3/third_party/quiche/blind_sign_auth/blind_sign_auth.cc)
+  // copybara.strip_end
 }
 
 }  // namespace privacy::ppn
