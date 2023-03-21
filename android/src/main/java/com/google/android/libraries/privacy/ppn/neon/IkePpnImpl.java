@@ -198,42 +198,42 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
 
   @Override
   public ListenableFuture<Void> restart() {
-    // TODO: Implement this.
     Log.i(TAG, "Restarting ppn.");
     return Futures.immediateVoidFuture();
   }
 
   @Override
   public ListenableFuture<Void> snooze(Duration snoozeDuration) {
-    // TODO: Implement this.
     Log.i(TAG, "Snoozing for " + snoozeDuration);
     return Futures.immediateFailedFuture(new IllegalStateException("not implemented"));
   }
 
   @Override
   public ListenableFuture<Void> resume() {
-    // TODO: Implement this.
     Log.i(TAG, "Resuming from snooze.");
     return Futures.immediateFailedFuture(new IllegalStateException("not implemented"));
   }
 
   @Override
   public ListenableFuture<Void> extendSnooze(Duration extendDuration) {
-    // TODO: Implement this.
     Log.i(TAG, "Extending snooze by " + extendDuration);
     return Futures.immediateFailedFuture(new IllegalStateException("not implemented"));
   }
 
   @Override
   public ListenableFuture<Void> setSafeDisconnectEnabled(boolean enable) {
-    // TODO: Implement this.
     Log.i(TAG, "Setting safe disconnect to " + enable);
     return Futures.immediateFailedFuture(new IllegalStateException("not implemented"));
   }
 
   @Override
+  public ListenableFuture<Void> setIpGeoLevel(PpnOptions.IpGeoLevel level) {
+    Log.i(TAG, "Setting ip geo level to " + level);
+    return Futures.immediateFailedFuture(new IllegalStateException("not implemented"));
+  }
+
+  @Override
   public void setDisallowedApplications(Iterable<String> disallowedApplications) {
-    // TODO: Implement this.
     Log.i(TAG, "Setting disallowed applications.");
   }
 
@@ -244,26 +244,22 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
 
   @Override
   public void setPpnListener(PpnListener listener) {
-    // TODO: Implement this.
     Log.i(TAG, "Setting PpnListener.");
   }
 
   @Override
   public PpnTelemetry collectTelemetry() {
-    // TODO: Implement this.
     Log.i(TAG, "Collecting telemetry.");
     return PpnTelemetry.builder().build();
   }
 
   @Override
   public boolean isRunning() {
-    // TODO: Implement this.
     return false;
   }
 
   @Override
   public void setNotification(int notificationId, Notification notification) {
-    // TODO: Implement this.
     Log.i(TAG, "Setting PPN notification.");
   }
 
@@ -275,7 +271,6 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
 
   @Override
   public JSONObject getDebugJson() {
-    // TODO: Implement this.
     return new JSONObject();
   }
 
@@ -287,7 +282,6 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
 
   @Override
   public void onProvisioningFailure(PpnStatus status, boolean permanent) {
-    // TODO: Implement this.
     Log.e(TAG, "Provisioning failed: " + status.getCode() + ": " + status.getMessage());
   }
 }

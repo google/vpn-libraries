@@ -74,6 +74,7 @@ import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeoutException;
@@ -117,7 +118,6 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   @Nullable private KryptonIpSecHelper ipSecHelper;
 
   // These settings can be changed while PPN is running.
-  private boolean safeDisconnectEnabled;
   private Set<String> disallowedApplications = Collections.emptySet();
 
   // Tracks whether PPN is fully connected, for managing notification state.
@@ -377,7 +377,6 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
     this.xenon = new XenonImpl(context, this, httpFetcher, options);
 
-    this.safeDisconnectEnabled = options.isSafeDisconnectEnabled();
     this.disallowedApplications = options.getDisallowedApplications();
 
     PpnLibrary.init(this);
@@ -520,7 +519,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   @Override
   public ListenableFuture<Void> setSafeDisconnectEnabled(boolean enable) {
     // Store the value for the next time PPN is started.
-    this.safeDisconnectEnabled = enable;
+    this.options.setSafeDisconnectEnabled(enable);
 
     // If PPN is already running, tell Krypton to update the value.
     return Futures.submit(
@@ -542,6 +541,30 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   }
 
   @Override
+  public ListenableFuture<Void> setIpGeoLevel(PpnOptions.IpGeoLevel level) {
+    // Store the value for the next time PPN is started.
+    this.options.setIpGeoLevel(level);
+
+    // If PPN is already running, tell Krypton to update the value.
+    return Futures.submit(
+        () -> {
+          try {
+            synchronized (kryptonLock) {
+              if (krypton != null) {
+                // Call a setter that injects feature state into Krypton.
+                krypton.setIpGeoLevel(level.getKryptonConfigValue());
+              }
+              // If Krypton isn't running, feature state will be passed on Krypton startup through
+              // config.
+            }
+          } catch (KryptonException e) {
+            Log.e(TAG, "Unable to set IP Geo Level in Krypton.", e);
+          }
+        },
+        backgroundExecutor);
+  }
+
+  @Override
   public void setDisallowedApplications(Iterable<String> disallowedApplications) {
     HashSet<String> copy = new HashSet<>();
     for (String packageName : disallowedApplications) {
@@ -553,7 +576,12 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   /** Returns the current Safe Disconnect state. */
   @Override
   public boolean isSafeDisconnectEnabled() {
-    return safeDisconnectEnabled;
+    return options.isSafeDisconnectEnabled();
+  }
+
+  @VisibleForTesting
+  Optional<PpnOptions.IpGeoLevel> getIpGeoLevel() {
+    return options.getIpGeoLevel();
   }
 
   @Override
@@ -737,10 +765,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
   /** Creates a KryptonConfig with the options and feature state of this PPN instance. */
   private KryptonConfig createKryptonConfig() {
-    return this.options
-        .createKryptonConfigBuilder()
-        .setSafeDisconnectEnabled(this.safeDisconnectEnabled)
-        .build();
+    return this.options.createKryptonConfigBuilder().build();
   }
 
   /**

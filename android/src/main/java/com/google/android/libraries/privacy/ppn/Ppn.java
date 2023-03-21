@@ -17,7 +17,7 @@ package com.google.android.libraries.privacy.ppn;
 import android.accounts.Account;
 import android.app.Notification;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.time.Duration;
 import org.json.JSONObject;
 
@@ -93,8 +93,17 @@ public interface Ppn {
    *
    * <p>This is an async method, and can be called from any thread.
    */
-  @ResultIgnorabilityUnspecified
+  @CanIgnoreReturnValue
   ListenableFuture<Void> setSafeDisconnectEnabled(boolean enable);
+
+  /**
+   * Updates the geographic granularity at which IPs will be assigned. Calling this will cause PPN
+   * to reconnect.
+   *
+   * <p>This is an async method, and can be called from any thread.
+   */
+  @CanIgnoreReturnValue
+  ListenableFuture<Void> setIpGeoLevel(PpnOptions.IpGeoLevel level);
 
   /**
    * Updates the set of apps that will bypass the VPN, as package names. This will take effect the

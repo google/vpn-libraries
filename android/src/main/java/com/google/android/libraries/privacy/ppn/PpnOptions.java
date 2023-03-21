@@ -34,6 +34,22 @@ import java.util.concurrent.Executors;
 
 /** Options for configuring how PPN runs. */
 public class PpnOptions {
+  /** The level of geographic granularity at which to allocate IPs. */
+  public static enum IpGeoLevel {
+    COUNTRY(KryptonConfig.IpGeoLevel.COUNTRY),
+    CITY(KryptonConfig.IpGeoLevel.CITY);
+
+    private final KryptonConfig.IpGeoLevel level;
+
+    IpGeoLevel(KryptonConfig.IpGeoLevel level) {
+      this.level = level;
+    }
+
+    public KryptonConfig.IpGeoLevel getKryptonConfigValue() {
+      return level;
+    }
+  }
+
   private static final String TAG = "PpnOptions";
   private static final String DEFAULT_ZINC_URL = "https://staging.zinc.cloud.cupronickel.goog/auth";
   private static final String DEFAULT_ZINC_PUBLIC_SIGNING_KEY_URL =
@@ -84,7 +100,8 @@ public class PpnOptions {
   private final Optional<Duration> reconnectorSessionConnectionDeadline;
 
   private final boolean isStickyService;
-  private final boolean safeDisconnectEnabled;
+  private boolean safeDisconnectEnabled;
+  private Optional<IpGeoLevel> ipGeoLevel;
 
   private final Set<String> disallowedApplications;
 
@@ -131,6 +148,7 @@ public class PpnOptions {
 
     this.isStickyService = builder.isStickyService;
     this.safeDisconnectEnabled = builder.safeDisconnectEnabled;
+    this.ipGeoLevel = builder.ipGeoLevel;
     this.ipv6Enabled = builder.ipv6Enabled;
     this.dynamicMtuEnabled = builder.dynamicMtuEnabled;
 
@@ -245,6 +263,18 @@ public class PpnOptions {
 
   public boolean isSafeDisconnectEnabled() {
     return safeDisconnectEnabled;
+  }
+
+  public void setSafeDisconnectEnabled(boolean enabled) {
+    safeDisconnectEnabled = enabled;
+  }
+
+  public Optional<IpGeoLevel> getIpGeoLevel() {
+    return ipGeoLevel;
+  }
+
+  public void setIpGeoLevel(IpGeoLevel level) {
+    ipGeoLevel = Optional.of(level);
   }
 
   public Set<String> getDisallowedApplications() {
@@ -368,6 +398,9 @@ public class PpnOptions {
       builder.setRekeyDuration(proto);
     }
     builder.setSafeDisconnectEnabled(isSafeDisconnectEnabled());
+    if (getIpGeoLevel().isPresent()) {
+      builder.setIpGeoLevel(getIpGeoLevel().get().getKryptonConfigValue());
+    }
     builder.setIpv6Enabled(isIPv6Enabled());
     builder.setDynamicMtuEnabled(isDynamicMtuEnabled());
     builder.setIntegrityAttestationEnabled(isIntegrityAttestationEnabled());
@@ -424,6 +457,7 @@ public class PpnOptions {
 
     private boolean isStickyService = false;
     private boolean safeDisconnectEnabled = false;
+    private Optional<IpGeoLevel> ipGeoLevel = Optional.empty();
     private boolean ipv6Enabled = true;
     private boolean dynamicMtuEnabled = false;
 
@@ -728,6 +762,12 @@ public class PpnOptions {
     @CanIgnoreReturnValue
     public Builder setSafeDisconnectEnabled(boolean enabled) {
       this.safeDisconnectEnabled = enabled;
+      return this;
+    }
+
+    @CanIgnoreReturnValue
+    public Builder setIpGeoLevel(IpGeoLevel level) {
+      this.ipGeoLevel = Optional.of(level);
       return this;
     }
 

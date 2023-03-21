@@ -15,6 +15,7 @@
 package com.google.android.libraries.privacy.ppn.internal;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth8.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
@@ -544,13 +545,9 @@ public class PpnImplTest {
 
   @Test
   public void setSafeDisconnectEnabled_updatesBoolean() throws Exception {
-    boolean expectedSafeDisconnectState = true;
-
     PpnImpl ppn = createPpn();
-    ppn.setSafeDisconnectEnabled(expectedSafeDisconnectState).get();
-    ;
-
-    assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(expectedSafeDisconnectState);
+    ppn.setSafeDisconnectEnabled(true).get();
+    assertThat(ppn.isSafeDisconnectEnabled()).isTrue();
   }
 
   @Test
@@ -587,6 +584,44 @@ public class PpnImplTest {
     ppn.onStopService();
     ppn.setSafeDisconnectEnabled(expectedSafeDisconnectState).get();
     assertThat(ppn.isSafeDisconnectEnabled()).isEqualTo(expectedSafeDisconnectState);
+  }
+
+  @Test
+  public void setIpGeoLevel_updatesGetter() throws Exception {
+    PpnImpl ppn = createPpn();
+    ppn.setIpGeoLevel(PpnOptions.IpGeoLevel.CITY).get();
+    assertThat(ppn.getIpGeoLevel()).hasValue(PpnOptions.IpGeoLevel.CITY);
+  }
+
+  @Test
+  public void setIpGeoLevel_persistsAfterRestart() throws Exception {
+    PpnImpl ppn = createPpn();
+    ppn.start(account);
+    ppn.setIpGeoLevel(PpnOptions.IpGeoLevel.CITY).get();
+
+    assertThat(ppn.getIpGeoLevel()).hasValue(PpnOptions.IpGeoLevel.CITY);
+
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+    ppn.onStopService();
+    ppn.start(account);
+
+    assertThat(ppn.getIpGeoLevel()).hasValue(PpnOptions.IpGeoLevel.CITY);
+
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+    ppn.onStopService();
+  }
+
+  @Test
+  public void setIpGeoLevel_updatesWhilePpnStopped() throws Exception {
+    PpnImpl ppn = createPpn();
+    ppn.start(account);
+    ppn.setIpGeoLevel(PpnOptions.IpGeoLevel.COUNTRY).get();
+    assertThat(ppn.getIpGeoLevel()).hasValue(PpnOptions.IpGeoLevel.COUNTRY);
+
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+    ppn.onStopService();
+    ppn.setIpGeoLevel(PpnOptions.IpGeoLevel.CITY).get();
+    assertThat(ppn.getIpGeoLevel()).hasValue(PpnOptions.IpGeoLevel.CITY);
   }
 
   @Test
