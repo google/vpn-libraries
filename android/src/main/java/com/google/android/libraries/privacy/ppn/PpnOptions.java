@@ -34,22 +34,6 @@ import java.util.concurrent.Executors;
 
 /** Options for configuring how PPN runs. */
 public class PpnOptions {
-  /** The level of geographic granularity at which to allocate IPs. */
-  public static enum IpGeoLevel {
-    COUNTRY(KryptonConfig.IpGeoLevel.COUNTRY),
-    CITY(KryptonConfig.IpGeoLevel.CITY);
-
-    private final KryptonConfig.IpGeoLevel level;
-
-    IpGeoLevel(KryptonConfig.IpGeoLevel level) {
-      this.level = level;
-    }
-
-    public KryptonConfig.IpGeoLevel getKryptonConfigValue() {
-      return level;
-    }
-  }
-
   private static final String TAG = "PpnOptions";
   private static final String DEFAULT_ZINC_URL = "https://staging.zinc.cloud.cupronickel.goog/auth";
   private static final String DEFAULT_ZINC_PUBLIC_SIGNING_KEY_URL =
@@ -399,7 +383,7 @@ public class PpnOptions {
     }
     builder.setSafeDisconnectEnabled(isSafeDisconnectEnabled());
     if (getIpGeoLevel().isPresent()) {
-      builder.setIpGeoLevel(getIpGeoLevel().get().getKryptonConfigValue());
+      builder.setIpGeoLevel(getIpGeoLevel().get());
     }
     builder.setIpv6Enabled(isIPv6Enabled());
     builder.setDynamicMtuEnabled(isDynamicMtuEnabled());

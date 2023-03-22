@@ -37,6 +37,7 @@ import android.net.ipsec.ike.TunnelModeChildSessionParams;
 import android.system.OsConstants;
 import android.util.Log;
 import androidx.annotation.Nullable;
+import com.google.android.libraries.privacy.ppn.IpGeoLevel;
 import com.google.android.libraries.privacy.ppn.Ppn;
 import com.google.android.libraries.privacy.ppn.PpnAccountManager;
 import com.google.android.libraries.privacy.ppn.PpnException;
@@ -227,7 +228,7 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
   }
 
   @Override
-  public ListenableFuture<Void> setIpGeoLevel(PpnOptions.IpGeoLevel level) {
+  public ListenableFuture<Void> setIpGeoLevel(IpGeoLevel level) {
     Log.i(TAG, "Setting ip geo level to " + level);
     return Futures.immediateFailedFuture(new IllegalStateException("not implemented"));
   }

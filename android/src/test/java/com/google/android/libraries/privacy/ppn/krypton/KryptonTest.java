@@ -25,6 +25,7 @@ import android.os.ConditionVariable;
 import android.os.Looper;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.work.testing.WorkManagerTestInitHelper;
+import com.google.android.libraries.privacy.ppn.IpGeoLevel;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
@@ -406,7 +407,7 @@ public class KryptonTest {
       assertThat(condition.block(1000)).isTrue();
 
       // TODO: Change this to test a value passed in using PpnOptions.
-      assertThat(krypton.getIpGeoLevel()).isEqualTo(KryptonConfig.IpGeoLevel.COUNTRY);
+      assertThat(krypton.getIpGeoLevel()).isEqualTo(IpGeoLevel.COUNTRY);
 
       condition.close();
       mockZinc.enqueuePositivePublicKeyResponse();
@@ -414,8 +415,8 @@ public class KryptonTest {
       mockBrass.enqueuePositiveResponse();
 
       // Update IP Geo Level while Krypton is alive.
-      krypton.setIpGeoLevel(KryptonConfig.IpGeoLevel.CITY);
-      assertThat(krypton.getIpGeoLevel()).isEqualTo(KryptonConfig.IpGeoLevel.CITY);
+      krypton.setIpGeoLevel(IpGeoLevel.CITY);
+      assertThat(krypton.getIpGeoLevel()).isEqualTo(IpGeoLevel.CITY);
 
       assertThat(condition.block(1000)).isTrue();
 

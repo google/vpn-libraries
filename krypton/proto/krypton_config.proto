@@ -17,6 +17,7 @@ syntax = "proto2";
 package privacy.krypton;
 
 import "google/protobuf/duration.proto";
+import "privacy/net/common/proto/ppn_options.proto";
 
 option cc_api_version = 2;
 option java_outer_classname = "ConfigProto";
@@ -121,10 +122,5 @@ message KryptonConfig {
   // in session auth, as well as which fields are populated in AddEgressRequest.
   optional bool public_metadata_enabled = 30 [default = false];
 
-  enum IpGeoLevel {
-    IP_GEO_LEVEL_UNSPECIFIED = 0;
-    CITY = 1;
-    COUNTRY = 2;
-  }
-  optional IpGeoLevel ip_geo_level = 33 [default = COUNTRY];
+  optional privacy.ppn.IpGeoLevel ip_geo_level = 33 [default = COUNTRY];
 }

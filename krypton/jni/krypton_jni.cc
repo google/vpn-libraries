@@ -384,7 +384,8 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_setIpGeoLevelN
     JniCache::Get()->ThrowKryptonException("Krypton is not running");
     return;
   }
-  krypton_cache->krypton->SetIpGeoLevel(KryptonConfig::IpGeoLevel(level));
+  krypton_cache->krypton->SetIpGeoLevel(
+      static_cast<privacy::ppn::IpGeoLevel>(level));
 }
 
 // GetIpGeoLevel
@@ -394,7 +395,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_KryptonImpl_getIpGeoLevelN
   LOG(INFO) << "getIpGeoLevel is called";
   if (krypton_cache == nullptr || krypton_cache->krypton == nullptr) {
     JniCache::Get()->ThrowKryptonException("Krypton is not running");
-    return KryptonConfig::IP_GEO_LEVEL_UNSPECIFIED;
+    return privacy::ppn::IP_GEO_LEVEL_UNSPECIFIED;
   }
   return krypton_cache->krypton->GetIpGeoLevel();
 }

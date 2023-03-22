@@ -14,6 +14,7 @@
 
 package com.google.android.libraries.privacy.ppn.krypton;
 
+import com.google.android.libraries.privacy.ppn.IpGeoLevel;
 import com.google.android.libraries.privacy.ppn.internal.KryptonConfig;
 import com.google.android.libraries.privacy.ppn.internal.KryptonTelemetry;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo;
@@ -79,10 +80,10 @@ public interface Krypton {
   boolean isSafeDisconnectEnabled() throws KryptonException;
 
   /** Update the level of IP geo used by PPN. Will cause a reconnect. */
-  void setIpGeoLevel(KryptonConfig.IpGeoLevel level) throws KryptonException;
+  void setIpGeoLevel(IpGeoLevel level) throws KryptonException;
 
   /** Gets the IP geo level currently in use. */
-  KryptonConfig.IpGeoLevel getIpGeoLevel() throws KryptonException;
+  IpGeoLevel getIpGeoLevel() throws KryptonException;
 
   /** Puts Krypton in a horrible wedged state, for testing app bypass, etc. */
   void setSimulatedNetworkFailure(boolean simulatedNetworkFailure) throws KryptonException;

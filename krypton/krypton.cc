@@ -36,16 +36,16 @@
 namespace privacy {
 namespace krypton {
 
-std::string IpGeoLevelDebugString(KryptonConfig::IpGeoLevel level) {
+std::string IpGeoLevelDebugString(ppn::IpGeoLevel level) {
   switch (level) {
-    case KryptonConfig::IP_GEO_LEVEL_UNSPECIFIED:
+    case ppn::IP_GEO_LEVEL_UNSPECIFIED:
       return "UNSPECIFIED";
-    case KryptonConfig::CITY:
+    case ppn::CITY:
       return "CITY";
-    case KryptonConfig::COUNTRY:
+    case ppn::COUNTRY:
       return "COUNTRY";
     default:
-      "(OTHER)";
+      return "(OTHER)";
   }
 }
 
@@ -189,7 +189,7 @@ bool Krypton::IsSafeDisconnectEnabled() {
   return tunnel_manager_->IsSafeDisconnectEnabled();
 }
 
-void Krypton::SetIpGeoLevel(KryptonConfig::IpGeoLevel level) {
+void Krypton::SetIpGeoLevel(privacy::ppn::IpGeoLevel level) {
   if (session_manager_ == nullptr) {
     LOG(WARNING) << "Ignoring call to SetIpGeoLevel on Krypton, "
                     "because it is not started.";
@@ -203,9 +203,9 @@ void Krypton::SetIpGeoLevel(KryptonConfig::IpGeoLevel level) {
   reconnector_->ForceReconnect();
 }
 
-KryptonConfig::IpGeoLevel Krypton::GetIpGeoLevel() {
+privacy::ppn::IpGeoLevel Krypton::GetIpGeoLevel() {
   if (session_manager_ == nullptr) {
-    return KryptonConfig::IP_GEO_LEVEL_UNSPECIFIED;
+    return privacy::ppn::IP_GEO_LEVEL_UNSPECIFIED;
   }
   return session_manager_->GetIpGeoLevel();
 }

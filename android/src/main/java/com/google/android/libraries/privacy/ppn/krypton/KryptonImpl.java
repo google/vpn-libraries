@@ -18,6 +18,7 @@ import android.content.Context;
 import android.util.Log;
 import androidx.annotation.VisibleForTesting;
 import androidx.work.WorkManager;
+import com.google.android.libraries.privacy.ppn.IpGeoLevel;
 import com.google.android.libraries.privacy.ppn.PpnException;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.internal.ConnectingStatus;
@@ -174,14 +175,14 @@ public class KryptonImpl implements Krypton, TimerListener {
 
   /** Update the level of IP geo used by PPN. Will cause a reconnect. */
   @Override
-  public void setIpGeoLevel(KryptonConfig.IpGeoLevel level) throws KryptonException {
+  public void setIpGeoLevel(IpGeoLevel level) throws KryptonException {
     setIpGeoLevelNative(level.getNumber());
   }
 
   /** Gets the IP geo level currently in use. */
   @Override
-  public KryptonConfig.IpGeoLevel getIpGeoLevel() throws KryptonException {
-    return KryptonConfig.IpGeoLevel.forNumber(getIpGeoLevelNative());
+  public IpGeoLevel getIpGeoLevel() throws KryptonException {
+    return IpGeoLevel.forNumber(getIpGeoLevelNative());
   }
 
   private native void setIpGeoLevelNative(int level) throws KryptonException;

@@ -592,7 +592,7 @@ public class PpnOptionsTest {
             .setReconnectorInitialTimeToReconnect(Duration.ofMillis(2))
             .setReconnectorSessionConnectionDeadline(Duration.ofMillis(4))
             .setSafeDisconnectEnabled(true)
-            .setIpGeoLevel(PpnOptions.IpGeoLevel.CITY)
+            .setIpGeoLevel(IpGeoLevel.CITY)
             .setIPv6Enabled(false)
             .setDynamicMtuEnabled(true)
             .setIntegrityAttestationEnabled(true)
@@ -626,7 +626,7 @@ public class PpnOptionsTest {
     assertThat(config.getReconnectorConfig().getInitialTimeToReconnectMsec()).isEqualTo(2);
     assertThat(config.getReconnectorConfig().getSessionConnectionDeadlineMsec()).isEqualTo(4);
     assertThat(config.getSafeDisconnectEnabled()).isTrue();
-    assertThat(config.getIpGeoLevel()).isEqualTo(KryptonConfig.IpGeoLevel.CITY);
+    assertThat(config.getIpGeoLevel()).isEqualTo(IpGeoLevel.CITY);
     assertThat(config.getIpv6Enabled()).isFalse();
     assertThat(config.getDynamicMtuEnabled()).isTrue();
     assertThat(config.getIntegrityAttestationEnabled()).isTrue();
@@ -664,7 +664,7 @@ public class PpnOptionsTest {
     assertThat(config.getReconnectorConfig().hasInitialTimeToReconnectMsec()).isFalse();
     assertThat(config.getReconnectorConfig().hasSessionConnectionDeadlineMsec()).isFalse();
     assertThat(config.getSafeDisconnectEnabled()).isFalse();
-    assertThat(config.getIpGeoLevel()).isEqualTo(KryptonConfig.IpGeoLevel.COUNTRY);
+    assertThat(config.getIpGeoLevel()).isEqualTo(IpGeoLevel.COUNTRY);
     assertThat(config.getIpv6Enabled()).isTrue();
     assertThat(config.getDynamicMtuEnabled()).isFalse();
     assertThat(config.getIntegrityAttestationEnabled()).isFalse();

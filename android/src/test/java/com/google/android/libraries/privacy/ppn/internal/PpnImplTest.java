@@ -35,6 +35,7 @@ import com.google.android.flib.robolectric.shadows.ShadowGoogleAuthUtil;
 import com.google.android.gms.auth.GoogleAuthUtil;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
+import com.google.android.libraries.privacy.ppn.IpGeoLevel;
 import com.google.android.libraries.privacy.ppn.PpnAccountManager;
 import com.google.android.libraries.privacy.ppn.PpnConnectionStatus;
 import com.google.android.libraries.privacy.ppn.PpnDisconnectionStatus;
@@ -589,23 +590,23 @@ public class PpnImplTest {
   @Test
   public void setIpGeoLevel_updatesGetter() throws Exception {
     PpnImpl ppn = createPpn();
-    ppn.setIpGeoLevel(PpnOptions.IpGeoLevel.CITY).get();
-    assertThat(ppn.getIpGeoLevel()).hasValue(PpnOptions.IpGeoLevel.CITY);
+    ppn.setIpGeoLevel(IpGeoLevel.CITY).get();
+    assertThat(ppn.getIpGeoLevel()).hasValue(IpGeoLevel.CITY);
   }
 
   @Test
   public void setIpGeoLevel_persistsAfterRestart() throws Exception {
     PpnImpl ppn = createPpn();
     ppn.start(account);
-    ppn.setIpGeoLevel(PpnOptions.IpGeoLevel.CITY).get();
+    ppn.setIpGeoLevel(IpGeoLevel.CITY).get();
 
-    assertThat(ppn.getIpGeoLevel()).hasValue(PpnOptions.IpGeoLevel.CITY);
+    assertThat(ppn.getIpGeoLevel()).hasValue(IpGeoLevel.CITY);
 
     ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
     ppn.onStopService();
     ppn.start(account);
 
-    assertThat(ppn.getIpGeoLevel()).hasValue(PpnOptions.IpGeoLevel.CITY);
+    assertThat(ppn.getIpGeoLevel()).hasValue(IpGeoLevel.CITY);
 
     ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
     ppn.onStopService();
@@ -615,13 +616,13 @@ public class PpnImplTest {
   public void setIpGeoLevel_updatesWhilePpnStopped() throws Exception {
     PpnImpl ppn = createPpn();
     ppn.start(account);
-    ppn.setIpGeoLevel(PpnOptions.IpGeoLevel.COUNTRY).get();
-    assertThat(ppn.getIpGeoLevel()).hasValue(PpnOptions.IpGeoLevel.COUNTRY);
+    ppn.setIpGeoLevel(IpGeoLevel.COUNTRY).get();
+    assertThat(ppn.getIpGeoLevel()).hasValue(IpGeoLevel.COUNTRY);
 
     ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
     ppn.onStopService();
-    ppn.setIpGeoLevel(PpnOptions.IpGeoLevel.CITY).get();
-    assertThat(ppn.getIpGeoLevel()).hasValue(PpnOptions.IpGeoLevel.CITY);
+    ppn.setIpGeoLevel(IpGeoLevel.CITY).get();
+    assertThat(ppn.getIpGeoLevel()).hasValue(IpGeoLevel.CITY);
   }
 
   @Test

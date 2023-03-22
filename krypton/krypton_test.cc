@@ -142,13 +142,13 @@ TEST_F(KryptonTest, CityLevelIpTestConfig) {
   EXPECT_CALL(notification_, Initialized).WillOnce([&done]() {
     done.Notify();
   });
-  config_.set_ip_geo_level(KryptonConfig::CITY);
+  config_.set_ip_geo_level(ppn::CITY);
   krypton.Start(config_);
   done.WaitForNotification();
 
-  EXPECT_EQ(krypton.GetIpGeoLevel(), KryptonConfig::CITY);
-  krypton.SetIpGeoLevel(KryptonConfig::COUNTRY);
-  EXPECT_EQ(krypton.GetIpGeoLevel(), KryptonConfig::COUNTRY);
+  EXPECT_EQ(krypton.GetIpGeoLevel(), ppn::CITY);
+  krypton.SetIpGeoLevel(ppn::COUNTRY);
+  EXPECT_EQ(krypton.GetIpGeoLevel(), ppn::COUNTRY);
 
   krypton.Stop();
 }
@@ -164,9 +164,9 @@ TEST_F(KryptonTest, CityLevelIpTestSetter) {
   krypton.Start(config_);
   done.WaitForNotification();
 
-  EXPECT_EQ(krypton.GetIpGeoLevel(), KryptonConfig::COUNTRY);
-  krypton.SetIpGeoLevel(KryptonConfig::CITY);
-  EXPECT_EQ(krypton.GetIpGeoLevel(), KryptonConfig::CITY);
+  EXPECT_EQ(krypton.GetIpGeoLevel(), ppn::COUNTRY);
+  krypton.SetIpGeoLevel(ppn::CITY);
+  EXPECT_EQ(krypton.GetIpGeoLevel(), ppn::CITY);
 
   krypton.Stop();
 }

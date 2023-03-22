@@ -34,6 +34,7 @@ import androidx.annotation.VisibleForTesting;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.gms.tasks.TaskExecutors;
+import com.google.android.libraries.privacy.ppn.IpGeoLevel;
 import com.google.android.libraries.privacy.ppn.Ppn;
 import com.google.android.libraries.privacy.ppn.PpnAccountManager;
 import com.google.android.libraries.privacy.ppn.PpnConnectingStatus;
@@ -541,7 +542,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   }
 
   @Override
-  public ListenableFuture<Void> setIpGeoLevel(PpnOptions.IpGeoLevel level) {
+  public ListenableFuture<Void> setIpGeoLevel(IpGeoLevel level) {
     // Store the value for the next time PPN is started.
     this.options.setIpGeoLevel(level);
 
@@ -552,7 +553,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
             synchronized (kryptonLock) {
               if (krypton != null) {
                 // Call a setter that injects feature state into Krypton.
-                krypton.setIpGeoLevel(level.getKryptonConfigValue());
+                krypton.setIpGeoLevel(level);
               }
               // If Krypton isn't running, feature state will be passed on Krypton startup through
               // config.
@@ -580,7 +581,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   }
 
   @VisibleForTesting
-  Optional<PpnOptions.IpGeoLevel> getIpGeoLevel() {
+  Optional<IpGeoLevel> getIpGeoLevel() {
     return options.getIpGeoLevel();
   }
 

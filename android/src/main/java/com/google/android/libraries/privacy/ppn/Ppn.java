@@ -103,7 +103,7 @@ public interface Ppn {
    * <p>This is an async method, and can be called from any thread.
    */
   @CanIgnoreReturnValue
-  ListenableFuture<Void> setIpGeoLevel(PpnOptions.IpGeoLevel level);
+  ListenableFuture<Void> setIpGeoLevel(IpGeoLevel level);
 
   /**
    * Updates the set of apps that will bypass the VPN, as package names. This will take effect the

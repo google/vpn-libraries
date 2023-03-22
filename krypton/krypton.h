@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
@@ -91,10 +92,10 @@ class Krypton {
   bool IsSafeDisconnectEnabled();
 
   // Sets whether to use city-level IPs for IP-geolocation.
-  void SetIpGeoLevel(KryptonConfig::IpGeoLevel level);
+  void SetIpGeoLevel(ppn::IpGeoLevel level);
 
   // Returns whether to use city-level IPs for IP-geolocation.
-  KryptonConfig::IpGeoLevel GetIpGeoLevel();
+  ppn::IpGeoLevel GetIpGeoLevel();
 
   // Puts Krypton into a horrible wedged state. For testing.
   void SetSimulatedNetworkFailure(bool simulated_network_failure);

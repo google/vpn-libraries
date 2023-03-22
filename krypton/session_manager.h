@@ -19,6 +19,7 @@
 #include <memory>
 #include <optional>
 
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
@@ -69,12 +70,12 @@ class SessionManager : public SessionManagerInterface {
 
   void GetDebugInfo(KryptonDebugInfo* debug_info) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  KryptonConfig::IpGeoLevel GetIpGeoLevel() ABSL_LOCKS_EXCLUDED(mutex_) {
+  privacy::ppn::IpGeoLevel GetIpGeoLevel() ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return ip_geo_level_;
   }
 
-  void SetIpGeoLevel(KryptonConfig::IpGeoLevel level)
+  void SetIpGeoLevel(privacy::ppn::IpGeoLevel level)
       ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     ip_geo_level_ = level;
@@ -84,7 +85,7 @@ class SessionManager : public SessionManagerInterface {
   mutable absl::Mutex mutex_;
 
   KryptonConfig config_;
-  KryptonConfig::IpGeoLevel ip_geo_level_ ABSL_GUARDED_BY(mutex_);
+  privacy::ppn::IpGeoLevel ip_geo_level_ ABSL_GUARDED_BY(mutex_);
 
   HttpFetcherInterface* http_fetcher_;                // Not owned.
   Session::NotificationInterface* notification_;      // Not owned.
