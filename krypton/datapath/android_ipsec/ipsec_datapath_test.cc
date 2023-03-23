@@ -229,6 +229,13 @@ TEST_F(IpSecDatapathTest, UplinkMtuUpdateHandler) {
   EXPECT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
+TEST_F(IpSecDatapathTest, DownlinkMtuUpdateHandler) {
+  absl::Notification mtu_update_done;
+  EXPECT_CALL(notification_, DoDownlinkMtuUpdate(576))
+      .WillOnce([&mtu_update_done]() { mtu_update_done.Notify(); });
+  datapath_.DownlinkMtuUpdated(576);
+  EXPECT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
+}
 }  // namespace
 }  // namespace android
 }  // namespace datapath

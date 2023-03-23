@@ -31,9 +31,13 @@ class MtuTracker : public MtuTrackerInterface {
 
   void UpdateUplinkMtu(int uplink_mtu) override;
 
+  void UpdateDownlinkMtu(int downlink_mtu) override;
+
   int GetUplinkMtu() const override;
 
   int GetTunnelMtu() const override;
+
+  int GetDownlinkMtu() const override;
 
   void RegisterNotificationHandler(
       NotificationInterface* notification,
@@ -43,6 +47,7 @@ class MtuTracker : public MtuTrackerInterface {
   int tunnel_overhead_;
   int uplink_mtu_;
   int tunnel_mtu_;
+  int downlink_mtu_;
 
   NotificationInterface* notification_;  // Not owned.
 

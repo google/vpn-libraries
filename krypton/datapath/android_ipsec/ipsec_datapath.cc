@@ -203,7 +203,12 @@ void IpSecDatapath::UplinkMtuUpdated(int uplink_mtu, int tunnel_mtu) {
     notification->DoUplinkMtuUpdate(uplink_mtu, tunnel_mtu);
   });
 }
-
+void IpSecDatapath::DownlinkMtuUpdated(int downlink_mtu) {
+  auto* notification = notification_;
+  notification_thread_->Post([notification, downlink_mtu]() {
+    notification->DoDownlinkMtuUpdate(downlink_mtu);
+  });
+}
 void IpSecDatapath::GetDebugInfo(DatapathDebugInfo* debug_info) {
   absl::MutexLock l(&mutex_);
   if (forwarder_ != nullptr) {

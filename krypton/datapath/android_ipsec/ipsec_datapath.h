@@ -15,11 +15,9 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_IPSEC_DATAPATH_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_IPSEC_DATAPATH_H_
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <utility>
 
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_packet_forwarder.h"
@@ -94,6 +92,7 @@ class IpSecDatapath : public DatapathInterface,
 
   void UplinkMtuUpdated(int uplink_mtu, int tunnel_mtu) override;
 
+  void DownlinkMtuUpdated(int downlink_mtu) override;
  private:
   void ShutdownIpSecPacketForwarder() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

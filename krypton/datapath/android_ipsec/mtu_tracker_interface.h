@@ -23,8 +23,10 @@ namespace datapath {
 namespace android {
 
 // Interface which encapsulates bookkeeping around the maximum transmission unit
-// (MTU) for a connection. Tracks both the uplink MTU, for the network
-// connection, and the tunnel MTU, for the VPN Tunnel.
+// (MTU) for a connection. Tracks the uplink MTU, downlink MTU, and tunnel MTU.
+// The uplink MTU is from the client to the backend, the downlink MTU is from
+// the backend to the client, and the tunnel MTU is from the TUN interface to
+// the network.
 class MtuTrackerInterface {
  public:
   class NotificationInterface {
@@ -32,6 +34,8 @@ class MtuTrackerInterface {
     virtual ~NotificationInterface() = default;
 
     virtual void UplinkMtuUpdated(int uplink_mtu, int tunnel_mtu) = 0;
+
+    virtual void DownlinkMtuUpdated(int downlink_mtu) = 0;
   };
 
   virtual ~MtuTrackerInterface() = default;
@@ -39,9 +43,13 @@ class MtuTrackerInterface {
   // Updates both the uplink MTU and tunnel MTU based on the uplink MTU value.
   virtual void UpdateUplinkMtu(int uplink_mtu) = 0;
 
+  virtual void UpdateDownlinkMtu(int downlink_mtu) = 0;
+
   virtual int GetUplinkMtu() const = 0;
 
   virtual int GetTunnelMtu() const = 0;
+
+  virtual int GetDownlinkMtu() const = 0;
 
   virtual void RegisterNotificationHandler(
       NotificationInterface* notification,

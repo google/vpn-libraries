@@ -47,6 +47,7 @@ MtuTracker::MtuTracker(IPProtocol dest_ip_protocol, int initial_uplink_mtu)
                            : kMaxIpv4Overhead),
       uplink_mtu_(initial_uplink_mtu),
       tunnel_mtu_(uplink_mtu_ - tunnel_overhead_),
+      downlink_mtu_(INT_MAX),
       notification_(nullptr),
       notification_thread_(nullptr) {}
 
@@ -70,9 +71,25 @@ void MtuTracker::UpdateUplinkMtu(int uplink_mtu) {
   }
 }
 
+void MtuTracker::UpdateDownlinkMtu(int downlink_mtu) {
+  if (downlink_mtu < downlink_mtu_) {
+    downlink_mtu_ = downlink_mtu;
+
+    if (notification_ == nullptr || notification_thread_ == nullptr) {
+      return;
+    }
+    auto notification = notification_;
+    notification_thread_->Post([notification, downlink_mtu] {
+      notification->DownlinkMtuUpdated(downlink_mtu);
+    });
+  }
+}
+
 int MtuTracker::GetUplinkMtu() const { return uplink_mtu_; }
 
 int MtuTracker::GetTunnelMtu() const { return tunnel_mtu_; }
+
+int MtuTracker::GetDownlinkMtu() const { return downlink_mtu_; }
 
 void MtuTracker::RegisterNotificationHandler(
     NotificationInterface* notification,

@@ -45,6 +45,7 @@ using ::testing::status::StatusIs;
 class MockMtuTracker : public MtuTrackerInterface {
  public:
   MOCK_METHOD(void, UpdateUplinkMtu, (int), (override));
+  MOCK_METHOD(void, UpdateDownlinkMtu, (int), (override));
   MOCK_METHOD(int, GetUplinkMtu, (), (const override));
   MOCK_METHOD(int, GetTunnelMtu, (), (const override));
   MOCK_METHOD(int, GetDownlinkMtu, (), (const override));

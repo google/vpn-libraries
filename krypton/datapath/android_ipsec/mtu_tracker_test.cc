@@ -31,6 +31,7 @@ using ::testing::_;
 class MockNotification : public MtuTrackerInterface::NotificationInterface {
  public:
   MOCK_METHOD(void, UplinkMtuUpdated, (int, int), (override));
+  MOCK_METHOD(void, DownlinkMtuUpdated, (int), (override));
 };
 
 TEST(MtuTrackerTest, TestCreateWithDefaultIpv4) {
@@ -90,6 +91,33 @@ TEST(MtuTrackerTest, TestUpdateUplinkMtuWithNotification) {
   mtu_tracker.UpdateUplinkMtu(1000);
   EXPECT_EQ(mtu_tracker.GetUplinkMtu(), 1000);
   EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 895);
+
+  EXPECT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
+}
+
+TEST(MtuTrackerTest, TestUpdateDownlinkMtuWithNullNotificationThread) {
+  MockNotification notification;
+
+  EXPECT_CALL(notification, UplinkMtuUpdated(_, _)).Times(0);
+
+  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
+  mtu_tracker.RegisterNotificationHandler(&notification, nullptr);
+  mtu_tracker.UpdateDownlinkMtu(1000);
+  EXPECT_EQ(mtu_tracker.GetDownlinkMtu(), 1000);
+}
+
+TEST(MtuTrackerTest, TestUpdateDownlinkMtuWithNotification) {
+  utils::LooperThread looper("MtuTrackerTest Thread");
+  MockNotification notification;
+
+  absl::Notification mtu_update_done;
+  EXPECT_CALL(notification, DownlinkMtuUpdated(1000))
+      .WillOnce([&mtu_update_done]() { mtu_update_done.Notify(); });
+
+  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
+  mtu_tracker.RegisterNotificationHandler(&notification, &looper);
+  mtu_tracker.UpdateDownlinkMtu(1000);
+  EXPECT_EQ(mtu_tracker.GetDownlinkMtu(), 1000);
 
   EXPECT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
