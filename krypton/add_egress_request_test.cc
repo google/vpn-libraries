@@ -14,8 +14,6 @@
 
 #include "privacy/net/krypton/add_egress_request.h"
 
-#include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 
@@ -25,6 +23,7 @@
 #include "privacy/net/krypton/utils/json_util.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 

@@ -21,7 +21,6 @@
 #include <string>
 #include <utility>
 
-#include "base/logging.h"
 #include "google/protobuf/duration.proto.h"
 #include "google/protobuf/timestamp.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
@@ -142,7 +141,6 @@ Session::Session(const KryptonConfig& config, Auth* auth,
   datapath->RegisterNotificationHandler(this);
   active_network_info_ = network_info;
   key_material_ = std::make_unique<crypto::SessionCrypto>(config);
-  auth_->SetCrypto(key_material_.get());
   tunnel_manager_ = tunnel_manager;
 }
 
@@ -294,7 +292,7 @@ void Session::PpnDataplaneRequest(bool is_rekey) {
   params.apn_type = auth_response.apn_type();
   params.dynamic_mtu_enabled = config_.dynamic_mtu_enabled();
   if (config_.enable_blind_signing()) {
-    params.blind_message = key_material_->original_message();
+    params.blind_message = auth_->GetOriginalMessage();
     std::string blinded_signature;
     if (auth_->auth_response().blinded_token_signatures().empty()) {
       LOG(ERROR) << "No blind token signatures found";
@@ -306,7 +304,7 @@ void Session::PpnDataplaneRequest(bool is_rekey) {
     if (absl::Base64Unescape(
             auth_->auth_response().blinded_token_signatures().at(0),
             &blinded_signature)) {
-      auto token = key_material_->GetBrassUnblindedToken(blinded_signature);
+      auto token = auth_->GetBrassUnblindedToken(blinded_signature);
       if (!token.has_value()) {
         LOG(ERROR) << "No unblinded token signatures found";
         auto status = absl::FailedPreconditionError(
@@ -512,7 +510,6 @@ absl::Status Session::Rekey() {
   new_key_material->SetSignature(signature);
   key_material_.reset();
   key_material_ = std::move(new_key_material);
-  auth_->SetCrypto(key_material_.get());
   auth_->Start(/*is_rekey=*/true);
   return absl::OkStatus();
 }

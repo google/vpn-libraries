@@ -19,18 +19,15 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 
-#include "privacy/net/brass/rpc/brass.proto.h"
-#include "privacy/net/krypton/crypto/rsa_fdh_blinder.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
-#include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/openssl/base.h"
+#include "third_party/openssl/bn.h"
 #include "third_party/tink/cc/keyset_handle.h"
 
 namespace privacy {
@@ -84,27 +81,12 @@ class SessionCrypto {
 
   uint32_t downlink_spi() const { return downlink_spi_; }
 
-  // Set the public key received in PublicKeyResponse. Parameter is PEM
-  // RSA public key.
-  absl::Status SetBlindingPublicKey(absl::string_view rsa_public);
-  std::optional<std::string> GetZincBlindToken() const;
-  std::optional<std::string> GetBrassUnblindedToken(
-      absl::string_view zinc_blind_signature) const;
-  const std::string& original_message() const { return original_message_; }
-
   std::optional<std::string> GetRekeySignature() const {
     return rekey_signature_;
   }
 
   void SetSignature(absl::string_view signature) {
     rekey_signature_ = std::optional<std::string>(signature);
-  }
-
-  std::optional<std::string> blind_signing_public_key_hash() const {
-    if (blind_signing_public_key_hash_.empty()) {
-      return std::nullopt;
-    }
-    return absl::Base64Escape(blind_signing_public_key_hash_);
   }
 
   BN_CTX* bn_ctx() { return bn_ctx_.get(); }
@@ -125,11 +107,7 @@ class SessionCrypto {
   uint32_t downlink_spi_;
   std::unique_ptr<::crypto::tink::KeysetHandle> key_handle_ = nullptr;
   bssl::UniquePtr<BN_CTX> bn_ctx_ = nullptr;
-  std::unique_ptr<RsaFdhBlinder> blinder_ = nullptr;
-  std::unique_ptr<RsaFdhVerifier> verifier_ = nullptr;
-  std::string original_message_;
   std::optional<std::string> rekey_signature_;
-  std::string blind_signing_public_key_hash_;
 
   KryptonConfig config_;  // not owned.
 };

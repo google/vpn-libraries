@@ -15,7 +15,6 @@
 #include "privacy/net/krypton/egress_manager.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
 
 #include "privacy/net/krypton/add_egress_request.h"
@@ -30,6 +29,7 @@
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"

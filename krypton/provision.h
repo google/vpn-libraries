@@ -15,7 +15,6 @@
 #ifndef PRIVACY_NET_KRYPTON_PROVISION_H_
 #define PRIVACY_NET_KRYPTON_PROVISION_H_
 
-#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,12 +26,9 @@
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
-#include "third_party/absl/base/call_once.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/synchronization/mutex.h"
-#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -57,7 +53,7 @@ class Provision : public Auth::NotificationInterface,
             EgressManager* egress_manager, HttpFetcherInterface* http_fetcher,
             utils::LooperThread* notification_thread);
 
-  ~Provision() override {}
+  ~Provision() override = default;
 
   // Register for status change notifications.
   void RegisterNotificationHandler(NotificationInterface* notification) {

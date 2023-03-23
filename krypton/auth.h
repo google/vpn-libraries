@@ -16,7 +16,6 @@
 #define PRIVACY_NET_KRYPTON_AUTH_H_
 
 #include <atomic>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,19 +24,15 @@
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
-#include "privacy/net/krypton/crypto/session_crypto.h"
+#include "privacy/net/krypton/crypto/auth_crypto.h"
 #include "privacy/net/krypton/http_fetcher.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
-#include "privacy/net/krypton/utils/looper.h"
-#include "third_party/absl/base/call_once.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/status/statusor.h"
-#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
 
@@ -76,10 +71,6 @@ class Auth {
     notification_ = notification;
   }
 
-  void SetCrypto(crypto::SessionCrypto* key_material) {
-    key_material_ = key_material;
-  }
-
   // State of the current authentication.  If the status need to be async, use
   // notification handler.
   State GetState() const ABSL_LOCKS_EXCLUDED(mutex_);
@@ -107,9 +98,13 @@ class Auth {
 
   absl::StatusOr<std::string> fetch_nonce() const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  std::string GetOriginalMessage() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  std::optional<std::string> GetBrassUnblindedToken(
+      absl::string_view zinc_blind_signature) const ABSL_LOCKS_EXCLUDED(mutex_);
+
  private:
-  void RequestKeyForBlindSigning(bool is_rekey)
-      ABSL_LOCKS_EXCLUDED(mutex_);
+  void RequestKeyForBlindSigning(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
 
   void RequestForInitialData(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -121,8 +116,7 @@ class Auth {
   void SetState(State) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void HandleAuthAndSignResponse(bool is_rekey, const HttpResponse& response)
       ABSL_LOCKS_EXCLUDED(mutex_);
-  void HandlePublicKeyResponse(bool is_rekey,
-                                       const HttpResponse& http_response)
+  void HandlePublicKeyResponse(bool is_rekey, const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
   void HandleInitialDataResponse(bool is_rekey,
                                  const HttpResponse& http_response)
@@ -143,11 +137,11 @@ class Auth {
 
   HttpFetcher http_fetcher_;
   KryptonConfig config_;
+  std::unique_ptr<crypto::AuthCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
 
   OAuthInterface* oauth_;                // Not owned.
   NotificationInterface* notification_;  // Not owned.
   utils::LooperThread* looper_thread_;   // Not owned.
-  crypto::SessionCrypto* key_material_;  // Not owned.
 
   std::atomic_bool stopped_ = false;
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();

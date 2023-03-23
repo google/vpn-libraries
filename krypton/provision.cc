@@ -17,13 +17,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include <atomic>
-#include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 
-#include "base/logging.h"
 #include "google/protobuf/timestamp.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
@@ -64,7 +60,6 @@ Provision::Provision(const KryptonConfig& config, Auth* auth,
   egress_manager->RegisterNotificationHandler(this);
 
   key_material_ = std::make_unique<crypto::SessionCrypto>(config);
-  auth_->SetCrypto(key_material_.get());
 }
 
 void Provision::FailWithStatus(absl::Status status, bool permanent) {
@@ -120,7 +115,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
   params.apn_type = auth_response.apn_type();
   params.dynamic_mtu_enabled = config_.dynamic_mtu_enabled();
   if (config_.enable_blind_signing()) {
-    params.blind_message = key_material_->original_message();
+    params.blind_message = auth_->GetOriginalMessage();
     std::string blinded_signature;
     if (auth_->auth_response().blinded_token_signatures().empty()) {
       LOG(ERROR) << "No blind token signatures found";
@@ -132,7 +127,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
     if (absl::Base64Unescape(
             auth_->auth_response().blinded_token_signatures().at(0),
             &blinded_signature)) {
-      auto token = key_material_->GetBrassUnblindedToken(blinded_signature);
+      auto token = auth_->GetBrassUnblindedToken(blinded_signature);
       if (!token.has_value()) {
         LOG(ERROR) << "No unblinded token signatures found";
         FailWithStatus(absl::FailedPreconditionError(

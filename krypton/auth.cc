@@ -14,23 +14,19 @@
 
 #include "privacy/net/krypton/auth.h"
 
-#include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "base/logging.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/auth_and_sign_request.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
-#include "privacy/net/krypton/crypto/session_crypto.h"
+#include "privacy/net/krypton/crypto/auth_crypto.h"
 #include "privacy/net/krypton/http_fetcher.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
@@ -72,7 +68,9 @@ Auth::Auth(const KryptonConfig& config,
                     ABSL_DIE_IF_NULL(looper_thread)),
       config_(config),
       oauth_(ABSL_DIE_IF_NULL(oath_native)),
-      looper_thread_(looper_thread) {}
+      looper_thread_(looper_thread) {
+  key_material_ = std::make_unique<crypto::AuthCrypto>(config);
+}
 
 Auth::~Auth() {
   absl::MutexLock l(&mutex_);
@@ -176,7 +174,6 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
       return;
     }
 
-    DCHECK_NE(key_material_, nullptr);
     auto blinding_status = key_material_->SetBlindingPublicKey(response.pem());
     if (!blinding_status.ok()) {
       LOG(ERROR) << "Error setting blinding public key";
@@ -242,7 +239,6 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
       return;
     }
 
-    DCHECK_NE(key_material_, nullptr);
     auto blinding_status = key_material_->SetBlindingPublicKey(
         get_initial_data_response_.at_public_metadata_public_key()
             .serialized_public_key());
@@ -270,6 +266,11 @@ absl::StatusOr<std::string> Auth::signer_public_key() const {
 }
 
 void Auth::Start(bool is_rekey) {
+  {
+    absl::MutexLock l(&mutex_);
+    key_material_ = std::make_unique<crypto::AuthCrypto>(config_);
+  }
+
   if (config_.enable_blind_signing()) {
     LOG(INFO) << "Starting authentication with blind signing. Rekey:"
               << (is_rekey ? "true" : "false");
@@ -285,6 +286,17 @@ void Auth::Start(bool is_rekey) {
               << (is_rekey ? "true" : "false");
     Authenticate(is_rekey, /*nonce=*/std::nullopt);
   }
+}
+
+std::string Auth::GetOriginalMessage() const {
+  absl::MutexLock l(&mutex_);
+  return key_material_->original_message();
+}
+
+std::optional<std::string> Auth::GetBrassUnblindedToken(
+    absl::string_view zinc_blind_signature) const {
+  absl::MutexLock l(&mutex_);
+  return key_material_->GetBrassUnblindedToken(zinc_blind_signature);
 }
 
 void Auth::RequestKeyForBlindSigning(bool is_rekey) {

@@ -14,10 +14,8 @@
 
 #include "privacy/net/krypton/auth.h"
 
-#include <algorithm>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 
 #include "google/protobuf/duration.proto.h"
@@ -105,7 +103,6 @@ class AuthTest : public ::testing::Test {
     auth_->RegisterNotificationHandler(&auth_notification_);
 
     crypto_ = std::make_unique<crypto::SessionCrypto>(config);
-    auth_->SetCrypto(crypto_.get());
   }
 
   void TearDown() override { auth_->Stop(); }
