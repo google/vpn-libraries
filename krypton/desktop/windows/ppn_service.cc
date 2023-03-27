@@ -232,6 +232,32 @@ absl::StatusOr<desktop::PpnTelemetry> PpnService::CollectTelemetry() {
   return response.response().collect_telemetry_response().ppn_telemetry();
 }
 
+absl::Status PpnService::SetIpGeoLevel(ppn::IpGeoLevel level) {
+  LOG(INFO) << "PpnService(C++): PpnService.SetIpGeoLevel method invoked";
+  auto app_to_service_pipe = app_to_service_pipe_.get();
+
+  desktop::KryptonControlMessage request;
+  request.set_type(desktop::KryptonControlMessage::SET_IP_GEO_LEVEL);
+  request.mutable_request()->mutable_set_ip_geo_level_request()->set_level(
+      level);
+
+  auto response_status = app_to_service_pipe_handler_->CallPipe(request);
+  if (!response_status.ok()) {
+    LOG(ERROR) << "Client: Error connecting to the server: "
+               << response_status.status();
+    HandlePipeFailure(response_status.status());
+    return absl::InternalError("Client: Error connecting to the server");
+  }
+  privacy::krypton::desktop::KryptonControlMessage response = *response_status;
+
+  if (response.response().status().code() != google::rpc::Code::OK) {
+    LOG(ERROR) << "Error in response:"
+               << utils::GetStatusFromRpcStatus(response.response().status());
+    return absl::InternalError("Client: Error in response from service");
+  }
+  return absl::OkStatus();
+}
+
 void PpnService::ServiceStopped() {
   LOG(INFO) << "PpnService(C++): Krypton Service stopped. Restarting PPN";
   auto ppn_notification = ppn_notification_;

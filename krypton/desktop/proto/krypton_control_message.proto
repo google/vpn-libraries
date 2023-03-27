@@ -19,6 +19,7 @@ syntax = "proto2";
 package privacy.krypton.desktop;
 
 import "google/rpc/status.proto";
+import "privacy/net/common/proto/ppn_options.proto";
 import "privacy/net/krypton/desktop/proto/ppn_telemetry.proto";
 import "privacy/net/krypton/proto/connection_status.proto";
 import "privacy/net/krypton/proto/krypton_config.proto";
@@ -43,6 +44,7 @@ message KryptonControlMessage {
     COLLECT_TELEMETRY = 3;
     NOTIFICATION_UPDATE = 4;
     FETCH_OAUTH_TOKEN = 5;
+    SET_IP_GEO_LEVEL = 6;
   }
 }
 
@@ -62,6 +64,10 @@ message KryptonControlRequest {
     // Only this field will be respected on server end when processing this
     // proto with MessageType set as STOP_KRYPTON.
     StopKryptonRequest stop_krypton_request = 3;
+    // To be set when message type is SET_IP_GEO_LEVEL.
+    // Only this field will be respected on server end when processing this
+    // proto with MessageType set as SET_IP_GEO_LEVEL.
+    SetIpGeoLevelRequest set_ip_geo_level_request = 4;
   }
 }
 
@@ -97,6 +103,11 @@ message StopKryptonRequest {
 message CollectTelemetryResponse {
   // Ppn Telemetry data.
   optional privacy.krypton.desktop.PpnTelemetry ppn_telemetry = 1;
+}
+
+// Request for setting the IP geo level.
+message SetIpGeoLevelRequest {
+  optional privacy.ppn.IpGeoLevel level = 1;
 }
 
 // PPN Status Notification Update Request

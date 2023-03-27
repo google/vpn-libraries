@@ -22,6 +22,7 @@
 #include <memory>
 
 #include "base/init_google.h"
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/desktop/proto/ppn_telemetry.proto.h"
 #include "privacy/net/krypton/desktop/windows/http_fetcher.h"
 #include "privacy/net/krypton/desktop/windows/ipc/named_pipe_factory.h"
@@ -74,6 +75,8 @@ class KryptonService : public PpnServiceInterface,
   void Stop(const absl::Status &status) override;
   // Collect Telemetry
   absl::StatusOr<desktop::PpnTelemetry> CollectTelemetry() override;
+  // Set IP Geo Level
+  absl::Status SetIpGeoLevel(ppn::IpGeoLevel level) override;
   // Handles network change notification
   void BestNetworkChanged(std::optional<NetworkInfo> network) override;
 

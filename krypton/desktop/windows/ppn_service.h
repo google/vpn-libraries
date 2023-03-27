@@ -22,6 +22,7 @@
 #include <utility>
 
 #include "base/logging.h"
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/desktop/desktop_oauth_interface.h"
 #include "privacy/net/krypton/desktop/proto/ppn_telemetry.proto.h"
 #include "privacy/net/krypton/desktop/windows/ipc/named_pipe_factory_interface.h"
@@ -72,6 +73,9 @@ class PpnService : public PpnServiceInterface, ServiceMonitorInterface {
 
   // Collects Telemetry from Krypton
   absl::StatusOr<desktop::PpnTelemetry> CollectTelemetry() override;
+
+  // Sets the geographical granularity of IP allocation.
+  absl::Status SetIpGeoLevel(ppn::IpGeoLevel level) override;
 
   void ServiceStopped() ABSL_LOCKS_EXCLUDED(mutex_) override;
 

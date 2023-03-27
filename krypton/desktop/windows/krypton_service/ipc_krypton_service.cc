@@ -74,6 +74,17 @@ desktop::KryptonControlMessage IpcKryptonService::ProcessKryptonControlMessage(
             ->mutable_ppn_telemetry()) = *ppn_telemetry;
       break;
     }
+    case desktop::KryptonControlMessage::SET_IP_GEO_LEVEL: {
+      auto level = message.request().set_ip_geo_level_request().level();
+      auto set_status = ppn_service_->SetIpGeoLevel(level);
+      if (!set_status.ok()) {
+        status->set_code(google::rpc::Code::INTERNAL);
+        status->set_message(set_status.message());
+        break;
+      }
+      status->set_code(google::rpc::Code::OK);
+      break;
+    }
     default: {
       status->set_code(google::rpc::Code::INVALID_ARGUMENT);
       status->set_message("No valid message type present in the request");

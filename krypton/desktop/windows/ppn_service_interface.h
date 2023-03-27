@@ -17,6 +17,7 @@
 #ifndef PRIVACY_NET_KRYPTON_DESKTOP_WINDOWS_PPN_SERVICE_INTERFACE_H_
 #define PRIVACY_NET_KRYPTON_DESKTOP_WINDOWS_PPN_SERVICE_INTERFACE_H_
 
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/desktop/proto/ppn_telemetry.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 
@@ -39,6 +40,9 @@ class PpnServiceInterface {
   // Returns a PpnTelemetry object with data about how PPN is currently
   // running.
   virtual absl::StatusOr<desktop::PpnTelemetry> CollectTelemetry() = 0;
+
+  // Sets the geographical granularity of IP allocation.
+  virtual absl::Status SetIpGeoLevel(ppn::IpGeoLevel level) = 0;
 };
 
 }  // namespace windows

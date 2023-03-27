@@ -56,6 +56,8 @@ class IpcKryptonServiceTest : public ::testing::Test {
    public:
     MOCK_METHOD(absl::StatusOr<desktop::PpnTelemetry>, CollectTelemetry, (),
                 (override));
+    MOCK_METHOD(absl::Status, SetIpGeoLevel, (privacy::ppn::IpGeoLevel),
+                (override));
     MOCK_METHOD(void, Start, (const privacy::krypton::KryptonConfig&),
                 (override));
     MOCK_METHOD(void, Stop, (const absl::Status&), (override));

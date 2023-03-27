@@ -249,6 +249,11 @@ absl::StatusOr<desktop::PpnTelemetry> KryptonService::CollectTelemetry() {
   return ppn_telemetry_manager_->Collect(krypton_.get());
 }
 
+absl::Status KryptonService::SetIpGeoLevel(ppn::IpGeoLevel level) {
+  krypton_->SetIpGeoLevel(level);
+  return absl::OkStatus();
+}
+
 void KryptonService::BestNetworkChanged(std::optional<NetworkInfo> network) {
   if (network) {
     LOG(INFO) << "PpnService(C++): Setting network";
