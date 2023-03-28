@@ -19,6 +19,7 @@
 #import "google/protobuf/duration.proto.h"
 #import "googlemac/iPhone/Shared/PPN/Classes/PPNOptions+Internal.h"
 
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 
 #import <XCTest/XCTest.h>
@@ -65,8 +66,10 @@
   XCTAssertEqualObjects(copperHostnameSuffixElem, @"g-tun.com");
   XCTAssertTrue(kryptonConfig.ipv6_enabled());
   XCTAssertFalse(kryptonConfig.public_metadata_enabled());
+  XCTAssertFalse(kryptonConfig.has_api_key());
   NSString *apiKey = [[NSString alloc] initWithUTF8String:kryptonConfig.api_key().c_str()];
   XCTAssertEqualObjects(apiKey, @"");
+  XCTAssertFalse(kryptonConfig.has_ip_geo_level());
 }
 
 - (void)testKryptonConfigFromOptions {
@@ -87,6 +90,7 @@
     PPNIPv6Enabled : @NO,
     PPNPublicMetadataEnabled : @YES,
     PPNAPIKey : @"beryllium_api_key",
+    PPNOptionIPGeoLevel : @(privacy::ppn::CITY),
   };
   privacy::krypton::KryptonConfig kryptonConfig = PPNKryptonConfigFromOptions(options);
 
@@ -112,6 +116,7 @@
   XCTAssertEqualObjects(copperHostnameOverride, @"copper_hostname_override");
   NSString *apiKey = [[NSString alloc] initWithUTF8String:kryptonConfig.api_key().c_str()];
   XCTAssertEqualObjects(apiKey, @"beryllium_api_key");
+  XCTAssertEqual(kryptonConfig.ip_geo_level(), privacy::ppn::CITY);
 
   XCTAssertEqual(kryptonConfig.datapath_protocol(), privacy::krypton::KryptonConfig::IPSEC);
   XCTAssertEqual(kryptonConfig.cipher_suite_key_length(), 1024u);

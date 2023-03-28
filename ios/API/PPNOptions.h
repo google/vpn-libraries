@@ -200,4 +200,9 @@ FOUNDATION_EXTERN PPNOptionKey const PPNAPIKey;
  */
 FOUNDATION_EXTERN PPNOptionKey const PPNRespectAllNetworkSwitches;
 
+/**
+ * Sets the level of granularity for IP-geo mapping.
+ */
+FOUNDATION_EXTERN PPNOptionKey const PPNOptionIPGeoLevel;
+
 NS_ASSUME_NONNULL_END

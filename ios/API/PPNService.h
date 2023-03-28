@@ -15,6 +15,7 @@
  */
 
 #import <Foundation/Foundation.h>
+#import "privacy/net/common/proto/PpnOptions.pbobjc.h"
 
 #import "googlemac/iPhone/Shared/PPN/API/PPNOAuthManaging.h"
 #import "googlemac/iPhone/Shared/PPN/API/PPNOptions.h"
@@ -22,6 +23,10 @@
 #import "googlemac/iPhone/Shared/PPN/API/PPNTelemetry.h"
 #import "googlemac/iPhone/Shared/PPN/API/PPNUDPSessionManaging.h"
 #import "googlemac/iPhone/Shared/PPN/API/PPNVirtualNetworkInterfaceManaging.h"
+
+// Forward declare the enum from the proto, since .pbobjc.h files are not
+// propagaed to transitive dependences.
+typedef NS_ENUM(int32_t, PPNIpGeoLevel);
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -71,6 +76,11 @@ NS_ASSUME_NONNULL_BEGIN
  * Returns a PpnTelemetry object with data about how PPN is currently running.
  */
 - (PPNTelemetry *)collectTelemetry;
+
+/**
+ * Sets the level of geographic granularity for IP assignment.
+ */
+- (void)setIPGeoLevel:(PPNIpGeoLevel)level;
 
 @end
 

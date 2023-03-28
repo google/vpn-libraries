@@ -25,6 +25,7 @@
 #import "googlemac/iPhone/Shared/PPN/Krypton/Classes/PPNTimer.h"
 #import "googlemac/iPhone/Shared/PPN/Krypton/Classes/PPNVPNService.h"
 
+#import "privacy/net/common/proto/ppn_options.proto.h"
 #import "privacy/net/krypton/krypton.h"
 #import "privacy/net/krypton/timer_manager.h"
 
@@ -94,6 +95,10 @@
   privacy::krypton::KryptonTelemetry kryptonTelemetry;
   _krypton->CollectTelemetry(&kryptonTelemetry);
   return kryptonTelemetry;
+}
+
+- (void)setIPGeoLevel:(privacy::ppn::IpGeoLevel)level {
+  _krypton->SetIpGeoLevel(static_cast<privacy::ppn::IpGeoLevel>(level));
 }
 
 #pragma mark - PPNKryptonNotificationDelegate

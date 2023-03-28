@@ -21,6 +21,7 @@
 #import "googlemac/iPhone/Shared/PPN/API/PPNVirtualNetworkInterfaceManaging.h"
 #import "googlemac/iPhone/Shared/PPN/Krypton/API/PPNKryptonServiceDelegate.h"
 
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
@@ -85,6 +86,11 @@ NS_ASSUME_NONNULL_BEGIN
  * Returns a PpnTelemetry object with data about how PPN is currently running.
  */
 - (privacy::krypton::KryptonTelemetry)collectTelemetry;
+
+/**
+ * Sets the level of geographical granularity for IP assignment.
+ */
+- (void)setIPGeoLevel:(privacy::ppn::IpGeoLevel)level;
 
 /**
  * Returns @c Krypton's debug info proto.

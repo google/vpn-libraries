@@ -21,6 +21,7 @@
 #import "google/protobuf/duration.proto.h"
 #import "googlemac/iPhone/Shared/PPN/Classes/PPNOptions+Internal.h"
 
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 
 #pragma mark - Required Options
@@ -96,6 +97,8 @@ PPNOptionKey const PPNOptionNetworkExtensionUploadCrashReportEnabled = @"uploadC
 PPNOptionKey const PPNRespectAllNetworkSwitches = @"respectAllNetworkSwitches";
 
 PPNOptionKey const PPNAPIKey = @"apiKey";
+
+PPNOptionKey const PPNOptionIPGeoLevel = @"ipGeoLevel";
 
 #pragma mark - Default Option Values
 
@@ -237,6 +240,11 @@ privacy::krypton::KryptonConfig PPNKryptonConfigFromOptions(
   NSString *apiKey = options[PPNAPIKey];
   if (apiKey != nullptr) {
     kryptonConfig.set_api_key(std::string(apiKey.UTF8String));
+  }
+
+  NSNumber *ipGeoLevel = options[PPNOptionIPGeoLevel];
+  if (ipGeoLevel.intValue != 0) {
+    kryptonConfig.set_ip_geo_level(static_cast<privacy::ppn::IpGeoLevel>(ipGeoLevel.intValue));
   }
 
   return kryptonConfig;

@@ -30,6 +30,7 @@
 #import "googlemac/iPhone/Shared/PPN/Xenon/API/PPNNWPathMonitor.h"
 #import "third_party/objective_c/ocmock/v3/Source/OCMock/OCMock.h"
 
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 
 #import <XCTest/XCTest.h>
@@ -41,9 +42,18 @@ static NSTimeInterval const PPNTimeoutInterval = 1.0;
 @property(nonatomic, readonly) BOOL kryptonStartCalled;
 @property(nonatomic, readonly) BOOL kryptonStopCalled;
 @property(nonatomic, readonly) BOOL kryptonCollectTelemetryCalled;
+@property(nonatomic, readonly) privacy::ppn::IpGeoLevel kryptonIPGeoLevel;
 @end
 
 @implementation FakePPNKryptonService
+
+- (instancetype)init {
+  self = [super init];
+  if (self != nil) {
+    _kryptonIPGeoLevel = privacy::ppn::IP_GEO_LEVEL_UNSPECIFIED;
+  }
+  return self;
+}
 
 - (void)startWithConfiguration:(const privacy::krypton::KryptonConfig &)configuration {
   _kryptonStartCalled = YES;
@@ -64,6 +74,10 @@ static NSTimeInterval const PPNTimeoutInterval = 1.0;
 - (privacy::krypton::KryptonDebugInfo)debugInfo {
   privacy::krypton::KryptonDebugInfo debugInfo;
   return debugInfo;
+}
+
+- (void)setIPGeoLevel:(privacy::ppn::IpGeoLevel)level {
+  _kryptonIPGeoLevel = level;
 }
 
 @end
@@ -181,6 +195,14 @@ static NSTimeInterval const PPNTimeoutInterval = 1.0;
 
   [_PPNService collectTelemetry];
   XCTAssertTrue(fakeKryptonService.kryptonCollectTelemetryCalled);
+}
+
+- (void)testSetIPGeoLevel {
+  FakePPNKryptonService *fakeKryptonService = [[FakePPNKryptonService alloc] init];
+  [_PPNService setValue:fakeKryptonService forKey:@"kryptonService"];
+
+  [_PPNService setIPGeoLevel:PPNIpGeoLevel_City];
+  XCTAssertEqual(fakeKryptonService.kryptonIPGeoLevel, privacy::ppn::CITY);
 }
 
 - (void)testKryptonStop {

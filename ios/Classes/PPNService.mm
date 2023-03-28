@@ -191,6 +191,12 @@ NSNumber *PPNMemoryUsageInBytes() {
   return ppnTelemetry;
 }
 
+- (void)setIPGeoLevel:(PPNIpGeoLevel)level {
+  PPNLog(@"Setting IP geo level to %d", level);
+  // Convert from the objc version of the enum to the C++ version.
+  [_kryptonService setIPGeoLevel:static_cast<privacy::ppn::IpGeoLevel>(level)];
+}
+
 #pragma mark - Krypton Debugging Logging
 
 /** This method should only be called on the @c _dispatchQueue. */
