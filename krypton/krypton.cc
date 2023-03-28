@@ -195,7 +195,9 @@ void Krypton::SetIpGeoLevel(privacy::ppn::IpGeoLevel level) {
                     "because it is not started.";
     return;
   }
-  session_manager_->SetIpGeoLevel(level);
+  if (!session_manager_->SetIpGeoLevel(level)) {
+    return;
+  }
 
   if (reconnector_ == nullptr) {
     return;

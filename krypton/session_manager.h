@@ -75,10 +75,15 @@ class SessionManager : public SessionManagerInterface {
     return ip_geo_level_;
   }
 
-  void SetIpGeoLevel(privacy::ppn::IpGeoLevel level)
+  // Returns true if the geo level was set. Returns false if it was a no-op.
+  bool SetIpGeoLevel(privacy::ppn::IpGeoLevel level)
       ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
+    if (ip_geo_level_ == level) {
+      return false;
+    }
     ip_geo_level_ = level;
+    return true;
   }
 
  private:
