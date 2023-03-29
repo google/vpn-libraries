@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn.internal;
 import android.app.Notification;
 import android.app.Service;
 import android.content.Context;
+import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Build.VERSION;
 import android.util.Log;
@@ -123,7 +124,11 @@ public class PpnNotificationManager {
   /** Attaches the Notification to the service and shows it. */
   private void updateNotification() {
     synchronized (lock) {
-      if (VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      if (VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        // Including the foregroundServiceType for Android U & above.
+        service.startForeground(
+            notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED);
+      } else if (VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         service.startForeground(notificationId, notification);
       } else {
         NotificationManagerCompat manager = NotificationManagerCompat.from(service);
