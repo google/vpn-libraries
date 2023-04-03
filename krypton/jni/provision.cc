@@ -29,8 +29,6 @@
 #include "privacy/net/krypton/jni/oauth.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
-#include "third_party/absl/flags/flag.h"
-#include "third_party/absl/memory/memory.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
 
@@ -101,7 +99,8 @@ class ProvisionContext : public Provision::NotificationInterface {
     looper_ = nullptr;
   }
 
-  void Provisioned(const AddEgressResponse& response) override {
+  void Provisioned(const AddEgressResponse& response,
+                   bool /*is_rekey*/) override {
     LOG(INFO) << "Provisioning succeeded. Passing response to Java.";
 
     auto ike = response.ike_response();

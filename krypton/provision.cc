@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "google/protobuf/timestamp.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
@@ -74,6 +75,25 @@ void Provision::Start() {
   DCHECK(notification_);
   LOG(INFO) << "Starting provisioning";
   auth_->Start(/*is_rekey=*/false);
+}
+
+absl::Status Provision::Rekey() {
+  absl::MutexLock l(&mutex_);
+  // Generate the rekey parameters that are needed and generate a signature from
+  // the old crypto keys.
+  auto new_key_material = std::make_unique<crypto::SessionCrypto>(config_);
+  PPN_ASSIGN_OR_RETURN(auto signature, key_material_->GenerateSignature(
+                                           new_key_material->public_value()));
+  new_key_material->SetSignature(signature);
+  key_material_.reset();
+  key_material_ = std::move(new_key_material);
+  auth_->Start(/*is_rekey=*/true);
+  return absl::OkStatus();
+}
+
+absl::StatusOr<TransformParams> Provision::GetTransformParams() {
+  absl::MutexLock l(&mutex_);
+  return key_material_->GetTransformParams();
 }
 
 void Provision::PpnDataplaneRequest(bool is_rekey) {
@@ -184,6 +204,7 @@ void Provision::AuthSuccessful(bool is_rekey) {
 
 void Provision::AuthFailure(const absl::Status& status) {
   absl::MutexLock l(&mutex_);
+  LOG(ERROR) << "Authentication failed: " << status;
   FailWithStatus(status, utils::IsPermanentError(status));
 }
 
@@ -204,14 +225,10 @@ absl::Status Provision::SetRemoteKeyMaterial(const AddEgressResponse& egress) {
 
   PPN_RETURN_IF_ERROR(
       key_material_->SetRemoteKeyMaterial(remote_public_value, remote_nonce));
-  // Store the rekey_verification_key as it's needed for the next rekey
-  // procedure.
-  PPN_ASSIGN_OR_RETURN(rekey_verification_key_,
-                       key_material_->GetRekeyVerificationKey());
   return absl::OkStatus();
 }
 
-void Provision::EgressAvailable(bool /*is_rekey*/) {
+void Provision::EgressAvailable(bool is_rekey) {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "Egress available";
 
@@ -230,8 +247,9 @@ void Provision::EgressAvailable(bool /*is_rekey*/) {
   }
 
   NotificationInterface* notification = notification_;
-  notification_thread_->Post(
-      [notification, status, egress] { notification->Provisioned(*egress); });
+  notification_thread_->Post([notification, status, egress, is_rekey] {
+    notification->Provisioned(*egress, is_rekey);
+  });
 }
 
 void Provision::EgressUnavailable(const absl::Status& status) {

@@ -36,7 +36,7 @@ namespace krypton {
 // Handles provisioning an egress through Auth and EgressManager.
 // This is the parts of Session that are not related to the datapath.
 class Provision : public Auth::NotificationInterface,
-                  EgressManager::NotificationInterface {
+                  public EgressManager::NotificationInterface {
  public:
   // Notification for Session state changes.
   class NotificationInterface {
@@ -44,9 +44,9 @@ class Provision : public Auth::NotificationInterface,
     NotificationInterface() = default;
     virtual ~NotificationInterface() = default;
 
-    virtual void Provisioned(const AddEgressResponse& egress_response) = 0;
-    virtual void ProvisioningFailure(const absl::Status status,
-                                     bool permanent) = 0;
+    virtual void Provisioned(const AddEgressResponse& egress_response,
+                             bool is_rekey) = 0;
+    virtual void ProvisioningFailure(absl::Status status, bool permanent) = 0;
   };
 
   Provision(const KryptonConfig& config, Auth* auth,
@@ -62,6 +62,11 @@ class Provision : public Auth::NotificationInterface,
 
   // Starts provisioning.
   void Start() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  absl::Status Rekey() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  absl::StatusOr<TransformParams> GetTransformParams()
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Override methods from the interface.
   void AuthSuccessful(bool is_rekey) override ABSL_LOCKS_EXCLUDED(mutex_);
@@ -92,7 +97,6 @@ class Provision : public Auth::NotificationInterface,
   utils::LooperThread* notification_thread_;  // Not owned.
 
   std::unique_ptr<crypto::SessionCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
-  std::optional<std::string> rekey_verification_key_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace krypton

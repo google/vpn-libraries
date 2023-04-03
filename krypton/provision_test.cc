@@ -63,7 +63,7 @@ class MockEgressManager : public EgressManager {
 
 class MockNotification : public Provision::NotificationInterface {
  public:
-  MOCK_METHOD(void, Provisioned, (const AddEgressResponse&), (override));
+  MOCK_METHOD(void, Provisioned, (const AddEgressResponse&, bool), (override));
   MOCK_METHOD(void, ProvisioningFailure, (absl::Status, bool), (override));
 };
 
@@ -299,8 +299,8 @@ TEST_F(ProvisionTest, EgressAvailable) {
   EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
       .WillOnce(Return(fake_add_egress_response));
 
-  EXPECT_CALL(notification_, Provisioned(_))
-      .WillOnce([&](const AddEgressResponse& response) {
+  EXPECT_CALL(notification_, Provisioned(_, /*is_rekey=*/false))
+      .WillOnce([&](AddEgressResponse response, bool /*is_rekey*/) {
         ASSERT_OK_AND_ASSIGN(auto ppn_dataplane_response,
                              response.ppn_dataplane_response());
         ASSERT_OK_AND_ASSIGN(auto expected_response,
@@ -311,6 +311,87 @@ TEST_F(ProvisionTest, EgressAvailable) {
 
   provision_->Start();
   EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+}
+
+TEST_F(ProvisionTest, Rekey) {
+  absl::Notification provising_done;
+  absl::Notification rekey_done;
+
+  ASSERT_OK_AND_ASSIGN(auto fake_add_egress_response1, GetAddEgressResponse1());
+  ASSERT_OK_AND_ASSIGN(auto fake_add_egress_response2, GetAddEgressResponse2());
+
+  EXPECT_CALL(auth_, Start(/*is_rekey=*/false)).WillOnce([&]() {
+    notification_thread_.Post(
+        [this] { provision_->AuthSuccessful(/*is_rekey=*/false); });
+  });
+
+  EXPECT_CALL(auth_, Start(/*is_rekey=*/true)).WillOnce([&]() {
+    notification_thread_.Post(
+        [this] { provision_->AuthSuccessful(/*is_rekey=*/true); });
+  });
+
+  EXPECT_CALL(egress_manager_, GetEgressNodeForPpnIpSec(_))
+      .WillOnce([&]() {
+        notification_thread_.Post(
+            [this] { provision_->EgressAvailable(/*is_rekey=*/false); });
+        return absl::OkStatus();
+      })
+      .WillOnce([&]() {
+        notification_thread_.Post(
+            [this] { provision_->EgressAvailable(/*is_rekey=*/true); });
+        return absl::OkStatus();
+      });
+
+  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+      .WillOnce(Return(fake_add_egress_response1))
+      .WillOnce(Return(fake_add_egress_response2));
+
+  EXPECT_CALL(notification_, Provisioned(_, /*is_rekey=*/false))
+      .WillOnce([&](AddEgressResponse response, bool /*is_rekey*/) {
+        ASSERT_OK_AND_ASSIGN(auto ppn_dataplane_response,
+                             response.ppn_dataplane_response());
+        ASSERT_OK_AND_ASSIGN(
+            auto expected_response,
+            fake_add_egress_response1.ppn_dataplane_response());
+        EXPECT_THAT(ppn_dataplane_response, EqualsProto(expected_response));
+        provising_done.Notify();
+      });
+
+  EXPECT_CALL(notification_, Provisioned(_, /*is_rekey=*/true))
+      .WillOnce([&](AddEgressResponse response, bool /*is_rekey*/) {
+        ASSERT_OK_AND_ASSIGN(auto ppn_dataplane_response,
+                             response.ppn_dataplane_response());
+        ASSERT_OK_AND_ASSIGN(
+            auto expected_response,
+            fake_add_egress_response2.ppn_dataplane_response());
+        EXPECT_THAT(ppn_dataplane_response, EqualsProto(expected_response));
+        rekey_done.Notify();
+      });
+
+  provision_->Start();
+
+  EXPECT_TRUE(provising_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+
+  ASSERT_OK_AND_ASSIGN(auto original_transform_params,
+                       provision_->GetTransformParams());
+  auto original_ipsec_params = original_transform_params.bridge();
+
+  ASSERT_OK(provision_->Rekey());
+
+  EXPECT_TRUE(rekey_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+
+  ASSERT_OK_AND_ASSIGN(auto rekeyed_transform_params,
+                       provision_->GetTransformParams());
+  auto rekeyed_ipsec_params = rekeyed_transform_params.bridge();
+
+  EXPECT_NE(rekeyed_ipsec_params.uplink_key(),
+            original_ipsec_params.uplink_key());
+  EXPECT_NE(rekeyed_ipsec_params.downlink_key(),
+            original_ipsec_params.downlink_key());
+  EXPECT_EQ(rekeyed_ipsec_params.session_id(),
+            original_ipsec_params.session_id());
+  EXPECT_EQ(rekeyed_ipsec_params.cipher_suite_key_length(),
+            original_ipsec_params.cipher_suite_key_length());
 }
 
 }  // namespace
