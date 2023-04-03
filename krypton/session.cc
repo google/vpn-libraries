@@ -403,12 +403,7 @@ absl::Status Session::BuildTunFdData(TunFdData* tun_fd_data) const {
   return absl::OkStatus();
 }
 
-absl::Status Session::CreateTunnelIfNeeded() {
-  if (has_active_tunnel_) {
-    LOG(INFO) << "Not creating tun fd as it's already present";
-    return absl::OkStatus();
-  }
-
+absl::Status Session::CreateTunnel() {
   TunFdData tun_fd_data;
   auto active_network_info = active_network_info_;
   DCHECK(active_network_info);
@@ -421,9 +416,26 @@ absl::Status Session::CreateTunnelIfNeeded() {
   // If bringing up the tunnel fails, assume there is no tunnel. Technically,
   // the tunnel manager may leave the tunnel up even if there's an error with
   // the new one, but it won't hurt to request it again later.
-  PPN_RETURN_IF_ERROR(tunnel_manager_->EnsureTunnelIsUp(tun_fd_data));
-  has_active_tunnel_ = true;
-  return absl::OkStatus();
+  auto status = tunnel_manager_->EnsureTunnelIsUp(tun_fd_data);
+  has_active_tunnel_ = status.ok();
+  return status;
+}
+
+absl::Status Session::UpdateTunnelIfNeeded() {
+  if (!has_active_tunnel_) {
+    return absl::InternalError("No active tunnel to update.");
+  }
+
+  return CreateTunnel();
+}
+
+absl::Status Session::CreateTunnelIfNeeded() {
+  if (has_active_tunnel_) {
+    LOG(INFO) << "Not creating tun fd as it's already present";
+    return absl::OkStatus();
+  }
+
+  return CreateTunnel();
 }
 
 absl::Status Session::SetRemoteKeyMaterial() {
@@ -861,7 +873,16 @@ void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
   absl::MutexLock l(&mutex_);
   if (tunnel_mtu != tunnel_mtu_) {
     tunnel_mtu_ = tunnel_mtu;
-    // TODO: Recreate the tunnel if necessary
+    datapath_->PrepareForTunnelSwitch();
+    auto tunnel_status = UpdateTunnelIfNeeded();
+    if (!tunnel_status.ok()) {
+      LOG(ERROR) << "Tunnel creation for MTU update failed with status "
+                 << tunnel_status;
+      datapath_->Stop();
+      SetState(State::kSessionError, tunnel_status);
+      return;
+    }
+    datapath_->SwitchTunnel();
   }
   if (uplink_mtu != uplink_mtu_) {
     uplink_mtu_ = uplink_mtu;

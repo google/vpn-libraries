@@ -205,6 +205,87 @@ TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
   datapath_.Stop();
 }
 
+TEST_F(IpSecDatapathTest, SwitchTunnel) {
+  MockTunnel new_tunnel;
+  auto socket_ptr = std::make_unique<MockIpSecSocket>();
+
+  // Need to keep a reference to the socket to simulate data being sent.
+  MockIpSecSocket *socket = socket_ptr.get();
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _))
+      .WillOnce(Return(std::move(socket_ptr)));
+  EXPECT_CALL(*socket, GetFd()).WillOnce(Return(1));
+
+  EXPECT_CALL(notification_, DatapathFailed).Times(0);
+  EXPECT_CALL(notification_, DatapathPermanentFailure).Times(0);
+
+  EXPECT_CALL(vpn_service_,
+              ConfigureIpSec(testing::EqualsProto(params_.ipsec())));
+
+  absl::Notification socket_read_cancel_1;
+  absl::Notification socket_read_cancel_2;
+  absl::Notification tunnel_read_cancel_1;
+  absl::Notification tunnel_read_cancel_2;
+
+  // Simulate some network traffic, so that we know everything is running.
+  EXPECT_CALL(*socket, ReadPackets())
+      .WillOnce([&socket_read_cancel_1]() {
+        socket_read_cancel_1.WaitForNotification();
+        return std::vector<Packet>();
+      })
+      .WillOnce([&socket_read_cancel_2]() {
+        socket_read_cancel_2.WaitForNotification();
+        return std::vector<Packet>();
+      });
+
+  // Closed by both the packet forwarder and the datapath.
+  EXPECT_CALL(*socket, CancelReadPackets())
+      .WillOnce([&socket_read_cancel_1]() {
+        socket_read_cancel_1.Notify();
+        return absl::OkStatus();
+      })
+      .WillOnce([&socket_read_cancel_2]() {
+        socket_read_cancel_2.Notify();
+        return absl::OkStatus();
+      });
+
+  EXPECT_CALL(*socket, Close()).WillOnce(Return(absl::OkStatus()));
+
+  EXPECT_CALL(tunnel_, ReadPackets()).WillOnce([&tunnel_read_cancel_1]() {
+    tunnel_read_cancel_1.WaitForNotification();
+    return std::vector<Packet>();
+  });
+
+  EXPECT_CALL(new_tunnel, ReadPackets()).WillOnce([&tunnel_read_cancel_2]() {
+    tunnel_read_cancel_2.WaitForNotification();
+    return std::vector<Packet>();
+  });
+
+  EXPECT_CALL(tunnel_, CancelReadPackets()).WillOnce([&tunnel_read_cancel_1]() {
+    tunnel_read_cancel_1.Notify();
+    return absl::OkStatus();
+  });
+
+  EXPECT_CALL(new_tunnel, CancelReadPackets())
+      .WillOnce([&tunnel_read_cancel_2]() {
+        tunnel_read_cancel_2.Notify();
+        return absl::OkStatus();
+      });
+
+  EXPECT_CALL(vpn_service_, GetTunnel())
+      .WillOnce(Return(&tunnel_))
+      .WillOnce(Return(&new_tunnel));
+
+  EXPECT_OK(datapath_.Start(fake_add_egress_response_, params_));
+  EXPECT_OK(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1));
+  datapath_.PrepareForTunnelSwitch();
+  EXPECT_TRUE(tunnel_read_cancel_1.WaitForNotificationWithTimeout(
+      absl::Milliseconds(100)));
+  datapath_.SwitchTunnel();
+  datapath_.Stop();
+  EXPECT_TRUE(tunnel_read_cancel_2.WaitForNotificationWithTimeout(
+      absl::Milliseconds(100)));
+}
+
 TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
   // create failure to create network socket.
   EXPECT_CALL(notification_, DatapathFailed).Times(1);

@@ -18,7 +18,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <type_traits>
 
 #include "google/protobuf/timestamp.proto.h"
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
@@ -123,6 +122,8 @@ class MockDatapath : public DatapathInterface {
   MOCK_METHOD(absl::Status, SwitchNetwork,
               (uint32_t, const Endpoint&, std::optional<NetworkInfo>, int),
               (override));
+  MOCK_METHOD(void, PrepareForTunnelSwitch, (), (override));
+  MOCK_METHOD(void, SwitchTunnel, (), (override));
   MOCK_METHOD(absl::Status, SetKeyMaterials, (const TransformParams&),
               (override));
   MOCK_METHOD(void, GetDebugInfo, (DatapathDebugInfo*), (override));
@@ -902,6 +903,35 @@ TEST_F(SessionTest, TestEmptyAuthResponseCopperControllerHostname) {
   auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
 }
 
+TEST_F(BridgeOnPpnSession, UplinkMtuUpdateHandler) {
+  BringDatapathToConnected();
+
+  EXPECT_CALL(datapath_, PrepareForTunnelSwitch()).Times(1);
+  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_)).Times(1);
+  EXPECT_CALL(datapath_, SwitchTunnel()).Times(1);
+
+  session_->DoUplinkMtuUpdate(123, 456);
+
+  EXPECT_EQ(session_->GetUplinkMtuTestOnly(), 123);
+  EXPECT_EQ(session_->GetTunnelMtuTestOnly(), 456);
+}
+
+TEST_F(SessionTest, UplinkMtuUpdateHandlerErrorWithNoExistingTunnel) {
+  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_)).Times(0);
+  EXPECT_CALL(datapath_, SwitchTunnel()).Times(0);
+  EXPECT_CALL(datapath_, Stop()).Times(1);
+  EXPECT_CALL(notification_,
+              ControlPlaneDisconnected(StatusIs(absl::StatusCode::kInternal)))
+      .Times(1);
+
+  session_->DoUplinkMtuUpdate(123, 456);
+}
+
+TEST_F(SessionTest, DownlinkMtuUpdateHandler) {
+  session_->DoDownlinkMtuUpdate(123);
+  EXPECT_EQ(session_->GetDownlinkMtuTestOnly(), 123);
+}
+
 TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonDefaultValues) {
   ppn::UpdatePathInfoRequest update_path_info;
   auto json_str = ProtoToJsonString(update_path_info);
@@ -936,18 +966,6 @@ TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonNonDefaultValues) {
   absl::StrReplaceAll({{"\n", ""}, {" ", ""}}, &expected);
   EXPECT_EQ(json_str, expected);
 }
-
-TEST_F(SessionTest, UplinkMtuUpdateHandler) {
-  session_->DoUplinkMtuUpdate(123, 456);
-  EXPECT_EQ(session_->GetUplinkMtuTestOnly(), 123);
-  EXPECT_EQ(session_->GetTunnelMtuTestOnly(), 456);
-}
-
-TEST_F(SessionTest, DownlinkMtuUpdateHandler) {
-  session_->DoDownlinkMtuUpdate(123);
-  EXPECT_EQ(session_->GetDownlinkMtuTestOnly(), 123);
-}
-
 }  // namespace
 }  // namespace krypton
 }  // namespace privacy

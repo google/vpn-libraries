@@ -14,14 +14,11 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 
-#include "base/logging.h"
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/datapath_interface.h"
@@ -35,6 +32,10 @@ namespace privacy {
 namespace krypton {
 namespace datapath {
 namespace android {
+
+IpSecDatapath::~IpSecDatapath() {
+  Stop();
+}
 
 absl::Status IpSecDatapath::Start(const AddEgressResponse& /*egress_response*/,
                                   const TransformParams& params) {
@@ -53,7 +54,7 @@ absl::Status IpSecDatapath::Start(const AddEgressResponse& /*egress_response*/,
 
 void IpSecDatapath::Stop() {
   absl::MutexLock l(&mutex_);
-  ShutdownIpSecPacketForwarder();
+  ShutdownIpSecPacketForwarder(/*close_network_socket=*/true);
 }
 
 absl::Status IpSecDatapath::SwitchNetwork(
@@ -77,7 +78,7 @@ absl::Status IpSecDatapath::SwitchNetwork(
   // shut down, which could lead to shutting it down multiple times. We need to
   // either have the forwarder have its own LooperThread or filter events from
   // previous runs.
-  ShutdownIpSecPacketForwarder();
+  ShutdownIpSecPacketForwarder(/*close_network_socket=*/true);
 
   if (!key_material_) {
     return absl::FailedPreconditionError("Key Material is not set");
@@ -141,6 +142,21 @@ absl::Status IpSecDatapath::SwitchNetwork(
   return absl::OkStatus();
 }
 
+void IpSecDatapath::PrepareForTunnelSwitch() {
+  // Stop the packet forwarder to ensure tunnel is not being used and can be
+  // safely deleted.
+  absl::MutexLock l(&mutex_);
+  ShutdownIpSecPacketForwarder(/*close_network_socket=*/false);
+}
+
+void IpSecDatapath::SwitchTunnel() {
+  absl::MutexLock l(&mutex_);
+  auto tunnel = vpn_service_->GetTunnel();
+  forwarder_ = std::make_unique<IpSecPacketForwarder>(
+      tunnel, network_socket_.get(), notification_thread_, this);
+  forwarder_->Start();
+}
+
 absl::Status IpSecDatapath::SetKeyMaterials(const TransformParams& params) {
   absl::MutexLock l(&mutex_);
 
@@ -157,18 +173,25 @@ absl::Status IpSecDatapath::SetKeyMaterials(const TransformParams& params) {
   return absl::OkStatus();
 }
 
-void IpSecDatapath::ShutdownIpSecPacketForwarder() {
+void IpSecDatapath::ShutdownIpSecPacketForwarder(bool close_network_socket) {
   if (forwarder_ != nullptr) {
     LOG(INFO) << "Stopping packet forwarder.";
     forwarder_->Stop();
     forwarder_ = nullptr;
   }
+  if (close_network_socket) {
+    CloseNetworkSocket();
+  }
+  LOG(INFO) << "The packet forwarder is shut down.";
+}
+
+void IpSecDatapath::CloseNetworkSocket() {
   if (network_socket_ != nullptr) {
-    LOG(INFO) << "Stopping network socket.";
+    LOG(INFO) << "Closing network socket.";
     PPN_LOG_IF_ERROR(network_socket_->Close());
     network_socket_ = nullptr;
   }
-  LOG(INFO) << "The packet forwarder and network socket are shut down.";
+  LOG(INFO) << "The network socket is closed.";
 }
 
 void IpSecDatapath::IpSecPacketForwarderFailed(const absl::Status& status) {

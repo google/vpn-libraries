@@ -95,6 +95,10 @@ class IpSecDatapath : public DatapathInterface,
                              std::optional<NetworkInfo> network_info,
                              int counter) override;
 
+  void PrepareForTunnelSwitch() override {}
+
+  void SwitchTunnel() override {}
+
   // Updates crypto keys.
   absl::Status SetKeyMaterials(const TransformParams& params) override;
 

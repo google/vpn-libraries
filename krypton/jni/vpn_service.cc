@@ -22,8 +22,6 @@
 #include <string>
 #include <utility>
 
-#include "base/logging.h"
-#include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/datapath/android_ipsec/datagram_socket.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_tunnel.h"
@@ -106,13 +104,8 @@ absl::Status VpnService::CreateTunnel(const TunFdData& tun_fd_data) {
     tunnel_fd_ = -1;
   }
 
-  auto tunnel = datapath::android::IpSecTunnel::Create(fd);
-  if (!tunnel.ok()) {
-    close(tunnel_fd_);
-    tunnel_fd_ = -1;
-    return tunnel.status();
-  }
-  tunnel_ = *std::move(tunnel);
+  PPN_ASSIGN_OR_RETURN(auto tunnel, datapath::android::IpSecTunnel::Create(fd));
+  tunnel_ = std::move(tunnel);
   tunnel_fd_ = fd;
   return absl::OkStatus();
 }

@@ -16,10 +16,8 @@
 #define PRIVACY_NET_KRYPTON_DATAPATH_INTERFACE_H_
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 
-#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
@@ -78,6 +76,14 @@ class DatapathInterface {
                                      const Endpoint& endpoint,
                                      std::optional<NetworkInfo> network_info,
                                      int counter) = 0;
+
+  // Allow the datapath to prepare for a change in the tunnel. None of the
+  // datapath implementations own the tunnel so they need to be informed before
+  // a change is made.
+  virtual void PrepareForTunnelSwitch() {}
+
+  // Switch to using a new tunnel.
+  virtual void SwitchTunnel() {}
 
   virtual absl::Status SetKeyMaterials(const TransformParams& params) = 0;
 

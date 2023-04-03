@@ -63,7 +63,7 @@ class IpSecDatapath : public DatapathInterface,
       : config_(config),
         notification_thread_(looper),
         vpn_service_(vpn_service) {}
-  ~IpSecDatapath() override = default;
+  ~IpSecDatapath() override;
 
   // Initialize the Ipsec data path.
   // TODO: Remove AddEgressResponse and Bridge specific stuff from
@@ -78,6 +78,17 @@ class IpSecDatapath : public DatapathInterface,
   absl::Status SwitchNetwork(uint32_t session_id, const Endpoint& endpoint,
                              std::optional<NetworkInfo> network_info,
                              int counter) override ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Stops any processing that may try to access the current tunnel. If the
+  // datapath is not stopped, then this must be called before creating a new
+  // tunnel with VpnService.CreateTunnel(). When VpnService.CreateTunnel() is
+  // called it will delete the existing tunnel that is being used by the
+  // datapath.
+  void PrepareForTunnelSwitch() ABSL_LOCKS_EXCLUDED(mutex_) override;
+
+  // Uses the newest tunnel to start processing that was stopped by
+  // PrepareForTunnelSwitch().
+  void SwitchTunnel() ABSL_LOCKS_EXCLUDED(mutex_) override;
 
   absl::Status SetKeyMaterials(const TransformParams& params) override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -94,7 +105,10 @@ class IpSecDatapath : public DatapathInterface,
 
   void DownlinkMtuUpdated(int downlink_mtu) override;
  private:
-  void ShutdownIpSecPacketForwarder() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void ShutdownIpSecPacketForwarder(bool close_network_socket)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void CloseNetworkSocket() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   absl::Mutex mutex_;
 

@@ -15,9 +15,8 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_IPSEC_TUNNEL_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_IPSEC_TUNNEL_H_
 
-#include <functional>
+#include <atomic>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "privacy/net/krypton/datapath/android_ipsec/event_fd.h"
@@ -35,6 +34,7 @@ namespace android {
 // It is unsafe to make multiple calls to ReadPackets concurrently
 class IpSecTunnel : public TunnelInterface {
  public:
+  // Closes the tunnel_fd if the create fails
   static absl::StatusOr<std::unique_ptr<IpSecTunnel>> Create(int tunnel_fd);
 
   ~IpSecTunnel() override;

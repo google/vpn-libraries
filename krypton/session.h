@@ -205,6 +205,11 @@ class Session : public Auth::NotificationInterface,
   void StartFetchCountersTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void StartDatapathReattemptTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  absl::Status CreateTunnel() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  // Attempts to update an existing tunnel with new parameters.
+  absl::Status UpdateTunnelIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   absl::Status CreateTunnelIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void ResetAllDatapathReattempts() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   absl::Status SetRemoteKeyMaterial() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
