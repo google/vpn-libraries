@@ -17,6 +17,7 @@
 #ifndef PRIVACY_NET_KRYPTON_DESKTOP_WINDOWS_PPN_TELEMETRY_MANAGER_H_
 #define PRIVACY_NET_KRYPTON_DESKTOP_WINDOWS_PPN_TELEMETRY_MANAGER_H_
 
+#include <atomic>
 #include <string>
 
 #include "base/logging.h"
