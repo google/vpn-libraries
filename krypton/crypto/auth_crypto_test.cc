@@ -15,6 +15,7 @@
 #include "privacy/net/krypton/crypto/auth_crypto.h"
 
 #include <string>
+#include <utility>
 
 #include "privacy/net/krypton/crypto/rsa_fdh_blinder.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
@@ -108,6 +109,21 @@ TEST(AuthCryptoTest, BlindSignWrongSigner) {
                   2048, rsa_f4, &private_key, &public_key),
               testing::status::IsOk());
 
+  ::crypto::tink::subtle::SubtleUtilBoringSSL::RsaPrivateKey other_private;
+  ::crypto::tink::subtle::SubtleUtilBoringSSL::RsaPublicKey other_public;
+  EXPECT_THAT(::crypto::tink::subtle::SubtleUtilBoringSSL::GetNewRsaKeyPair(
+                  2048, rsa_f4, &other_private, &other_public),
+              testing::status::IsOk());
+
+  // The key with the smaller modulus should always be private_key for this
+  // test. If the private_key modulus is larger then it may result in a
+  // blinded token that is too large for other_private to sign, resulting in the
+  // failure of this test.
+  if (other_private.n < private_key.n) {
+    std::swap(other_private, private_key);
+    std::swap(other_public, public_key);
+  }
+
   ASSERT_OK_AND_ASSIGN(
       const std::string pem,
       ::crypto::tink::subtle::PemParser::WriteRsaPublicKey(public_key));
@@ -118,12 +134,6 @@ TEST(AuthCryptoTest, BlindSignWrongSigner) {
 
   std::string raw_blind;
   absl::Base64Unescape(blind_opt.value(), &raw_blind);
-
-  ::crypto::tink::subtle::SubtleUtilBoringSSL::RsaPrivateKey other_private;
-  ::crypto::tink::subtle::SubtleUtilBoringSSL::RsaPublicKey other_public;
-  EXPECT_THAT(::crypto::tink::subtle::SubtleUtilBoringSSL::GetNewRsaKeyPair(
-                  2048, rsa_f4, &other_private, &other_public),
-              testing::status::IsOk());
 
   ASSERT_OK_AND_ASSIGN(auto signer, RsaFdhBlindSigner::New(other_private));
   ASSERT_OK_AND_ASSIGN(auto sig, signer->Sign(raw_blind));
