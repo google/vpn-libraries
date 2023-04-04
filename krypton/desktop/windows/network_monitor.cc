@@ -192,6 +192,7 @@ void NetworkMonitor::Stop() {
 
   if (notify_handle_ == nullptr) {
     LOG(ERROR) << "Network monitor stopped without a notification handle";
+    return;
   }
 
   auto notify_handle = notify_handle_;
@@ -202,8 +203,11 @@ void NetworkMonitor::Stop() {
     if (result != NO_ERROR) {
       LOG(ERROR) << utils::GetStatusForError("CancelMibChangeNotify2 failed",
                                              result);
+    } else {
+      LOG(INFO) << "CancelMibChangeNotify2 succeeded";
     }
   });
+  notify_handle_ = nullptr;
   LOG(INFO) << "NetworkMonitor stopped";
 }
 
