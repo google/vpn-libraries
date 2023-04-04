@@ -17,27 +17,25 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
-#include "base/logging.h"
 #include "privacy/net/krypton/crypto/openssl_error.h"
 #include "privacy/net/krypton/utils/status.h"
-#include "third_party/absl/base/log_severity.h"
-#include "third_party/absl/cleanup/cleanup.h"
 #include "third_party/absl/memory/memory.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
-#include "third_party/absl/strings/escaping.h"
+#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/openssl/base.h"
-#include "third_party/openssl/bio.h"
 #include "third_party/openssl/bn.h"
 #include "third_party/openssl/rsa.h"
 #include "third_party/sha3/sha3.h"
+#include "third_party/tink/cc/subtle/subtle_util_boringssl.h"
 
 namespace privacy {
 namespace krypton {
@@ -233,7 +231,7 @@ absl::StatusOr<std::string> RsaFdhBlinder::Unblind(
   }
 
   return BignumToString(unblinded_sig_big,
-                        /*out_bytes*/ BN_num_bytes(unblinded_sig_big));
+                        /*out_len=*/mod_size);
 }
 
 absl::StatusOr<std::unique_ptr<RsaFdhBlindSigner>> RsaFdhBlindSigner::New(
