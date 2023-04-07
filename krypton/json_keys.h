@@ -76,6 +76,7 @@ class JsonKeys {
   static const char kUnblindedTokenSignature[];
   static const char kRegionTokenAndSignature[];
   static const char kSigningKeyVersion[];
+  static const char kMessageMask[];
 
   // GetInitialDataResponse
   static const char kAtPublicMetadataPublicKey[];

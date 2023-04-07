@@ -19,18 +19,23 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "privacy/net/attestation/proto/attestation.proto.h"
+#include "privacy/net/common/cpp/public_metadata/fingerprint.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
+#include "privacy/net/common/proto/key_services.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/auth_and_sign_request.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/auth_crypto.h"
+#include "privacy/net/krypton/crypto/ipsec_forward_secure_random.h"
 #include "privacy/net/krypton/http_fetcher.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
@@ -43,6 +48,7 @@
 #include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
+#include "third_party/anonymous_tokens/proto/anonymous_tokens.proto.h"
 
 namespace privacy {
 namespace krypton {
@@ -60,6 +66,13 @@ std::string StateString(Auth::State state) {
 }
 
 }  // namespace
+
+using ::private_membership::anonymous_tokens::AnonymousTokensRsaBssaClient;
+using ::private_membership::anonymous_tokens::AnonymousTokensSignResponse;
+using ::private_membership::anonymous_tokens::
+    PlaintextMessageWithPublicMetadata;
+using ::private_membership::anonymous_tokens::RSABlindSignatureTokenWithInput;
+
 Auth::Auth(const KryptonConfig& config,
            HttpFetcherInterface* http_fetcher_native,
            OAuthInterface* oath_native, utils::LooperThread* looper_thread)
@@ -113,6 +126,15 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
     return;
   }
   auth_and_sign_response_ = *auth_and_sign_response;
+  if (config_.public_metadata_enabled()) {
+    signed_tokens_ = UnblindATToken();
+    if (!signed_tokens_.ok()) {
+      SetState(State::kUnauthenticated);
+      RaiseAuthFailureNotification(signed_tokens_.status());
+      LOG(ERROR) << "Error Signing Anonymous Token";
+      return;
+    }
+  }
 
   SetState(State::kAuthenticated);
   auto* notification = notification_;
@@ -218,7 +240,6 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
       RaiseAuthFailureNotification(decode_status.status());
     }
     get_initial_data_response_ = decode_status.value();
-
     auto rounded_expiry_timestamp = utils::VerifyTimestampIsRounded(
         get_initial_data_response_.public_metadata_info()
             .public_metadata()
@@ -239,22 +260,53 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
       return;
     }
 
-    auto blinding_status = key_material_->SetBlindingPublicKey(
-        get_initial_data_response_.at_public_metadata_public_key()
-            .serialized_public_key());
-    if (!blinding_status.ok()) {
-      LOG(ERROR)
-          << "HandleInitialDataResponse: Error setting blinding public key";
+    // Create RSA BSSA client.
+    auto bssa_client = AnonymousTokensRsaBssaClient::Create(
+        get_initial_data_response_.at_public_metadata_public_key());
+    if (!bssa_client.ok()) {
       SetState(State::kUnauthenticated);
-      RaiseAuthFailureNotification(blinding_status);
+      LOG(ERROR)
+          << "HandleInitialDataResponse Failed to create AT BSSA client: "
+          << bssa_client.status();
+
       return;
     }
-    if (!get_initial_data_response_.attestation().attestation_nonce().empty()) {
-      nonce = get_initial_data_response_.attestation().attestation_nonce();
+    // Create plaintext tokens.
+    // Client blinds plaintext tokens (random 32-byte strings) in CreateRequest.
+    std::vector<PlaintextMessageWithPublicMetadata> plaintext_tokens;
+    PlaintextMessageWithPublicMetadata plaintext_message;
+    //  Get random UTF8 32 byte string prefixed with "blind:".
+    plaintext_message.set_plaintext_message(key_material_->original_message());
+    uint64_t fingerprint = 0;
+    absl::Status fingerprint_status = FingerprintPublicMetadata(
+        get_initial_data_response_.public_metadata_info().public_metadata(),
+        &fingerprint);
+    if (!fingerprint_status.ok()) {
+      SetState(State::kUnauthenticated);
+      LOG(ERROR) << "Failed to fingerprint public metadata: "
+                 << fingerprint_status;
+      return;
     }
+    plaintext_message.set_public_metadata(absl::StrCat(fingerprint));
+    plaintext_tokens.push_back(plaintext_message);
+
+    auto at_sign_request = bssa_client.value()->CreateRequest(plaintext_tokens);
+    if (!at_sign_request.ok()) {
+      SetState(State::kUnauthenticated);
+      LOG(ERROR)
+          << "HandleInitialDataResponse Failed to create AT Sign Request: "
+          << at_sign_request.status();
+      return;
+    }
+    bssa_client_ = *std::move(bssa_client);
+    at_sign_request_ = at_sign_request.value();
   }
-  LOG(INFO) << "Exiting InitialDataResponseHandler";
-  Authenticate(is_rekey, nonce);
+  if (!get_initial_data_response_.attestation().attestation_nonce().empty()) {
+    nonce = get_initial_data_response_.attestation().attestation_nonce();
+  }
+  LOG(INFO) << "HandleInitialDataResponseExiting InitialDataResponseHandler";
+
+  AuthenticatePublicMetadata(is_rekey, nonce);
 }
 
 absl::StatusOr<std::string> Auth::signer_public_key() const {
@@ -393,6 +445,131 @@ void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
   http_fetcher_.PostJsonAsync(
       auth_http_request.value(),
       absl::bind_front(&Auth::HandleAuthAndSignResponse, this, is_rekey));
+}
+
+void Auth::AuthenticatePublicMetadata(bool is_rekey,
+                                      std::optional<std::string> nonce) {
+  absl::MutexLock l(&mutex_);
+  LOG(INFO) << "Entering AuthenticatePublicMetadata.";
+  std::optional<privacy::ppn::AttestationData> attestation_data;
+  if (nonce.has_value()) {
+    auto data = oauth_->GetAttestationData(*nonce);
+    if (!data.ok()) {
+      LOG(ERROR) << "Error fetching attestation data";
+      SetState(State::kUnauthenticated);
+      RaiseAuthFailureNotification(
+          absl::InternalError("Error fetching attestation data"));
+      return;
+    }
+    attestation_data = data.value();
+  }
+
+  request_time_ = absl::Now();
+  auto auth_token = oauth_->GetOAuthToken();
+  if (!auth_token.ok()) {
+    LOG(ERROR) << "Error fetching oauth token: " << auth_token.status();
+    SetState(State::kUnauthenticated);
+    RaiseAuthFailureNotification(
+        absl::InternalError("Error fetching Oauth token"));
+    return;
+  }
+  RecordLatency(request_time_, &oauth_latencies_, "oauth");
+
+  // Create AuthAndSign RPC.
+  privacy::ppn::PublicMetadataInfo public_metadata_info =
+      get_initial_data_response_.public_metadata_info();
+
+  privacy::ppn::AuthAndSignRequest sign_request;
+  sign_request.set_oauth_token(auth_token.value());
+  sign_request.set_service_type(
+      public_metadata_info.public_metadata().service_type());
+  sign_request.set_key_type(privacy::ppn::AT_PUBLIC_METADATA_KEY_TYPE);
+  sign_request.set_key_version(
+      get_initial_data_response_.at_public_metadata_public_key().key_version());
+  *sign_request.mutable_public_metadata_info() = public_metadata_info;
+  for (int i = 0; i < at_sign_request_.blinded_tokens_size(); i++) {
+    sign_request.add_blinded_token(absl::Base64Escape(
+        at_sign_request_.blinded_tokens().at(i).serialized_token()));
+  }
+
+  HttpRequest auth_http_request;
+  auth_http_request.set_proto_body(sign_request.SerializeAsString());
+  if (config_.attach_oauth_token_as_header()) {
+    (*auth_http_request.mutable_headers())["Authorization"] =
+        absl::StrCat("Bearer ", auth_token.value());
+  }
+
+  // TODO: Clean up name of zinc_url.
+  auth_http_request.set_url(config_.zinc_url());
+  auth_call_time_ = absl::Now();
+  http_fetcher_.PostJsonAsync(
+      auth_http_request,
+      absl::bind_front(&Auth::HandleAuthAndSignResponse, this, is_rekey));
+}
+
+absl::StatusOr<std::vector<RSABlindSignatureTokenWithInput>>
+Auth::UnblindATToken() {
+  if (!config_.public_metadata_enabled()) {
+    LOG(ERROR)
+        << "AT token unblinding only possible when public metadata is enabled";
+    return absl::InternalError(
+        "AT token unblinding only possible when public metadata is enabled");
+  }
+  // Create vector of unblinded anonymous tokens.
+  AnonymousTokensSignResponse at_sign_response;
+
+  if (auth_and_sign_response_.blinded_token_signatures().size() !=
+      at_sign_request_.blinded_tokens_size()) {
+    LOG(ERROR) << "Response signature size does not equal request tokens size. "
+               << auth_and_sign_response_.blinded_token_signatures().size()
+               << " != " << at_sign_request_.blinded_tokens_size();
+    return absl::InternalError(
+        "Response signature size does not equal request tokens size");
+  }
+  // This depends on the signing server returning the signatures in the order
+  // that the tokens were sent. Phosphor does guarantee this.
+  for (int i = 0; i < auth_and_sign_response_.blinded_token_signatures().size();
+       i++) {
+    std::string blinded_token;
+    if (!absl::Base64Unescape(
+            auth_and_sign_response_.blinded_token_signatures().at(i),
+            &blinded_token)) {
+      LOG(ERROR) << "Failed to unescape blinded token signature";
+      return absl::InternalError("Failed to unescape blinded token signature");
+    }
+    AnonymousTokensSignResponse::AnonymousToken anon_token_proto;
+    *anon_token_proto.mutable_use_case() =
+        at_sign_request_.blinded_tokens(i).use_case();
+    anon_token_proto.set_key_version(
+        at_sign_request_.blinded_tokens(i).key_version());
+    *anon_token_proto.mutable_public_metadata() =
+        at_sign_request_.blinded_tokens(i).public_metadata();
+    *anon_token_proto.mutable_serialized_blinded_message() =
+        at_sign_request_.blinded_tokens(i).serialized_token();
+    *anon_token_proto.mutable_serialized_token() = blinded_token;
+    at_sign_response.add_anonymous_tokens()->Swap(&anon_token_proto);
+  }
+
+  auto signed_tokens = bssa_client_->ProcessResponse(at_sign_response);
+  if (!signed_tokens.ok()) {
+    LOG(ERROR) << "AuthAndSign ProcessResponse failed: "
+               << signed_tokens.status();
+    return signed_tokens.status();
+  }
+  if (signed_tokens->size() !=
+      static_cast<size_t>(at_sign_response.anonymous_tokens_size())) {
+    LOG(ERROR)
+        << "ProcessResponse did not output the right number of signed tokens";
+    return absl::InternalError(
+        "ProcessResponse did not output the right number of signed tokens");
+  }
+  return signed_tokens;
+}
+
+absl::StatusOr<std::vector<RSABlindSignatureTokenWithInput>>
+Auth::GetUnblindedATToken() const {
+  absl::MutexLock l(&mutex_);
+  return signed_tokens_;
 }
 
 void Auth::RaiseAuthFailureNotification(absl::Status status) {

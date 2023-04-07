@@ -52,8 +52,10 @@ class AddEgressRequest {
     uint32_t uplink_spi;
     // Raw text that was sent to Zinc also needs to be sent to Brass.
     std::string blind_message;
+    // The unblinded token to be spent which was blind-signed by Phosphor.
+    std::string unblinded_token;
     // This is the unblinded signature after receiving the blinding signature
-    // from Zinc that needs to be sent to Brass.
+    // from Zinc/Phosphor that needs to be sent to Brass/Beryllium.
     std::string unblinded_token_signature;
     // Whether to enable dynamic mtu on the backend dataplane.
     bool dynamic_mtu_enabled = false;
@@ -61,6 +63,8 @@ class AddEgressRequest {
     std::string apn_type;
     // This is the region overriding token and signature for sending to Brass.
     std::string region_token_and_signature;
+    // Used to mask plaintext message before cryptographic verification
+    std::string message_mask;
 
     // Beryllium Only
     int64_t signing_key_version;

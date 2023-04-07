@@ -33,8 +33,11 @@
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
+#include "third_party/anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client.h"
+#include "third_party/anonymous_tokens/proto/anonymous_tokens.proto.h"
 
 namespace privacy {
 namespace krypton {
@@ -103,6 +106,11 @@ class Auth {
   std::optional<std::string> GetBrassUnblindedToken(
       absl::string_view zinc_blind_signature) const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Returns a token signed in UnblindATToken().
+  absl::StatusOr<std::vector<
+      private_membership::anonymous_tokens::RSABlindSignatureTokenWithInput>>
+  GetUnblindedATToken() const ABSL_LOCKS_EXCLUDED(mutex_);
+
  private:
   void RequestKeyForBlindSigning(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -110,6 +118,11 @@ class Auth {
 
   // Authenticates with Auth server and is a non blocking call.
   void Authenticate(bool is_rekey, std::optional<std::string> nonce)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Authenticates using public metadata and is a non blocking call.
+  void AuthenticatePublicMetadata(bool is_rekey,
+                                  std::optional<std::string> nonce)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Sets the authentication sate.
@@ -124,6 +137,10 @@ class Auth {
   static void RecordLatency(absl::Time start,
                             std::vector<google::protobuf::Duration>* latencies,
                             const std::string& latency_type);
+  // Unblinds AT token provided in AuthAndSign response.
+  virtual absl::StatusOr<std::vector<
+      private_membership::anonymous_tokens::RSABlindSignatureTokenWithInput>>
+  UnblindATToken() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   State state_ ABSL_GUARDED_BY(mutex_);
   mutable absl::Mutex mutex_;
@@ -138,10 +155,18 @@ class Auth {
   HttpFetcher http_fetcher_;
   KryptonConfig config_;
   std::unique_ptr<crypto::AuthCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<
+      private_membership::anonymous_tokens::AnonymousTokensRsaBssaClient>
+      bssa_client_ ABSL_GUARDED_BY(mutex_);
+  private_membership::anonymous_tokens::AnonymousTokensSignRequest
+      at_sign_request_ ABSL_GUARDED_BY(mutex_);
 
   OAuthInterface* oauth_;                // Not owned.
   NotificationInterface* notification_;  // Not owned.
   utils::LooperThread* looper_thread_;   // Not owned.
+  absl::StatusOr<std::vector<
+      private_membership::anonymous_tokens::RSABlindSignatureTokenWithInput>>
+      signed_tokens_;
 
   std::atomic_bool stopped_ = false;
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();

@@ -139,7 +139,8 @@ class EgressManagerTest : public ::testing::Test {
           "nanos" : ""
         },
         "service_type" : ""
-      }
+      },
+      "message_mask" : ""
     })string"));
 
     // public metadata enabled specific

@@ -301,9 +301,30 @@ void Session::PpnDataplaneRequest(bool is_rekey) {
       SetState(State::kSessionError, status);
       return;
     }
-    if (absl::Base64Unescape(
-            auth_->auth_response().blinded_token_signatures().at(0),
-            &blinded_signature)) {
+    // set unblinded_token_signature
+    if (config_.public_metadata_enabled()) {
+      // TODO Add tests covering this if statement.
+      auto signed_tokens = auth_->GetUnblindedATToken();
+      if (!signed_tokens.ok()) {
+        LOG(ERROR) << "No unblinded token signatures found";
+        SetState(State::kSessionError, signed_tokens.status());
+        return;
+      }
+      if (signed_tokens->size() != 1) {
+        LOG(ERROR) << "Incorrect number of signed tokens found.";
+        auto status = absl::FailedPreconditionError(
+            "Incorrect number of signed tokens found");
+        SetState(State::kSessionError, status);
+        return;
+      }
+      params.unblinded_token = signed_tokens->at(0).input().plaintext_message();
+      params.unblinded_token_signature =
+          absl::Base64Escape(signed_tokens->at(0).token().token());
+      params.message_mask =
+          absl::Base64Escape(signed_tokens->at(0).token().message_mask());
+    } else if (absl::Base64Unescape(
+                   auth_->auth_response().blinded_token_signatures().at(0),
+                   &blinded_signature)) {
       auto token = auth_->GetBrassUnblindedToken(blinded_signature);
       if (!token.has_value()) {
         LOG(ERROR) << "No unblinded token signatures found";

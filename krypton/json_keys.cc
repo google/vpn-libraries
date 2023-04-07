@@ -72,6 +72,7 @@ const char JsonKeys::kPpn[] = "ppn";
 const char JsonKeys::kUnblindedTokenSignature[] = "unblinded_token_signature";
 const char JsonKeys::kRegionTokenAndSignature[] = "region_token_and_signature";
 const char JsonKeys::kSigningKeyVersion[] = "signing_key_version";
+const char JsonKeys::kMessageMask[] = "message_mask";
 
 // GetInitialDataResponse
 const char JsonKeys::kAtPublicMetadataPublicKey[] =

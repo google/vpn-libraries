@@ -71,12 +71,14 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
     public_metadata[JsonKeys::kExpiration] = expiration;
 
     json_body[JsonKeys::kPublicMetadata] = public_metadata;
-
     json_body[JsonKeys::kSigningKeyVersion] = params.signing_key_version;
+    json_body[JsonKeys::kMessageMask] = params.message_mask;
+    json_body[JsonKeys::kUnblindedToken] = params.unblinded_token;
   }
 
-  // Add blind stuff.
-  json_body[JsonKeys::kUnblindedToken] = params.blind_message;
+  if (request_destination_ == RequestDestination::kBrass) {
+    json_body[JsonKeys::kUnblindedToken] = params.blind_message;
+  }
   json_body[JsonKeys::kUnblindedTokenSignature] =
       params.unblinded_token_signature;
 
@@ -124,7 +126,6 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
   }
 
   json_body[JsonKeys::kPpn] = ppn;
-
   return json_body;
 }
 
