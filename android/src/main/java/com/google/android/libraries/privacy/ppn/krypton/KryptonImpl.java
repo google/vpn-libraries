@@ -408,7 +408,7 @@ public class KryptonImpl implements Krypton, TimerListener {
           IpSecTransformParams.parseFrom(
               ipSecTransformParamsBytes, ExtensionRegistryLite.getEmptyRegistry());
       listener.onKryptonNeedsIpSecConfiguration(ipSecParams);
-      Log.e(TAG, "Configuring IpSec was successful.");
+      Log.w(TAG, "Configuring IpSec was successful.");
       return true;
     } catch (Exception e) {
       Log.e(TAG, "Unable to configure IpSec.", e);
