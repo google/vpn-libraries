@@ -15,8 +15,22 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MOCK_IPSEC_VPN_SERVICE_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MOCK_IPSEC_VPN_SERVICE_H_
 
+#include <memory>
+
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
+#include "privacy/net/krypton/datapath_interface.h"
+#include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/proto/network_info.proto.h"
+#include "privacy/net/krypton/proto/tun_fd_data.proto.h"
+#include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
+#include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
 
 namespace privacy {
 namespace krypton {
@@ -39,6 +53,12 @@ class MockIpSecVpnService : public IpSecDatapath::IpSecVpnServiceInterface {
   MOCK_METHOD((absl::StatusOr<std::unique_ptr<IpSecSocketInterface>>),
               CreateProtectedNetworkSocket,
               (const NetworkInfo &, const Endpoint &), (override));
+
+  MOCK_METHOD((absl::StatusOr<std::unique_ptr<IpSecSocketInterface>>),
+              CreateProtectedNetworkSocket,
+              (const NetworkInfo &, const Endpoint &,
+               std::unique_ptr<MtuTrackerInterface>),
+              (override));
 
   MOCK_METHOD(TunnelInterface *, GetTunnel, (), (override));
 

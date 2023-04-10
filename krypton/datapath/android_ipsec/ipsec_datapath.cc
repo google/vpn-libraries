@@ -21,11 +21,19 @@
 
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_packet_forwarder.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/log/check.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
@@ -33,9 +41,7 @@ namespace krypton {
 namespace datapath {
 namespace android {
 
-IpSecDatapath::~IpSecDatapath() {
-  Stop();
-}
+IpSecDatapath::~IpSecDatapath() { Stop(); }
 
 absl::Status IpSecDatapath::Start(const AddEgressResponse& /*egress_response*/,
                                   const TransformParams& params) {
@@ -85,12 +91,27 @@ absl::Status IpSecDatapath::SwitchNetwork(
   }
   key_material_->set_uplink_spi(session_id);
 
-  auto network_socket =
-      vpn_service_->CreateProtectedNetworkSocket(*network_info, endpoint);
+  absl::StatusOr<std::unique_ptr<IpSecSocketInterface>> network_socket;
+  if (config_.dynamic_mtu_enabled()) {
+    std::unique_ptr<MtuTracker> mtu_tracker;
+    if (network_info->has_mtu()) {
+      mtu_tracker = std::make_unique<MtuTracker>(endpoint.ip_protocol(),
+                                                 network_info->mtu());
+    } else {
+      mtu_tracker = std::make_unique<MtuTracker>(endpoint.ip_protocol());
+    }
+    mtu_tracker->RegisterNotificationHandler(this, &mtu_tracker_thread_);
+    network_socket = vpn_service_->CreateProtectedNetworkSocket(
+        *network_info, endpoint, std::move(mtu_tracker));
+  } else {
+    network_socket =
+        vpn_service_->CreateProtectedNetworkSocket(*network_info, endpoint);
+  }
+
   if (!network_socket.ok()) {
     auto status = network_socket.status();
     auto* notification = notification_;
-    LOG(ERROR) << "Unable to configure network socket: " << status;
+    LOG(ERROR) << "Unable to create network socket: " << status;
     notification_thread_->Post(
         [notification, status]() { notification->DatapathFailed(status); });
     // Returning OK since failure is handled by preceding notification call
@@ -143,8 +164,8 @@ absl::Status IpSecDatapath::SwitchNetwork(
 }
 
 void IpSecDatapath::PrepareForTunnelSwitch() {
-  // Stop the packet forwarder to ensure tunnel is not being used and can be
-  // safely deleted.
+  // Stop the packet forwarder to ensure the tunnel is not being used and can
+  // be safely deleted.
   absl::MutexLock l(&mutex_);
   ShutdownIpSecPacketForwarder(/*close_network_socket=*/false);
 }

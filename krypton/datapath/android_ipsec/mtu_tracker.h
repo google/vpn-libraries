@@ -27,7 +27,7 @@ namespace android {
 class MtuTracker : public MtuTrackerInterface {
  public:
   explicit MtuTracker(IPProtocol dest_ip_protocol);
-  MtuTracker(IPProtocol dest_ip_protocol, int initial_uplink_mtu);
+  MtuTracker(IPProtocol dest_ip_protocol, int initial_path_mtu);
 
   void UpdateUplinkMtu(int uplink_mtu) override;
 

@@ -25,10 +25,15 @@
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 #include "privacy/net/krypton/datapath_interface.h"
+#include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
@@ -49,6 +54,10 @@ class IpSecDatapath : public DatapathInterface,
     virtual absl::StatusOr<std::unique_ptr<IpSecSocketInterface>>
     CreateProtectedNetworkSocket(const NetworkInfo& network_info,
                                  const Endpoint& endpoint) = 0;
+    virtual absl::StatusOr<std::unique_ptr<IpSecSocketInterface>>
+    CreateProtectedNetworkSocket(
+        const NetworkInfo& network_info, const Endpoint& endpoint,
+        std::unique_ptr<MtuTrackerInterface> mtu_tracker) = 0;
 
     virtual TunnelInterface* GetTunnel() = 0;
 
@@ -62,7 +71,8 @@ class IpSecDatapath : public DatapathInterface,
                          IpSecVpnServiceInterface* vpn_service)
       : config_(config),
         notification_thread_(looper),
-        vpn_service_(vpn_service) {}
+        vpn_service_(vpn_service),
+        mtu_tracker_thread_("MTU Tracker Notification Thread") {}
   ~IpSecDatapath() override;
 
   // Initialize the Ipsec data path.
@@ -104,6 +114,7 @@ class IpSecDatapath : public DatapathInterface,
   void UplinkMtuUpdated(int uplink_mtu, int tunnel_mtu) override;
 
   void DownlinkMtuUpdated(int downlink_mtu) override;
+
  private:
   void ShutdownIpSecPacketForwarder(bool close_network_socket)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -116,6 +127,10 @@ class IpSecDatapath : public DatapathInterface,
 
   utils::LooperThread* notification_thread_;
   IpSecVpnServiceInterface* vpn_service_;
+
+  // The mtu_tracker_thread_ must outlive network_socket_. The MtuTracker, which
+  // is owned by network_socket_, will be using mtu_tracker_thread_.
+  utils::LooperThread mtu_tracker_thread_;
 
   std::optional<IpSecTransformParams> key_material_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<IpSecPacketForwarder> forwarder_ ABSL_GUARDED_BY(mutex_);

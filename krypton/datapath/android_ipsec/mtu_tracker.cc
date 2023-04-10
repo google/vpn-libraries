@@ -14,9 +14,10 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker.h"
 
-#include "base/logging.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/utils/looper.h"
+#include "third_party/absl/log/log.h"
 
 namespace privacy {
 namespace krypton {
@@ -41,13 +42,13 @@ constexpr int kMaxIpv6Overhead = kAesGcm128Overhead + kGenericEspOverheadMaxV6;
 MtuTracker::MtuTracker(IPProtocol dest_ip_protocol)
     : MtuTracker(dest_ip_protocol, kDefaultMtu) {}
 
-MtuTracker::MtuTracker(IPProtocol dest_ip_protocol, int initial_uplink_mtu)
+MtuTracker::MtuTracker(IPProtocol dest_ip_protocol, int initial_path_mtu)
     : tunnel_overhead_(dest_ip_protocol == IPProtocol::kIPv6
                            ? kMaxIpv6Overhead
                            : kMaxIpv4Overhead),
-      uplink_mtu_(initial_uplink_mtu),
+      uplink_mtu_(initial_path_mtu),
       tunnel_mtu_(uplink_mtu_ - tunnel_overhead_),
-      downlink_mtu_(INT_MAX),
+      downlink_mtu_(initial_path_mtu),
       notification_(nullptr),
       notification_thread_(nullptr) {}
 
@@ -96,6 +97,17 @@ void MtuTracker::RegisterNotificationHandler(
     utils::LooperThread* notification_thread) {
   notification_ = notification;
   notification_thread_ = notification_thread;
+
+  // Send the current values to the new NotificationHandler
+  if (notification_ == nullptr || notification_thread_ == nullptr) {
+    return;
+  }
+  notification_thread_->Post([notification, downlink_mtu = downlink_mtu_,
+                              uplink_mtu = uplink_mtu_,
+                              tunnel_mtu = tunnel_mtu_] {
+    notification->DownlinkMtuUpdated(downlink_mtu);
+    notification->UplinkMtuUpdated(uplink_mtu, tunnel_mtu);
+  });
 }
 
 }  // namespace android

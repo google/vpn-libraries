@@ -15,6 +15,7 @@
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -22,15 +23,21 @@
 #include "privacy/net/krypton/datapath/android_ipsec/mock_ipsec_socket.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mock_ipsec_vpn_service.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mock_tunnel.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/network_type.proto.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/status/status.h"
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
+#include "util/task/status.h"
 
 namespace privacy {
 namespace krypton {
@@ -55,7 +62,13 @@ class MockNotification : public DatapathInterface::NotificationInterface {
 
 class IpSecDatapathTest : public ::testing::Test {
  public:
-  IpSecDatapathTest() { datapath_.RegisterNotificationHandler(&notification_); }
+  IpSecDatapathTest() {
+    config_.set_dynamic_mtu_enabled(true);
+
+    datapath_ =
+        std::make_unique<IpSecDatapath>(config_, &looper_, &vpn_service_);
+    datapath_->RegisterNotificationHandler(&notification_);
+  }
 
   ~IpSecDatapathTest() override {
     // We need to explicitly stop the thread and join it before we destroy the
@@ -64,8 +77,6 @@ class IpSecDatapathTest : public ::testing::Test {
     // because other members may still try to put stuff on it.
     looper_.Stop();
     looper_.Join();
-
-    PPN_LOG_IF_ERROR(tunnel_.Close());
   }
 
   void SetUp() override {
@@ -111,7 +122,7 @@ class IpSecDatapathTest : public ::testing::Test {
   AddEgressResponse fake_add_egress_response_;
   utils::LooperThread looper_{"Krypton Looper"};
   KryptonConfig config_;
-  IpSecDatapath datapath_{config_, &looper_, &vpn_service_};
+  std::unique_ptr<IpSecDatapath> datapath_;
   NetworkInfo network_info_;
   MockIpSecVpnService vpn_service_;
   MockNotification notification_;
@@ -121,14 +132,14 @@ class IpSecDatapathTest : public ::testing::Test {
 };
 
 TEST_F(IpSecDatapathTest, SwitchNetworkFailureNoNetworkSocket) {
-  EXPECT_THAT(datapath_.SwitchNetwork(1234, endpoint_, std::nullopt, 1),
+  EXPECT_THAT(datapath_->SwitchNetwork(1234, endpoint_, std::nullopt, 1),
               StatusIs(util::error::INVALID_ARGUMENT,
                        testing::HasSubstr("network_info")));
 }
 
 TEST_F(IpSecDatapathTest, SwitchNetworkFailureNoTunnelSocket) {
   EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(nullptr));
-  EXPECT_THAT(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1),
+  EXPECT_THAT(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1),
               StatusIs(util::error::INVALID_ARGUMENT,
                        testing::HasSubstr("tunnel is null")));
 }
@@ -137,7 +148,7 @@ TEST_F(IpSecDatapathTest, SwitchNetworkAndNoKeyMaterial) {
   EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel_));
 
   //  Set KeyMaterial but not of type Ipsec.
-  EXPECT_THAT(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1),
+  EXPECT_THAT(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1),
               StatusIs(util::error::FAILED_PRECONDITION,
                        testing::HasSubstr("Key Material")));
 }
@@ -147,9 +158,15 @@ TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
 
   // Need to keep a reference to the socket to simulate data being sent.
   MockIpSecSocket *socket = socket_ptr.get();
-  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _))
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _))
       .Times(1)
-      .WillOnce(Return(std::move(socket_ptr)));
+      .WillOnce(
+          [&socket_ptr](const NetworkInfo & /*network_info*/,
+                        const Endpoint & /*endpoint*/,
+                        std::unique_ptr<MtuTrackerInterface> mtu_tracker) {
+            mtu_tracker->UpdateUplinkMtu(1500);
+            return std::move(socket_ptr);
+          });
   EXPECT_CALL(*socket, GetFd()).WillOnce(Return(1));
 
   EXPECT_CALL(notification_, DatapathFailed).Times(0);
@@ -195,14 +212,19 @@ TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
     return absl::OkStatus();
   });
 
-  EXPECT_OK(datapath_.Start(fake_add_egress_response_, params_));
+  EXPECT_CALL(notification_, DoUplinkMtuUpdate(2000, _)).Times(1);
+  EXPECT_CALL(notification_, DoUplinkMtuUpdate(1500, _)).Times(1);
+
+  network_info_.set_mtu(2000);
+
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
   EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel_));
-  EXPECT_OK(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
 
   EXPECT_TRUE(
       established.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
 
-  datapath_.Stop();
+  datapath_->Stop();
 }
 
 TEST_F(IpSecDatapathTest, SwitchTunnel) {
@@ -211,7 +233,7 @@ TEST_F(IpSecDatapathTest, SwitchTunnel) {
 
   // Need to keep a reference to the socket to simulate data being sent.
   MockIpSecSocket *socket = socket_ptr.get();
-  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _))
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _))
       .WillOnce(Return(std::move(socket_ptr)));
   EXPECT_CALL(*socket, GetFd()).WillOnce(Return(1));
 
@@ -275,13 +297,13 @@ TEST_F(IpSecDatapathTest, SwitchTunnel) {
       .WillOnce(Return(&tunnel_))
       .WillOnce(Return(&new_tunnel));
 
-  EXPECT_OK(datapath_.Start(fake_add_egress_response_, params_));
-  EXPECT_OK(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1));
-  datapath_.PrepareForTunnelSwitch();
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+  datapath_->PrepareForTunnelSwitch();
   EXPECT_TRUE(tunnel_read_cancel_1.WaitForNotificationWithTimeout(
       absl::Milliseconds(100)));
-  datapath_.SwitchTunnel();
-  datapath_.Stop();
+  datapath_->SwitchTunnel();
+  datapath_->Stop();
   EXPECT_TRUE(tunnel_read_cancel_2.WaitForNotificationWithTimeout(
       absl::Milliseconds(100)));
 }
@@ -289,15 +311,15 @@ TEST_F(IpSecDatapathTest, SwitchTunnel) {
 TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
   // create failure to create network socket.
   EXPECT_CALL(notification_, DatapathFailed).Times(1);
-  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _))
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _))
       .Times(1)
       .WillOnce(Return(absl::InternalError("Failure")));
 
-  EXPECT_OK(datapath_.Start(fake_add_egress_response_, params_));
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
   EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel_));
-  EXPECT_OK(datapath_.SwitchNetwork(1234, endpoint_, network_info_, 1));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
 
-  datapath_.Stop();
+  datapath_->Stop();
 }
 
 TEST_F(IpSecDatapathTest, UplinkMtuUpdateHandler) {
@@ -305,7 +327,7 @@ TEST_F(IpSecDatapathTest, UplinkMtuUpdateHandler) {
   EXPECT_CALL(notification_, DoUplinkMtuUpdate(1, 2))
       .WillOnce([&mtu_update_done]() { mtu_update_done.Notify(); });
 
-  datapath_.UplinkMtuUpdated(1, 2);
+  datapath_->UplinkMtuUpdated(1, 2);
 
   EXPECT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
@@ -314,7 +336,7 @@ TEST_F(IpSecDatapathTest, DownlinkMtuUpdateHandler) {
   absl::Notification mtu_update_done;
   EXPECT_CALL(notification_, DoDownlinkMtuUpdate(576))
       .WillOnce([&mtu_update_done]() { mtu_update_done.Notify(); });
-  datapath_.DownlinkMtuUpdated(576);
+  datapath_->DownlinkMtuUpdated(576);
   EXPECT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 }  // namespace

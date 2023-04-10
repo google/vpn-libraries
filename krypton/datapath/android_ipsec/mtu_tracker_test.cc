@@ -14,11 +14,13 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker.h"
 
+#include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/synchronization/notification.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -82,6 +84,11 @@ TEST(MtuTrackerTest, TestUpdateUplinkMtuWithNotification) {
   utils::LooperThread looper("MtuTrackerTest Thread");
   MockNotification notification;
 
+  // Initial calls from registering notification handler
+  EXPECT_CALL(notification, UplinkMtuUpdated(1500, 1395)).Times(1);
+  EXPECT_CALL(notification, DownlinkMtuUpdated(1500)).Times(1);
+
+  // Call from change to uplink MTU
   absl::Notification mtu_update_done;
   EXPECT_CALL(notification, UplinkMtuUpdated(1000, 895))
       .WillOnce([&mtu_update_done]() { mtu_update_done.Notify(); });
@@ -110,6 +117,11 @@ TEST(MtuTrackerTest, TestUpdateDownlinkMtuWithNotification) {
   utils::LooperThread looper("MtuTrackerTest Thread");
   MockNotification notification;
 
+  // Initial calls from registering notification handler
+  EXPECT_CALL(notification, UplinkMtuUpdated(1500, 1395)).Times(1);
+  EXPECT_CALL(notification, DownlinkMtuUpdated(1500)).Times(1);
+
+  // Call from change to downlink MTU
   absl::Notification mtu_update_done;
   EXPECT_CALL(notification, DownlinkMtuUpdated(1000))
       .WillOnce([&mtu_update_done]() { mtu_update_done.Notify(); });

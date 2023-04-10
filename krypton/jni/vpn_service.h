@@ -18,20 +18,26 @@
 #include <jni.h>
 
 #include <memory>
-#include <utility>
 
-#include "base/logging.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_tunnel.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 
+#include "privacy/net/krypton/datapath_interface.h"
+#include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
+#include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/synchronization/mutex.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -65,12 +71,21 @@ class VpnService
   absl::StatusOr<std::unique_ptr<datapath::android::IpSecSocketInterface>>
   CreateProtectedNetworkSocket(const NetworkInfo& network_info,
                                const Endpoint& endpoint) override;
+  absl::StatusOr<std::unique_ptr<datapath::android::IpSecSocketInterface>>
+  CreateProtectedNetworkSocket(
+      const NetworkInfo& network_info, const Endpoint& endpoint,
+      std::unique_ptr<datapath::android::MtuTrackerInterface> mtu_tracker)
+      override;
 
   absl::Status ConfigureIpSec(const IpSecTransformParams& params) override;
 
   void DisableKeepalive() override;
 
  private:
+  absl::Status ConfigureNetworkSocket(
+      datapath::android::IpSecSocketInterface* socket,
+      const Endpoint& endpoint);
+
   std::unique_ptr<JavaObject> krypton_instance_;
 
   absl::Mutex mutex_;

@@ -24,16 +24,27 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/datagram_socket.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
+#include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_tunnel.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 
+#include "privacy/net/krypton/datapath_interface.h"
+#include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
+#include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
+#include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
 
 namespace privacy {
@@ -193,22 +204,18 @@ VpnService::CreateProtectedNetworkSocket(const NetworkInfo& network_info,
   PPN_ASSIGN_OR_RETURN(auto fd, CreateProtectedNetworkSocket(network_info));
   PPN_ASSIGN_OR_RETURN(auto socket,
                        datapath::android::DatagramSocket::Create(fd));
-  auto status = socket->Connect(endpoint);
+  PPN_RETURN_IF_ERROR(ConfigureNetworkSocket(socket.get(), endpoint));
+  return socket;
+}
 
-  {
-    absl::MutexLock l(&mutex_);
-    if (endpoint.ip_protocol() == IPProtocol::kIPv4) {
-      tunnel_->SetKeepaliveInterval(keepalive_interval_ipv4_);
-    } else {
-      tunnel_->SetKeepaliveInterval(keepalive_interval_ipv6_);
-    }
-  }
-
-  if (!status.ok()) {
-    LOG(ERROR) << "Socket connect failed: " << status;
-    PPN_LOG_IF_ERROR(socket->Close());
-    return status;
-  }
+absl::StatusOr<std::unique_ptr<datapath::android::IpSecSocketInterface>>
+VpnService::CreateProtectedNetworkSocket(
+    const NetworkInfo& network_info, const Endpoint& endpoint,
+    std::unique_ptr<datapath::android::MtuTrackerInterface> mtu_tracker) {
+  PPN_ASSIGN_OR_RETURN(auto fd, CreateProtectedNetworkSocket(network_info));
+  PPN_ASSIGN_OR_RETURN(auto socket, datapath::android::DatagramSocket::Create(
+                                        fd, std::move(mtu_tracker)));
+  PPN_RETURN_IF_ERROR(ConfigureNetworkSocket(socket.get(), endpoint));
   return socket;
 }
 
@@ -242,6 +249,27 @@ void VpnService::DisableKeepalive() {
     return;
   }
   tunnel_->SetKeepaliveInterval(absl::ZeroDuration());
+}
+
+absl::Status VpnService::ConfigureNetworkSocket(
+    datapath::android::IpSecSocketInterface* socket, const Endpoint& endpoint) {
+  auto status = socket->Connect(endpoint);
+
+  {
+    absl::MutexLock l(&mutex_);
+    if (endpoint.ip_protocol() == IPProtocol::kIPv4) {
+      tunnel_->SetKeepaliveInterval(keepalive_interval_ipv4_);
+    } else {
+      tunnel_->SetKeepaliveInterval(keepalive_interval_ipv6_);
+    }
+  }
+
+  if (!status.ok()) {
+    LOG(ERROR) << "Socket connect failed: " << status;
+    PPN_LOG_IF_ERROR(socket->Close());
+    return status;
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace jni

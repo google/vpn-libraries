@@ -23,11 +23,13 @@
 
 #include "google/protobuf/duration.proto.h"
 #include "google/protobuf/timestamp.proto.h"
+#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/common/proto/update_path_info.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
+#include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
@@ -36,23 +38,31 @@
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/tunnel_manager_interface.h"
 #include "privacy/net/krypton/utils/ip_range.h"
 #include "privacy/net/krypton/utils/json_util.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/network_info.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/functional/bind_front.h"
+#include "third_party/absl/log/check.h"
+#include "third_party/absl/log/die_if_null.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/escaping.h"
+#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/json/include/nlohmann/json.hpp"
+#include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -63,7 +73,7 @@ constexpr absl::Duration kFetchTimerDuration = absl::Minutes(5);
 constexpr absl::Duration kDatapathReattemptDuration = absl::Milliseconds(500);
 constexpr absl::Duration kDefaultRekeyDuration = absl::Hours(24);
 
-// Reattempts excludes the first attempt.
+// Reattempts exclude the first attempt.
 constexpr char kDefaultCopperAddress[] = "na.b.g-tun.com";
 
 std::string StateString(Session::State state) {
@@ -258,7 +268,7 @@ void Session::PpnDataplaneRequest(bool is_rekey) {
             << ((is_rekey == true) ? "True" : "False");
   AuthAndSignResponse auth_response = auth_->auth_response();
   // If auth_response specifies a copper control plane address, use it;
-  // otherwise if there is config option for the address, use it.
+  // otherwise if there is a config option for the address, use it.
   std::string copper_hostname;
   if (config_.has_copper_hostname_override() &&
       !config_.copper_hostname_override().empty()) {
@@ -754,7 +764,7 @@ void Session::DatapathFailed(const absl::Status& status) {
 
 void Session::DatapathPermanentFailure(const absl::Status& status) {
   LOG(ERROR) << "Datapath has permanent failure with status " << status;
-  // Send notification to reconnector that will automatically reconnect the
+  // Send notification to the reconnector that will automatically reconnect the
   // session. Permanent failures have to be terminated and a new session needs
   // to be created.
   auto* notification = notification_;
@@ -764,8 +774,9 @@ void Session::DatapathPermanentFailure(const absl::Status& status) {
 }
 
 void Session::UpdateActiveNetworkInfo(std::optional<NetworkInfo> network_info) {
-  // Based on the feedback from Android Eng, underlying network should be the
-  // right choice and IsMetered should only be used when VPN itself is charging.
+  // Based on the feedback from Android Eng, the underlying network should be
+  // the right choice and IsMetered should only be used when the VPN itself is
+  // charging.
   active_network_info_ = network_info;
 }
 
@@ -893,6 +904,8 @@ void Session::DoRekey() {
 void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
   absl::MutexLock l(&mutex_);
   if (tunnel_mtu != tunnel_mtu_) {
+    LOG(INFO) << "Updating tunnel MTU from " << tunnel_mtu_ << " to "
+              << tunnel_mtu;
     tunnel_mtu_ = tunnel_mtu;
     datapath_->PrepareForTunnelSwitch();
     auto tunnel_status = UpdateTunnelIfNeeded();
@@ -906,6 +919,8 @@ void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
     datapath_->SwitchTunnel();
   }
   if (uplink_mtu != uplink_mtu_) {
+    LOG(INFO) << "Updating uplink MTU from " << uplink_mtu_ << " to "
+              << uplink_mtu;
     uplink_mtu_ = uplink_mtu;
     PPN_LOG_IF_ERROR(SendPathInfoUpdate());
   }
@@ -914,6 +929,8 @@ void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
 void Session::DoDownlinkMtuUpdate(int downlink_mtu) {
   absl::MutexLock l(&mutex_);
   if (downlink_mtu != downlink_mtu_) {
+    LOG(INFO) << "Updating downlink MTU from " << downlink_mtu_ << " to "
+              << downlink_mtu;
     downlink_mtu_ = downlink_mtu;
     PPN_LOG_IF_ERROR(SendPathInfoUpdate());
   }
