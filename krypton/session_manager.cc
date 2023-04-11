@@ -66,14 +66,16 @@ void SessionManager::EstablishSession(int restart_count,
   looper_thread_ = std::make_unique<utils::LooperThread>(
       absl::StrCat("Session Looper ", restart_count));
   LOG(INFO) << "Creating " << restart_count << " session";
-  auth_ = std::make_unique<Auth>(config_, http_fetcher_, oauth_,
+  KryptonConfig local_config = config_;
+  local_config.set_ip_geo_level(ip_geo_level_);
+  auth_ = std::make_unique<Auth>(local_config, http_fetcher_, oauth_,
                                  looper_thread_.get());
-  egress_manager_ = std::make_unique<EgressManager>(config_, http_fetcher_,
+  egress_manager_ = std::make_unique<EgressManager>(local_config, http_fetcher_,
                                                     looper_thread_.get());
   datapath_ = std::unique_ptr<DatapathInterface>(vpn_service_->BuildDatapath(
-      config_, looper_thread_.get(), timer_manager_));
+      local_config, looper_thread_.get(), timer_manager_));
   session_ = std::make_unique<Session>(
-      config_, auth_.get(), egress_manager_.get(), datapath_.get(),
+      local_config, auth_.get(), egress_manager_.get(), datapath_.get(),
       vpn_service_, timer_manager_, http_fetcher_, tunnel_manager, network_info,
       krypton_notification_thread_);
   session_->RegisterNotificationHandler(notification_);

@@ -26,6 +26,7 @@
 #include "privacy/net/common/cpp/public_metadata/fingerprint.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/common/proto/key_services.proto.h"
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/auth_and_sign_request.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
@@ -64,6 +65,19 @@ std::string StateString(Auth::State state) {
       return "Unauthenticated";
   }
 }
+
+ppn::GetInitialDataRequest::LocationGranularity GetLocationGranularity(
+    privacy::ppn::IpGeoLevel ip_geo_level) {
+  switch (ip_geo_level) {
+    case ppn::COUNTRY:
+      return ppn::GetInitialDataRequest::COUNTRY;
+    case ppn::CITY:
+      return ppn::GetInitialDataRequest::CITY_GEOS;
+    default:
+      return ppn::GetInitialDataRequest::UNKNOWN;
+  }
+}
+
 
 }  // namespace
 
@@ -382,11 +396,7 @@ void Auth::RequestForInitialData(bool is_rekey) {
 
   auto use_attestation = config_.integrity_attestation_enabled();
   auto service_type = config_.service_type();
-
-  // TODO Temporariliy setting to granularity to country level
-  // until resolved.
-  ppn::GetInitialDataRequest::LocationGranularity granularity =
-      ppn::GetInitialDataRequest::COUNTRY;
+  auto granularity = GetLocationGranularity(config_.ip_geo_level());
 
   InitialDataRequest request(use_attestation, service_type, granularity,
                              *auth_token);
