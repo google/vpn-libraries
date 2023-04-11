@@ -90,7 +90,7 @@
     PPNIPv6Enabled : @NO,
     PPNPublicMetadataEnabled : @YES,
     PPNAPIKey : @"beryllium_api_key",
-    PPNOptionIPGeoLevel : @(privacy::ppn::CITY),
+    PPNOptionIPGeoLevel : @"CITY",
   };
   privacy::krypton::KryptonConfig kryptonConfig = PPNKryptonConfigFromOptions(options);
 

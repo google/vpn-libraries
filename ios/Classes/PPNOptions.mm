@@ -242,9 +242,17 @@ privacy::krypton::KryptonConfig PPNKryptonConfigFromOptions(
     kryptonConfig.set_api_key(std::string(apiKey.UTF8String));
   }
 
-  NSNumber *ipGeoLevel = options[PPNOptionIPGeoLevel];
-  if (ipGeoLevel.intValue != 0) {
-    kryptonConfig.set_ip_geo_level(static_cast<privacy::ppn::IpGeoLevel>(ipGeoLevel.intValue));
+  NSString *level = options[PPNOptionIPGeoLevel];
+  if (level != nullptr) {
+    privacy::ppn::IpGeoLevel ipGeoLevel;
+    if ([level isEqualToString:@"CITY"]) {
+      ipGeoLevel = privacy::ppn::IpGeoLevel::CITY;
+    } else if ([level isEqualToString:@"COUNTRY"]) {
+      ipGeoLevel = privacy::ppn::IpGeoLevel::COUNTRY;
+    } else {
+      ipGeoLevel = privacy::ppn::IpGeoLevel::IP_GEO_LEVEL_UNSPECIFIED;
+    }
+    kryptonConfig.set_ip_geo_level(ipGeoLevel);
   }
 
   return kryptonConfig;
