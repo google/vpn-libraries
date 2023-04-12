@@ -15,6 +15,7 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_DATAGRAM_SOCKET_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_DATAGRAM_SOCKET_H_
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
