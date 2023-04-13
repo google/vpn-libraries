@@ -78,6 +78,28 @@ ppn::GetInitialDataRequest::LocationGranularity GetLocationGranularity(
   }
 }
 
+absl::Status VerifyPublicMetadata(const ppn::PublicMetadata& public_metadata,
+                                  const KryptonConfig& config,
+                                  absl::Duration expiry_increments) {
+  auto expiry_timestamp_status = utils::VerifyTimestampIsRounded(
+      public_metadata.expiration(), expiry_increments);
+  if (!expiry_timestamp_status.ok()) {
+    return absl::InternalError(
+        "HandleInitialDataResponse failed due to unrounded expiry "
+        "increment.");
+  }
+  if (config.ip_geo_level() != ppn::CITY &&
+      !public_metadata.exit_location().city_geo_id().empty()) {
+    return absl::InternalError(
+        "Received city_geo_id when request specified other geo level.");
+  }
+  if (public_metadata.service_type() != config.service_type()) {
+    return absl::InternalError(
+        "HandleInitialDataResponse failed due to incorrect service type "
+        "in response.");
+  }
+  return absl::OkStatus();
+}
 
 }  // namespace
 
@@ -248,31 +270,25 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
       return;
     }
 
-    auto decode_status = DecodeGetInitialDataResponse(http_response);
-    if (!decode_status.ok()) {
+    auto decoded_response = DecodeGetInitialDataResponse(http_response);
+    if (!decoded_response.ok()) {
       SetState(State::kUnauthenticated);
-      RaiseAuthFailureNotification(decode_status.status());
-    }
-    get_initial_data_response_ = decode_status.value();
-    auto rounded_expiry_timestamp = utils::VerifyTimestampIsRounded(
-        get_initial_data_response_.public_metadata_info()
-            .public_metadata()
-            .expiration(),
-        expiry_increments_);
-    if (!rounded_expiry_timestamp.ok()) {
-      SetState(State::kUnauthenticated);
-      LOG(ERROR) << "HandleInitialDataResponse failed due to unrounded expiry "
-                    "increment.";
+      RaiseAuthFailureNotification(decoded_response.status());
       return;
     }
-    if (get_initial_data_response_.public_metadata_info()
-            .public_metadata()
-            .service_type() != config_.service_type()) {
+
+    auto public_metadata_status = VerifyPublicMetadata(
+        decoded_response.value().public_metadata_info().public_metadata(),
+        config_, expiry_increments_);
+    if (!public_metadata_status.ok()) {
       SetState(State::kUnauthenticated);
-      LOG(ERROR) << "HandleInitialDataResponse failed due to incorrect service "
-                    "type in response.";
+      RaiseAuthFailureNotification(public_metadata_status);
+      LOG(ERROR) << public_metadata_status.message();
       return;
     }
+
+    // set verified response
+    get_initial_data_response_ = decoded_response.value();
 
     // Create RSA BSSA client.
     auto bssa_client = AnonymousTokensRsaBssaClient::Create(

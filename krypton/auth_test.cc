@@ -26,6 +26,7 @@
 #include "privacy/net/common/proto/auth_and_sign.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/common/proto/key_services.proto.h"
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/auth_and_sign_request.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
@@ -261,6 +262,19 @@ class AuthTest : public ::testing::Test {
     return response;
   }
 
+  HttpResponse buildBadCityIdInitialDataHttpResponse() {
+    HttpResponse response;
+
+    auto initial_data_response = createGetInitialDataResponse();
+    initial_data_response.mutable_public_metadata_info()
+        ->mutable_public_metadata()
+        ->mutable_exit_location()
+        ->set_city_geo_id("us_al_bhm");
+    response.set_proto_body(initial_data_response.SerializeAsString());
+    response.mutable_status()->set_code(200);
+    return response;
+  }
+
   void inspectInitialDataResponse(
       ppn::GetInitialDataResponse initial_data_response) {
     auto expected_response = createGetInitialDataResponse();
@@ -318,7 +332,6 @@ TEST_F(AuthTest, AuthAndResponseWithAdditionalRekey) {
   ConfigureAuth(CreateKryptonConfig(/*blind_signing=*/false,
                                     /*enable_attestation=*/false));
 
-  absl::Notification init_done;
   absl::Notification http_fetcher_done;
   const auto return_val = buildResponse();
 
@@ -382,7 +395,6 @@ TEST_P(AuthParamsTest, TestFailure) {
   ConfigureAuth(CreateKryptonConfig(/*blind_signing=*/false,
                                     /*enable_attestation=*/false));
 
-  absl::Notification init_done;
   absl::Notification http_fetcher_done;
   const auto return_val = buildTemporaryFailureResponse();
 
@@ -633,6 +645,35 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabled) {
   // Step 3: Inspect values returned by auth::initial_data_response()
   auto initial_data_response = auth_->initial_data_response();
   inspectInitialDataResponse(initial_data_response);
+}
+
+TEST_P(AuthParamsTest, InitialDataRequestNonEmptyCityGeoId) {
+  absl::Notification http_fetcher_done;
+  auto config =
+      CreateKryptonConfig(/*blind_signing=*/true, /*enable_attestation=*/true);
+  config.set_api_key("testApiKey");
+  config.set_public_metadata_enabled(true);
+  config.set_initial_data_url("http://www.example.com/initial_data");
+  config.set_ip_geo_level(ppn::COUNTRY);
+  ConfigureAuth(config);
+
+  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+  EXPECT_CALL(http_fetcher_,
+              PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
+      .WillOnce(::testing::Return(buildBadCityIdInitialDataHttpResponse()));
+
+  EXPECT_CALL(
+      auth_notification_,
+      AuthFailure(absl::InternalError(
+          "Received city_geo_id when request specified other geo level.")))
+      .WillOnce(
+          InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
+
+  auth_->Start(/*is_rekey=*/GetParam());
+  EXPECT_TRUE(
+      http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+
+  EXPECT_THAT(auth_->GetState(), ::testing::Eq(Auth::State::kUnauthenticated));
 }
 
 INSTANTIATE_TEST_SUITE_P(AuthWithBlindSigning, AuthParamsTest,
