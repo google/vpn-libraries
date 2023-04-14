@@ -30,6 +30,7 @@
 #include "privacy/net/krypton/desktop/windows/utils/strings.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "third_party/absl/cleanup/cleanup.h"
+#include "third_party/absl/strings/match.h"
 #include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 
@@ -203,12 +204,24 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
     post_result += temp;
   }
 
-  LOG(INFO) << "HttpFetcher::PostJson Windows succeeded";
-  if (json_request) {
+  // Query response content-type
+  WCHAR content_type[256];
+  ULONG content_type_length = sizeof(content_type);
+  if (WinHttpQueryHeaders(request_handle, WINHTTP_QUERY_CONTENT_TYPE,
+                          /* pwszName= */ nullptr, &content_type,
+                          &content_type_length,
+                          /* lpdwIndex= */ nullptr) == 0) {
+    return CreateErrorResponse("WinHttpQueryHeaders failed");
+  }
+  bool is_proto = absl::StrContains(utils::WcharToString(content_type),
+                                          "application/x-protobuf");
+
+  if (!is_proto) {
     response.set_json_body(post_result);
   } else {
     response.set_proto_body(post_result);
   }
+  LOG(INFO) << "HttpFetcher::PostJson Windows succeeded";
 
   return response;
 }
