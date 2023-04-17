@@ -14,6 +14,7 @@
 
 #include "privacy/net/krypton/auth.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -24,6 +25,7 @@
 
 #include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/common/cpp/public_metadata/fingerprint.h"
+#include "privacy/net/common/proto/auth_and_sign.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/common/proto/key_services.proto.h"
 #include "privacy/net/common/proto/ppn_options.proto.h"
@@ -31,24 +33,28 @@
 #include "privacy/net/krypton/auth_and_sign_request.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/auth_crypto.h"
-#include "privacy/net/krypton/crypto/ipsec_forward_secure_random.h"
 #include "privacy/net/krypton/http_fetcher.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/functional/bind_front.h"
+#include "third_party/absl/log/die_if_null.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/escaping.h"
+#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
+#include "third_party/anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client.h"
 #include "third_party/anonymous_tokens/proto/anonymous_tokens.proto.h"
 
 namespace privacy {
@@ -337,14 +343,6 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
   LOG(INFO) << "HandleInitialDataResponseExiting InitialDataResponseHandler";
 
   AuthenticatePublicMetadata(is_rekey, nonce);
-}
-
-absl::StatusOr<std::string> Auth::signer_public_key() const {
-  absl::MutexLock l(&mutex_);
-  if (signer_public_key_.empty()) {
-    return absl::FailedPreconditionError("PEM is uninitialized");
-  }
-  return signer_public_key_;
 }
 
 void Auth::Start(bool is_rekey) {

@@ -29,11 +29,14 @@
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client.h"
@@ -96,11 +99,6 @@ class Auth {
 
   void GetDebugInfo(AuthDebugInfo* debug_info) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::StatusOr<std::string> signer_public_key() const
-      ABSL_LOCKS_EXCLUDED(mutex_);
-
-  absl::StatusOr<std::string> fetch_nonce() const ABSL_LOCKS_EXCLUDED(mutex_);
-
   std::string GetOriginalMessage() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   std::optional<std::string> GetBrassUnblindedToken(
@@ -149,9 +147,6 @@ class Auth {
   void RaiseAuthFailureNotification(absl::Status status)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  std::string FetchAttestationDataWithNonce(const std::string& nonce)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   HttpFetcher http_fetcher_;
   KryptonConfig config_;
   std::unique_ptr<crypto::AuthCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
@@ -177,7 +172,6 @@ class Auth {
       ABSL_GUARDED_BY(mutex_);
   absl::Time request_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
   absl::Time auth_call_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
-  std::string signer_public_key_;
   absl::Duration expiry_increments_ = absl::Minutes(15);
   ppn::GetInitialDataResponse get_initial_data_response_
       ABSL_LOCKS_EXCLUDED(mutex_);
