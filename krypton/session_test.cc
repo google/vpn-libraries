@@ -23,11 +23,11 @@
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
+#include "privacy/net/common/proto/update_path_info.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
-#include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/endpoint.h"
@@ -35,20 +35,27 @@
 #include "privacy/net/krypton/pal/mock_oauth_interface.h"
 #include "privacy/net/krypton/pal/mock_timer_interface.h"
 #include "privacy/net/krypton/pal/mock_vpn_service_interface.h"
+#include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/network_type.proto.h"
+#include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/tunnel_manager_interface.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/str_replace.h"
 #include "third_party/absl/strings/string_view.h"
+#include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
+#include "util/task/status.h"
 
 namespace privacy {
 namespace krypton {
@@ -86,6 +93,8 @@ class MockAuth : public Auth {
   MOCK_METHOD(AuthAndSignResponse, auth_response, (), (const, override));
   MOCK_METHOD(ppn::GetInitialDataResponse, initial_data_response, (),
               (const, override));
+  MOCK_METHOD(void, RegisterNotificationHandler, (Auth::NotificationInterface*),
+              (override));
 };
 
 // Mock the Egress Management.
@@ -96,6 +105,8 @@ class MockEgressManager : public EgressManager {
               (const, override));
   MOCK_METHOD(absl::Status, GetEgressNodeForPpnIpSec,
               (const AddEgressRequest::PpnDataplaneRequestParams&), (override));
+  MOCK_METHOD(void, RegisterNotificationHandler,
+              (EgressManager::NotificationInterface*), (override));
 };
 
 class MockSessionNotification : public Session::NotificationInterface {
@@ -142,6 +153,7 @@ class MockTunnelManager : public TunnelManagerInterface {
   MOCK_METHOD(bool, IsTunnelActive, (), (override));
 };
 
+// Tests Bridge dataplane and PPN control plane.
 class SessionTest : public ::testing::Test {
  public:
   void SetUp() override {
@@ -163,7 +175,7 @@ class SessionTest : public ::testing::Test {
         "egress_point_sock_addr": ["64.9.240.165:2153", "[2604:ca00:f001:4::5]:2153"],
         "egress_point_public_value": "a22j+91TxHtS5qa625KCD5ybsyzPR1wkTDWHV2qSQQc=",
         "server_nonce": "Uzt2lEzyvZYzjLAP3E+dAA==",
-        "uplink_spi": 1234,
+        "uplink_spi": 123,
         "expiry": "2020-08-07T01:06:13+00:00"
       }
     })string");
@@ -172,6 +184,16 @@ class SessionTest : public ::testing::Test {
         AddEgressResponse::FromProto(fake_add_egress_http_response);
     ASSERT_OK(fake_add_egress_response);
     fake_add_egress_response_ = *fake_add_egress_response;
+
+    EXPECT_CALL(auth_, RegisterNotificationHandler)
+        .WillOnce([this](Auth::NotificationInterface* notification) {
+          auth_notification_ = notification;
+        });
+
+    EXPECT_CALL(egress_manager_, RegisterNotificationHandler)
+        .WillOnce([this](EgressManager::NotificationInterface* notification) {
+          egress_notification_ = notification;
+        });
 
     session_ = std::make_unique<Session>(
         config_, &auth_, &egress_manager_, &datapath_, &vpn_service_,
@@ -188,8 +210,10 @@ class SessionTest : public ::testing::Test {
 
   void ExpectSuccessfulAuth() {
     EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
-      notification_thread_.Post(
-          [this] { session_->AuthSuccessful(is_rekey_); });
+      notification_thread_.Post([this] {
+        ASSERT_NE(auth_notification_, nullptr);
+        auth_notification_->AuthSuccessful(is_rekey_);
+      });
     }));
     AuthAndSignResponse fake_auth_and_sign_response;
     EXPECT_CALL(auth_, auth_response)
@@ -249,79 +273,9 @@ class SessionTest : public ::testing::Test {
     return response;
   }
 
-  KryptonConfig config_{proto2::contrib::parse_proto::ParseTextProtoOrDie(
-      R"pb(zinc_url: "http://www.example.com/auth"
-           brass_url: "http://www.example.com/addegress"
-           service_type: "service_type"
-           datapath_protocol: BRIDGE
-           copper_hostname_suffix: [ 'g-tun.com' ]
-           enable_blind_signing: false
-           dynamic_mtu_enabled: true
-           public_metadata_enabled: true)pb")};
-
-  MockSessionNotification notification_;
-  MockHttpFetcher http_fetcher_;
-  MockOAuth oauth_;
-  utils::LooperThread notification_thread_{"Session Test"};
-  MockAuth auth_{config_, &http_fetcher_, &oauth_, &notification_thread_};
-  MockEgressManager egress_manager_{config_, &http_fetcher_,
-                                    &notification_thread_};
-
-  MockDatapath datapath_;
-  MockTimerInterface timer_interface_;
-  TimerManager timer_manager_{&timer_interface_};
-
-  MockVpnService vpn_service_;
-  MockTunnelManager tunnel_manager_;
-  std::unique_ptr<Session> session_;
-  AddEgressResponse fake_add_egress_response_;
-  DatapathInterface::NotificationInterface* datapath_notification_;
-  bool is_rekey_ = false;
-  absl::Notification done_;
-};
-
-// Tests Bridge dataplane and PPN control plane.
-class BridgeOnPpnSession : public SessionTest {
- public:
-  void SetUp() override {
-    config_.set_datapath_protocol(KryptonConfig::BRIDGE);
-    EXPECT_CALL(datapath_, RegisterNotificationHandler)
-        .WillOnce(
-            Invoke([&](DatapathInterface::NotificationInterface* notification) {
-              datapath_notification_ = notification;
-            }));
-
-    HttpResponse fake_add_egress_http_response;
-    fake_add_egress_http_response.mutable_status()->set_code(200);
-    fake_add_egress_http_response.mutable_status()->set_message("OK");
-    fake_add_egress_http_response.set_json_body(R"string({
-      "ppn_dataplane": {
-        "user_private_ip": [{
-          "ipv4_range": "10.2.2.123/32",
-          "ipv6_range": "fec2:0001::3/64"
-        }],
-        "egress_point_sock_addr": ["64.9.240.165:2153", "[2604:ca00:f001:4::5]:2153"],
-        "egress_point_public_value": "a22j+91TxHtS5qa625KCD5ybsyzPR1wkTDWHV2qSQQc=",
-        "server_nonce": "Uzt2lEzyvZYzjLAP3E+dAA==",
-        "uplink_spi": 123,
-        "expiry": "2020-08-07T01:06:13+00:00"
-      }
-    })string");
-
-    auto fake_add_egress_response =
-        AddEgressResponse::FromProto(fake_add_egress_http_response);
-    ASSERT_OK(fake_add_egress_response);
-    fake_add_egress_response_ = *fake_add_egress_response;
-
-    session_ = std::make_unique<Session>(
-        config_, &auth_, &egress_manager_, &datapath_, &vpn_service_,
-        &timer_manager_, &http_fetcher_, &tunnel_manager_, std::nullopt,
-        &notification_thread_);
-    crypto::SessionCrypto remote(config_);
-    auto remote_key = remote.GetMyKeyMaterial();
-    EXPECT_OK(session_->MutableCryptoTestOnly()->SetRemoteKeyMaterial(
-        remote_key.public_value, remote_key.nonce));
-    session_->RegisterNotificationHandler(&notification_);
+  void ExpectSuccessfulProvision() {
+    ExpectSuccessfulAuth();
+    ExpectSuccessfulAddEgress();
   }
 
   void ExpectSuccessfulAddEgress() {
@@ -341,8 +295,10 @@ class BridgeOnPpnSession : public SessionTest {
             [&](const AddEgressRequest::PpnDataplaneRequestParams& params) {
               EXPECT_EQ(params.dataplane_protocol, config_.datapath_protocol());
               CheckPublicMetadataParams(params);
-              notification_thread_.Post(
-                  [this]() { session_->EgressAvailable(is_rekey_); });
+              notification_thread_.Post([this]() {
+                ASSERT_NE(egress_notification_, nullptr);
+                egress_notification_->EgressAvailable(is_rekey_);
+              });
 
               return absl::OkStatus();
             }));
@@ -381,14 +337,12 @@ class BridgeOnPpnSession : public SessionTest {
     EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
 
     EXPECT_CALL(datapath_, Start(_, _))
-        .WillOnce(::testing::DoAll(
-            InvokeWithoutArgs(&done_, &absl::Notification::Notify),
-            Return(absl::OkStatus())));
+        .WillOnce(DoAll(InvokeWithoutArgs(&done_, &absl::Notification::Notify),
+                        Return(absl::OkStatus())));
   }
 
   void StartSessionAndConnectDatapathOnCellular() {
-    ExpectSuccessfulAuth();
-    ExpectSuccessfulAddEgress();
+    ExpectSuccessfulProvision();
     ExpectSuccessfulDatapathInit();
 
     session_->Start();
@@ -431,7 +385,7 @@ class BridgeOnPpnSession : public SessionTest {
                                           mtu: 1395)pb")));
 
     NetworkInfo expected_network_info;
-    expected_network_info.set_network_id(1234);
+    expected_network_info.set_network_id(123);
     expected_network_info.set_network_type(NetworkType::CELLULAR);
     EXPECT_CALL(
         datapath_,
@@ -439,7 +393,7 @@ class BridgeOnPpnSession : public SessionTest {
         .WillOnce(Return(absl::OkStatus()));
 
     NetworkInfo network_info;
-    network_info.set_network_id(1234);
+    network_info.set_network_id(123);
     network_info.set_network_type(NetworkType::CELLULAR);
     EXPECT_OK(session_->SetNetwork(network_info));
     WaitForNotifications();
@@ -451,8 +405,7 @@ class BridgeOnPpnSession : public SessionTest {
   }
 
   void BringDatapathToConnected() {
-    ExpectSuccessfulAuth();
-    ExpectSuccessfulAddEgress();
+    ExpectSuccessfulProvision();
     ExpectSuccessfulDatapathInit();
 
     session_->Start();
@@ -513,52 +466,55 @@ class BridgeOnPpnSession : public SessionTest {
     EXPECT_CALL(notification_, DatapathConnected());
     session_->DatapathEstablished();
   }
+
+  KryptonConfig config_{ParseTextProtoOrDie(
+      R"pb(zinc_url: "http://www.example.com/auth"
+           brass_url: "http://www.example.com/addegress"
+           service_type: "service_type"
+           datapath_protocol: BRIDGE
+           copper_hostname_suffix: [ 'g-tun.com' ]
+           enable_blind_signing: false
+           dynamic_mtu_enabled: true
+           public_metadata_enabled: true)pb")};
+
+  MockSessionNotification notification_;
+  MockHttpFetcher http_fetcher_;
+  MockOAuth oauth_;
+  utils::LooperThread notification_thread_{"Session Test"};
+  MockAuth auth_{config_, &http_fetcher_, &oauth_, &notification_thread_};
+  MockEgressManager egress_manager_{config_, &http_fetcher_,
+                                    &notification_thread_};
+
+  MockDatapath datapath_;
+  MockTimerInterface timer_interface_;
+  TimerManager timer_manager_{&timer_interface_};
+
+  MockVpnService vpn_service_;
+  MockTunnelManager tunnel_manager_;
+  std::unique_ptr<Session> session_;
+  AddEgressResponse fake_add_egress_response_;
+  DatapathInterface::NotificationInterface* datapath_notification_;
+  bool is_rekey_ = false;
+  absl::Notification done_;
+
+  Auth::NotificationInterface* auth_notification_ = nullptr;
+  EgressManager::NotificationInterface* egress_notification_ = nullptr;
 };
-
-TEST_F(SessionTest, AuthenticationFailure) {
-  absl::Notification done;
-  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
-    notification_thread_.Post(
-        [this] { session_->AuthFailure(absl::InternalError("Some error")); });
-  }));
-  EXPECT_CALL(notification_, ControlPlaneDisconnected(::testing::_))
-      .WillOnce(InvokeWithoutArgs(&done, &absl::Notification::Notify));
-  session_->Start();
-  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
-  EXPECT_EQ(Session::State::kSessionError, session_->state());
-}
-
-TEST_F(SessionTest, AuthenticationPermanentFailure) {
-  absl::Notification done;
-  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
-    notification_thread_.Post([this] {
-      session_->AuthFailure(absl::PermissionDeniedError("Some error"));
-    });
-  }));
-
-  EXPECT_CALL(notification_, PermanentFailure(::testing::_))
-      .WillOnce(InvokeWithoutArgs(&done, &absl::Notification::Notify));
-
-  session_->Start();
-  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
-  EXPECT_EQ(Session::State::kPermanentError, session_->state());
-}
 
 // This test assumes Authentication was successful.
 
-TEST_F(BridgeOnPpnSession, DatapathInitFailure) {
+TEST_F(SessionTest, DatapathInitFailure) {
   absl::Notification done;
-  ExpectSuccessfulAuth();
-  ExpectSuccessfulAddEgress();
+  ExpectSuccessfulProvision();
 
   EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
       .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
 
   EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
   EXPECT_CALL(datapath_, Start(_, _))
-      .WillOnce(::testing::DoAll(
-          InvokeWithoutArgs(&done, &absl::Notification::Notify),
-          Return(absl::InvalidArgumentError("Initialization error"))));
+      .WillOnce(
+          DoAll(InvokeWithoutArgs(&done, &absl::Notification::Notify),
+                Return(absl::InvalidArgumentError("Initialization error"))));
 
   session_->Start();
   EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
@@ -568,9 +524,8 @@ TEST_F(BridgeOnPpnSession, DatapathInitFailure) {
   EXPECT_EQ(session_->state(), Session::State::kSessionError);
 }
 
-TEST_F(BridgeOnPpnSession, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
-  ExpectSuccessfulAuth();
-  ExpectSuccessfulAddEgress();
+TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
+  ExpectSuccessfulProvision();
   ExpectSuccessfulDatapathInit();
 
   session_->Start();
@@ -638,7 +593,7 @@ TEST_F(BridgeOnPpnSession, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
   EXPECT_OK(session_->SetNetwork(std::nullopt));
 }
 
-TEST_F(BridgeOnPpnSession, SwitchNetworkToSameNetworkType) {
+TEST_F(SessionTest, SwitchNetworkToSameNetworkType) {
   StartSessionAndConnectDatapathOnCellular();
 
   // Switch network to same type.
@@ -656,11 +611,11 @@ TEST_F(BridgeOnPpnSession, SwitchNetworkToSameNetworkType) {
               NetworkInfoEquals(new_network_info));
 }
 
-TEST_F(BridgeOnPpnSession, DatapathReattemptFailure) {
+TEST_F(SessionTest, DatapathReattemptFailure) {
   StartSessionAndConnectDatapathOnCellular();
 
   NetworkInfo expected_network_info;
-  expected_network_info.set_network_id(1234);
+  expected_network_info.set_network_id(123);
   expected_network_info.set_network_type(NetworkType::CELLULAR);
   absl::Status status = absl::InternalError("Some error");
   for (int i = 0; i < 4; ++i) {
@@ -697,7 +652,7 @@ TEST_F(BridgeOnPpnSession, DatapathReattemptFailure) {
   session_->DatapathFailed(status);
 }
 
-TEST_F(BridgeOnPpnSession, DatapathFailureAndSuccessfulBeforeReattempt) {
+TEST_F(SessionTest, DatapathFailureAndSuccessfulBeforeReattempt) {
   StartSessionAndConnectDatapathOnCellular();
 
   EXPECT_CALL(timer_interface_, StartTimer(_, absl::Milliseconds(500)))
@@ -713,7 +668,7 @@ TEST_F(BridgeOnPpnSession, DatapathFailureAndSuccessfulBeforeReattempt) {
   EXPECT_EQ(0, session_->DatapathReattemptCountTestOnly());
 }
 
-TEST_F(BridgeOnPpnSession, SwitchNetworkToDifferentNetworkType) {
+TEST_F(SessionTest, SwitchNetworkToDifferentNetworkType) {
   StartSessionAndConnectDatapathOnCellular();
 
   // Switch network to different type.
@@ -730,7 +685,7 @@ TEST_F(BridgeOnPpnSession, SwitchNetworkToDifferentNetworkType) {
               NetworkInfoEquals(new_network_info));
 }
 
-TEST_F(BridgeOnPpnSession, TestEndpointChangeBeforeEstablishingSession) {
+TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
   absl::Notification done;
   // Switch network after auth is successful and before session is in
   // connected state.
@@ -741,7 +696,10 @@ TEST_F(BridgeOnPpnSession, TestEndpointChangeBeforeEstablishingSession) {
       ASSERT_OK(session_->SetNetwork(network_info));
     });
 
-    notification_thread_.Post([this]() { session_->AuthSuccessful(false); });
+    notification_thread_.Post([this]() {
+      ASSERT_NE(auth_notification_, nullptr);
+      auth_notification_->AuthSuccessful(false);
+    });
   }));
   AuthAndSignResponse fake_auth_and_sign_response;
   EXPECT_CALL(auth_, auth_response)
@@ -801,20 +759,17 @@ TEST_F(SessionTest, PopulatesDebugInfo) {
               )pb"));
 }
 
-TEST_F(BridgeOnPpnSession, DatapathInitSuccessful) {
-  BringDatapathToConnected();
-}
+TEST_F(SessionTest, DatapathInitSuccessful) { BringDatapathToConnected(); }
 
-TEST_F(BridgeOnPpnSession, DatapathPermanentFailure) {
+TEST_F(SessionTest, DatapathPermanentFailure) {
   BringDatapathToConnected();
 
   EXPECT_CALL(notification_, DatapathDisconnected(_, _));
   session_->DatapathPermanentFailure(absl::InvalidArgumentError("some error"));
 }
 
-TEST_F(BridgeOnPpnSession, TestSetKeyMaterials) {
-  ExpectSuccessfulAuth();
-  ExpectSuccessfulAddEgress();
+TEST_F(SessionTest, TestSetKeyMaterials) {
+  ExpectSuccessfulProvision();
   ExpectSuccessfulDatapathInit();
 
   session_->Start();
@@ -822,8 +777,7 @@ TEST_F(BridgeOnPpnSession, TestSetKeyMaterials) {
 
   is_rekey_ = true;
   absl::Notification rekey_done;
-  ExpectSuccessfulAuth();
-  ExpectSuccessfulAddEgress();
+  ExpectSuccessfulProvision();
   EXPECT_CALL(datapath_, SetKeyMaterials(_))
       .WillOnce(
           DoAll(InvokeWithoutArgs(&rekey_done, &absl::Notification::Notify),
@@ -834,7 +788,7 @@ TEST_F(BridgeOnPpnSession, TestSetKeyMaterials) {
   session_->GetDebugInfo(&debug_info);
 }
 
-TEST_F(BridgeOnPpnSession, PpnDataplaneRequestPublicMetadataEnabled) {
+TEST_F(SessionTest, PpnDataplaneRequestPublicMetadataEnabled) {
   AuthAndSignResponse fake_auth_and_sign_response;
   EXPECT_CALL(auth_, auth_response)
       .WillOnce(Return(fake_auth_and_sign_response));
@@ -842,7 +796,8 @@ TEST_F(BridgeOnPpnSession, PpnDataplaneRequestPublicMetadataEnabled) {
   absl::Notification auth_done;
   EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
     notification_thread_.Post([this, &auth_done] {
-      session_->AuthSuccessful(is_rekey_);
+      ASSERT_NE(auth_notification_, nullptr);
+      auth_notification_->AuthSuccessful(is_rekey_);
       auth_done.Notify();
     });
   }));
@@ -853,57 +808,7 @@ TEST_F(BridgeOnPpnSession, PpnDataplaneRequestPublicMetadataEnabled) {
   auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
 }
 
-TEST_F(SessionTest, TestAuthResponseCopperControllerHostname) {
-  HttpResponse proto;
-  proto.mutable_status()->set_code(200);
-  proto.mutable_status()->set_message("OK");
-  proto.set_json_body(
-      R"string({"copper_controller_hostname":"eu.b.g-tun.com"})string");
-  ASSERT_OK_AND_ASSIGN(auto fake_auth_and_sign_response,
-                       AuthAndSignResponse::FromProto(proto, config_));
-  EXPECT_EQ(fake_auth_and_sign_response.copper_controller_hostname(),
-            "eu.b.g-tun.com");
-  absl::Notification auth_done;
-  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
-    notification_thread_.Post([this, &auth_done] {
-      session_->AuthSuccessful(is_rekey_);
-      auth_done.Notify();
-    });
-  }));
-  EXPECT_CALL(auth_, auth_response)
-      .WillRepeatedly(Return(fake_auth_and_sign_response));
-
-  EXPECT_CALL(http_fetcher_, LookupDns("eu.b.g-tun.com"));
-  session_->Start();
-
-  auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
-}
-
-TEST_F(SessionTest, TestEmptyAuthResponseCopperControllerHostname) {
-  HttpResponse proto;
-  proto.mutable_status()->set_code(200);
-  proto.mutable_status()->set_message("OK");
-  proto.set_json_body(R"string({"copper_controller_hostname":""})string");
-  ASSERT_OK_AND_ASSIGN(auto fake_auth_and_sign_response,
-                       AuthAndSignResponse::FromProto(proto, config_));
-  EXPECT_EQ(fake_auth_and_sign_response.copper_controller_hostname(), "");
-  absl::Notification auth_done;
-  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
-    notification_thread_.Post([this, &auth_done] {
-      session_->AuthSuccessful(is_rekey_);
-      auth_done.Notify();
-    });
-  }));
-  EXPECT_CALL(auth_, auth_response)
-      .WillRepeatedly(Return(fake_auth_and_sign_response));
-
-  EXPECT_CALL(http_fetcher_, LookupDns("na.b.g-tun.com"));
-  session_->Start();
-
-  auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
-}
-
-TEST_F(BridgeOnPpnSession, UplinkMtuUpdateHandler) {
+TEST_F(SessionTest, UplinkMtuUpdateHandler) {
   BringDatapathToConnected();
 
   EXPECT_CALL(datapath_, PrepareForTunnelSwitch()).Times(1);

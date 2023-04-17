@@ -73,7 +73,8 @@ class Auth {
   virtual ~Auth();
 
   // Register for auth status change notifications.
-  void RegisterNotificationHandler(Auth::NotificationInterface* notification) {
+  virtual void RegisterNotificationHandler(
+      Auth::NotificationInterface* notification) {
     notification_ = notification;
   }
 

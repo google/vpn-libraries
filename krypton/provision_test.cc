@@ -20,15 +20,22 @@
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
+#include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
+#include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
+#include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/mock_oauth_interface.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/synchronization/notification.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -70,10 +77,9 @@ class MockNotification : public Provision::NotificationInterface {
 class ProvisionTest : public ::testing::Test {
  public:
   void SetUp() override {
-    provision_ =
-        std::make_unique<Provision>(config_, &auth_, &egress_manager_,
-                                    &http_fetcher_, &notification_thread_);
-    provision_->RegisterNotificationHandler(&notification_);
+    provision_ = std::make_unique<Provision>(config_, &auth_, &egress_manager_,
+                                             &http_fetcher_, &notification_,
+                                             &notification_thread_);
 
     EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
   }
@@ -392,6 +398,56 @@ TEST_F(ProvisionTest, Rekey) {
             original_ipsec_params.session_id());
   EXPECT_EQ(rekeyed_ipsec_params.cipher_suite_key_length(),
             original_ipsec_params.cipher_suite_key_length());
+}
+
+TEST_F(ProvisionTest, TestAuthResponseCopperControllerHostname) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(
+      R"string({"copper_controller_hostname":"eu.b.g-tun.com"})string");
+  ASSERT_OK_AND_ASSIGN(auto fake_auth_and_sign_response,
+                       AuthAndSignResponse::FromProto(proto, config_));
+  EXPECT_EQ(fake_auth_and_sign_response.copper_controller_hostname(),
+            "eu.b.g-tun.com");
+  absl::Notification auth_done;
+  EXPECT_CALL(auth_, Start).WillOnce(::testing::Invoke([&]() {
+    notification_thread_.Post([this, &auth_done] {
+      provision_->AuthSuccessful(false);
+      auth_done.Notify();
+    });
+  }));
+  EXPECT_CALL(auth_, auth_response)
+      .WillRepeatedly(Return(fake_auth_and_sign_response));
+
+  EXPECT_CALL(http_fetcher_, LookupDns("eu.b.g-tun.com"));
+  provision_->Start();
+
+  auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
+}
+
+TEST_F(ProvisionTest, TestEmptyAuthResponseCopperControllerHostname) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(R"string({"copper_controller_hostname":""})string");
+  ASSERT_OK_AND_ASSIGN(auto fake_auth_and_sign_response,
+                       AuthAndSignResponse::FromProto(proto, config_));
+  EXPECT_EQ(fake_auth_and_sign_response.copper_controller_hostname(), "");
+  absl::Notification auth_done;
+  EXPECT_CALL(auth_, Start).WillOnce(::testing::Invoke([&]() {
+    notification_thread_.Post([this, &auth_done] {
+      provision_->AuthSuccessful(false);
+      auth_done.Notify();
+    });
+  }));
+  EXPECT_CALL(auth_, auth_response)
+      .WillRepeatedly(Return(fake_auth_and_sign_response));
+
+  EXPECT_CALL(http_fetcher_, LookupDns("na.b.g-tun.com"));
+  provision_->Start();
+
+  auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
 }
 
 }  // namespace

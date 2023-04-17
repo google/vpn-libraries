@@ -16,16 +16,19 @@
 #define PRIVACY_NET_KRYPTON_SESSION_H_
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "privacy/net/common/proto/update_path_info.proto.h"
+#include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
-#include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/datapath_address_selector.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
+#include "privacy/net/krypton/http_fetcher.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
@@ -33,6 +36,7 @@
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
+#include "privacy/net/krypton/provision.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/tunnel_manager_interface.h"
 #include "privacy/net/krypton/utils/looper.h"
@@ -52,9 +56,8 @@ std::string ProtoToJsonString(
 // Session or Krypton session that represents a session to the copper
 // server. This also is the statemachine for establishing the Copper |
 // Egress server. Thread safe implementation.
-class Session : public Auth::NotificationInterface,
-                EgressManager::NotificationInterface,
-                DatapathInterface::NotificationInterface {
+class Session : public DatapathInterface::NotificationInterface,
+                public Provision::NotificationInterface {
  public:
   // Notification for Session state changes.
   class NotificationInterface {
@@ -114,13 +117,6 @@ class Session : public Auth::NotificationInterface,
   void Stop(bool forceFailOpen) ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Override methods from the interface.
-  void AuthSuccessful(bool is_rekey) override ABSL_LOCKS_EXCLUDED(mutex_);
-  void AuthFailure(const absl::Status& status) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
-
-  void EgressAvailable(bool is_rekey) override ABSL_LOCKS_EXCLUDED(mutex_);
-  void EgressUnavailable(const absl::Status& status) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
   void DatapathEstablished() override ABSL_LOCKS_EXCLUDED(mutex_);
   void DatapathFailed(const absl::Status& status) override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -130,6 +126,11 @@ class Session : public Auth::NotificationInterface,
   void DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) override
       ABSL_LOCKS_EXCLUDED(mutex_);
   void DoDownlinkMtuUpdate(int downlink_mtu) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void Provisioned(const AddEgressResponse& egress_response,
+                   bool is_rekey) override ABSL_LOCKS_EXCLUDED(mutex_);
+  void ProvisioningFailure(absl::Status status, bool permanent) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   State state() const ABSL_LOCKS_EXCLUDED(mutex_) {
@@ -165,11 +166,6 @@ class Session : public Auth::NotificationInterface,
   int DatapathReattemptTimerIdTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return datapath_reattempt_timer_id_;
-  }
-
-  crypto::SessionCrypto* MutableCryptoTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock l(&mutex_);
-    return key_material_.get();
   }
 
   int GetUplinkMtuTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
@@ -212,10 +208,7 @@ class Session : public Auth::NotificationInterface,
 
   absl::Status CreateTunnelIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void ResetAllDatapathReattempts() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  absl::Status SetRemoteKeyMaterial() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void PpnDataplaneRequest(bool rekey = false)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   absl::Status Rekey() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void RekeyDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelFetcherTimerIfRunning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -228,8 +221,6 @@ class Session : public Auth::NotificationInterface,
 
   KryptonConfig config_;
 
-  Auth* auth_;                           // Not owned.
-  EgressManager* egress_manager_;        // Not owned.
   NotificationInterface* notification_;  // Not owned.
   DatapathInterface* datapath_;          // Not owned.
   VpnServiceInterface* vpn_service_;     // Not owned.
@@ -239,6 +230,9 @@ class Session : public Auth::NotificationInterface,
   TunnelManagerInterface* tunnel_manager_;    // Not owned.
 
   DatapathAddressSelector datapath_address_selector_;
+  std::optional<AddEgressResponse> add_egress_response_ ABSL_GUARDED_BY(mutex_);
+  uint32_t uplink_spi_ ABSL_GUARDED_BY(mutex_);
+  std::vector<std::string> egress_node_sock_addresses_ ABSL_GUARDED_BY(mutex_);
 
   State state_ ABSL_GUARDED_BY(mutex_) = State::kInitialized;
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
@@ -262,14 +256,15 @@ class Session : public Auth::NotificationInterface,
   // to a commonly used MTU value of 1500, minus some overhead.
   int tunnel_mtu_ ABSL_GUARDED_BY(mutex_) = 1395;
 
-  std::unique_ptr<crypto::SessionCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
-  std::optional<std::string> rekey_verification_key_ ABSL_GUARDED_BY(mutex_);
   std::atomic_bool datapath_connected_ ABSL_GUARDED_BY(mutex_) = false;
   std::string copper_address_ ABSL_GUARDED_BY(mutex_);
   absl::Time last_rekey_time_ ABSL_GUARDED_BY(mutex_);
   // Keep track of the last reported network switches.
   std::atomic_int last_repoted_network_switches_ = 0;
   std::atomic_int number_of_rekeys_ = 0;
+
+  utils::LooperThread provision_notification_thread_;
+  std::unique_ptr<Provision> provision_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace krypton

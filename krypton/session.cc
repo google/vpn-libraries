@@ -14,23 +14,19 @@
 
 #include "privacy/net/krypton/session.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 
 #include "google/protobuf/duration.proto.h"
-#include "google/protobuf/timestamp.proto.h"
 #include "privacy/net/brass/rpc/brass.proto.h"
-#include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/common/proto/update_path_info.proto.h"
-#include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
-#include "privacy/net/krypton/auth_and_sign_response.h"
-#include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/json_keys.h"
@@ -41,6 +37,7 @@
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
+#include "privacy/net/krypton/provision.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/tunnel_manager_interface.h"
 #include "privacy/net/krypton/utils/ip_range.h"
@@ -63,6 +60,12 @@
 #include "third_party/absl/types/optional.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 #include "third_party/json/include/nlohmann/json_fwd.hpp"
+
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <sys/socket.h>
+#endif
 
 namespace privacy {
 namespace krypton {
@@ -136,22 +139,24 @@ Session::Session(const KryptonConfig& config, Auth* auth,
                  std::optional<NetworkInfo> network_info,
                  utils::LooperThread* notification_thread)
     : config_(config),
-      auth_(ABSL_DIE_IF_NULL(auth)),
-      egress_manager_(ABSL_DIE_IF_NULL(egress_manager)),
       datapath_(ABSL_DIE_IF_NULL(datapath)),
       vpn_service_(ABSL_DIE_IF_NULL(vpn_service)),
       timer_manager_(ABSL_DIE_IF_NULL(timer_manager)),
       http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
                     ABSL_DIE_IF_NULL(notification_thread)),
       notification_thread_(ABSL_DIE_IF_NULL(notification_thread)),
-      datapath_address_selector_(config) {
+      datapath_address_selector_(config),
+      add_egress_response_(std::nullopt),
+      uplink_spi_(-1),
+      provision_notification_thread_("Provision Notification Thread") {
   // Register all state machine events to be sent to Session.
-  auth_->RegisterNotificationHandler(this);
-  egress_manager->RegisterNotificationHandler(this);
   datapath->RegisterNotificationHandler(this);
   active_network_info_ = network_info;
-  key_material_ = std::make_unique<crypto::SessionCrypto>(config);
   tunnel_manager_ = tunnel_manager;
+
+  provision_ =
+      std::make_unique<Provision>(config, auth, egress_manager, http_fetcher,
+                                  this, &provision_notification_thread_);
 }
 
 Session::~Session() {
@@ -197,7 +202,7 @@ std::string ProtoToJsonString(
 
 absl::Status Session::SendPathInfoUpdate() {
   ppn::UpdatePathInfoRequest update_path_info_request;
-  update_path_info_request.set_session_id(egress_manager_->uplink_spi());
+  update_path_info_request.set_session_id(uplink_spi_);
   update_path_info_request.set_uplink_mtu(uplink_mtu_);
   update_path_info_request.set_downlink_mtu(downlink_mtu_);
 
@@ -207,7 +212,7 @@ absl::Status Session::SendPathInfoUpdate() {
                    update_path_info_request.downlink_mtu());
 
   PPN_ASSIGN_OR_RETURN(auto signature,
-                       key_material_->GenerateSignature(signed_data));
+                       provision_->GenerateSignature(signed_data));
   update_path_info_request.set_mtu_update_signature(signature);
 
   auto path_info_update_json = ProtoToJsonString(update_path_info_request);
@@ -253,7 +258,7 @@ void Session::Start() {
   DCHECK(notification_);
   LOG(INFO) << "Starting session";
   tunnel_manager_->StartSession();
-  auth_->Start(/*is_rekey=*/false);
+  provision_->Start();
 }
 
 void Session::Stop(bool forceFailOpen) {
@@ -263,146 +268,11 @@ void Session::Stop(bool forceFailOpen) {
   tunnel_manager_->TerminateSession(forceFailOpen);
 }
 
-void Session::PpnDataplaneRequest(bool is_rekey) {
-  LOG(INFO) << "Doing PPN dataplane request. Rekey:"
-            << ((is_rekey == true) ? "True" : "False");
-  AuthAndSignResponse auth_response = auth_->auth_response();
-  // If auth_response specifies a copper control plane address, use it;
-  // otherwise if there is a config option for the address, use it.
-  std::string copper_hostname;
-  if (config_.has_copper_hostname_override() &&
-      !config_.copper_hostname_override().empty()) {
-    copper_hostname = config_.copper_hostname_override();
-  } else if (!auth_response.copper_controller_hostname().empty()) {
-    copper_hostname = auth_response.copper_controller_hostname();
-  } else if (config_.has_copper_controller_address()) {
-    copper_hostname = config_.copper_controller_address();
-  } else {
-    copper_hostname = kDefaultCopperAddress;
-  }
-  LOG(INFO) << "Copper hostname for DNS lookup: " << copper_hostname;
-  auto resolved_address = http_fetcher_.LookupDns(copper_hostname);
-  if (!resolved_address.ok()) {
-    SetState(State::kSessionError, resolved_address.status());
-    return;
-  }
-
-  auto copper_address_ = *resolved_address;
-  LOG(INFO) << "Copper server address:" << copper_address_;
-  AddEgressRequest::PpnDataplaneRequestParams params;
-  params.copper_control_plane_address = copper_address_;
-  params.is_rekey = is_rekey;
-  params.suite = config_.cipher_suite_key_length() == 256
-                     ? ppn::PpnDataplaneRequest::AES256_GCM
-                     : ppn::PpnDataplaneRequest::AES128_GCM;
-  params.dataplane_protocol = config_.datapath_protocol();
-  // Always send the region token and signature even if it's empty.
-  params.region_token_and_signature =
-      auth_response.region_token_and_signatures();
-  params.apn_type = auth_response.apn_type();
-  params.dynamic_mtu_enabled = config_.dynamic_mtu_enabled();
-  if (config_.enable_blind_signing()) {
-    params.blind_message = auth_->GetOriginalMessage();
-    std::string blinded_signature;
-    if (auth_->auth_response().blinded_token_signatures().empty()) {
-      LOG(ERROR) << "No blind token signatures found";
-      auto status =
-          absl::FailedPreconditionError("No blind token signatures found");
-      SetState(State::kSessionError, status);
-      return;
-    }
-    // set unblinded_token_signature
-    if (config_.public_metadata_enabled()) {
-      // TODO Add tests covering this if statement.
-      auto signed_tokens = auth_->GetUnblindedATToken();
-      if (!signed_tokens.ok()) {
-        LOG(ERROR) << "No unblinded token signatures found";
-        SetState(State::kSessionError, signed_tokens.status());
-        return;
-      }
-      if (signed_tokens->size() != 1) {
-        LOG(ERROR) << "Incorrect number of signed tokens found.";
-        auto status = absl::FailedPreconditionError(
-            "Incorrect number of signed tokens found");
-        SetState(State::kSessionError, status);
-        return;
-      }
-      params.unblinded_token = signed_tokens->at(0).input().plaintext_message();
-      params.unblinded_token_signature =
-          absl::Base64Escape(signed_tokens->at(0).token().token());
-      params.message_mask =
-          absl::Base64Escape(signed_tokens->at(0).token().message_mask());
-    } else if (absl::Base64Unescape(
-                   auth_->auth_response().blinded_token_signatures().at(0),
-                   &blinded_signature)) {
-      auto token = auth_->GetBrassUnblindedToken(blinded_signature);
-      if (!token.has_value()) {
-        LOG(ERROR) << "No unblinded token signatures found";
-        auto status = absl::FailedPreconditionError(
-            "No unblinded token signatures found");
-        SetState(State::kSessionError, status);
-        return;
-      }
-      params.unblinded_token_signature = token.value();
-    }
-  }
-
-  params.crypto = key_material_.get();
-  if (key_material_->GetRekeySignature()) {
-    params.signature = key_material_->GetRekeySignature().value();
-  }
-  params.uplink_spi = egress_manager_->uplink_spi();
-
-  if (config_.public_metadata_enabled()) {
-    auto get_initial_data_response = auth_->initial_data_response();
-    auto public_metadata =
-        get_initial_data_response.public_metadata_info().public_metadata();
-
-    params.signing_key_version =
-        get_initial_data_response.at_public_metadata_public_key().key_version();
-    params.country = public_metadata.exit_location().country();
-    params.city_geo_id = public_metadata.exit_location().city_geo_id();
-    params.service_type = public_metadata.service_type();
-    // expiration() nanos were verified to be zero in auth.cc
-    params.expiration =
-        absl::FromUnixSeconds(public_metadata.expiration().seconds());
-  }
-
-  auto status = egress_manager_->GetEgressNodeForPpnIpSec(params);
-  if (!status.ok()) {
-    LOG(ERROR) << "GetEgressNodeForPpnIpSec failed";
-    SetState(State::kSessionError, status);
-  }
-}
-
-void Session::AuthSuccessful(bool is_rekey) {
-  LOG(INFO) << "Authentication successful, fetching egress node details. Rekey:"
-            << (is_rekey ? "True" : "False");
-
-  absl::MutexLock l(&mutex_);
-  if (is_rekey) {
-    if (config_.datapath_protocol() == KryptonConfig::BRIDGE ||
-        config_.datapath_protocol() == KryptonConfig::IPSEC) {
-      PpnDataplaneRequest(/*rekey=*/true);
-      return;
-    }
-  }
-  PpnDataplaneRequest();
-}
-
-void Session::AuthFailure(const absl::Status& status) {
-  absl::MutexLock l(&mutex_);
-  if (utils::IsPermanentError(status)) {
-    SetState(State::kPermanentError, status);
-  } else {
-    SetState(State::kSessionError, status);
-  }
-}
-
 absl::Status Session::BuildTunFdData(TunFdData* tun_fd_data) const {
-  PPN_ASSIGN_OR_RETURN(auto egress_data,
-                       egress_manager_->GetEgressSessionDetails());
-
+  if (!add_egress_response_) {
+    return absl::FailedPreconditionError(
+        "AddEgressResponse is not initialized");
+  }
   tun_fd_data->set_is_metered(false);
   if (config_.dynamic_mtu_enabled()) {
     tun_fd_data->set_mtu(tunnel_mtu_);
@@ -420,7 +290,8 @@ absl::Status Session::BuildTunFdData(TunFdData* tun_fd_data) const {
   AddDns("2001:4860:4860::8844", TunFdData::IpRange::IPV6, 128,
          tun_fd_data->add_tunnel_dns_addresses());
 
-  PPN_ASSIGN_OR_RETURN(auto ppn_info, egress_data.ppn_dataplane_response());
+  PPN_ASSIGN_OR_RETURN(auto ppn_info,
+                       add_egress_response_->ppn_dataplane_response());
 
   if (ppn_info.user_private_ip_size() == 0) {
     return absl::InvalidArgumentError("missing user_private_ip");
@@ -469,31 +340,10 @@ absl::Status Session::CreateTunnelIfNeeded() {
   return CreateTunnel();
 }
 
-absl::Status Session::SetRemoteKeyMaterial() {
-  PPN_ASSIGN_OR_RETURN(auto egress, egress_manager_->GetEgressSessionDetails());
-  PPN_ASSIGN_OR_RETURN(auto ppn_data_plane, egress.ppn_dataplane_response());
-  if (ppn_data_plane.egress_point_public_value().empty()) {
-    return absl::InvalidArgumentError("missing egress_point_public_value");
-  }
-  auto remote_public_value = ppn_data_plane.egress_point_public_value();
-  if (ppn_data_plane.server_nonce().empty()) {
-    return absl::InvalidArgumentError("missing server_nonce");
-  }
-  auto remote_nonce = ppn_data_plane.server_nonce();
-
-  PPN_RETURN_IF_ERROR(
-      key_material_->SetRemoteKeyMaterial(remote_public_value, remote_nonce));
-  // Store the rekey_verification_key as it's needed for the next rekey
-  // procedure.
-  PPN_ASSIGN_OR_RETURN(rekey_verification_key_,
-                       key_material_->GetRekeyVerificationKey());
-  return absl::OkStatus();
-}
-
 void Session::RekeyDatapath() {
   // Do the rekey procedures.
   LOG(INFO) << "Successful response from egress for rekey";
-  auto transform_params = key_material_->GetTransformParams();
+  auto transform_params = provision_->GetTransformParams();
   if (!transform_params.ok()) {
     SetState(State::kSessionError, transform_params.status());
     return;
@@ -508,53 +358,12 @@ void Session::RekeyDatapath() {
   number_of_rekeys_.fetch_add(1);
 }
 
-void Session::EgressAvailable(bool is_rekey) {
-  absl::MutexLock l(&mutex_);
-  LOG(INFO) << "Establishing PpnDataplane [IPSec | Bridge]";
-  // Set the last rekey. This could be the first one where it's initialized or
-  // part of the rekey procedures.
-  // Rekey is only valid for PpnDataPlane.
-  last_rekey_time_ = absl::Now();
-
-  auto status = SetRemoteKeyMaterial();
-  if (!status.ok()) {
-    LOG(ERROR) << "Error setting remote key material " << status;
-    SetState(State::kSessionError, status);
-    return;
-  }
-
-  if (datapath_ == nullptr) {
-    LOG(ERROR) << "No datapath found while rekeying";
-    SetState(State::kSessionError, absl::InternalError("datapath_ == nullptr"));
-    return;
-  }
-
-  // Session start handling.
-  if (!is_rekey) {
-    SetState(State::kEgressSessionCreated, absl::OkStatus());
-    ResetAllDatapathReattempts();
-    StartDatapath();
-    return;
-  }
-
-  RekeyDatapath();
-}
-
 absl::Status Session::Rekey() {
   if (state_ != State::kConnected) {
     return absl::FailedPreconditionError(
         "Session is not in connected state for rekey");
   }
-  // Generate the rekey parameters that are needed and generate a signature from
-  // the old crypto keys.
-  auto new_key_material = std::make_unique<crypto::SessionCrypto>(config_);
-  PPN_ASSIGN_OR_RETURN(auto signature, key_material_->GenerateSignature(
-                                           new_key_material->public_value()));
-  new_key_material->SetSignature(signature);
-  key_material_.reset();
-  key_material_ = std::move(new_key_material);
-  auth_->Start(/*is_rekey=*/true);
-  return absl::OkStatus();
+  return provision_->Rekey();
 }
 
 void Session::StartDatapath() {
@@ -564,21 +373,22 @@ void Session::StartDatapath() {
               << StateString(state_);
     return;
   }
-  auto egress_response = egress_manager_->GetEgressSessionDetails();
-  if (!egress_response.ok()) {
+  if (!add_egress_response_) {
     LOG(ERROR) << "AddEgress was successful, but could not fetch details";
-    SetState(State::kSessionError, egress_response.status());
+    SetState(State::kSessionError, absl::FailedPreconditionError(
+                                       "AddEgressResponse is not initialized"));
     return;
   }
 
   // Check if the key material is set.
-  auto transform_params = key_material_->GetTransformParams();
+  auto transform_params = provision_->GetTransformParams();
   if (!transform_params.ok()) {
     SetState(State::kSessionError, transform_params.status());
     return;
   }
 
-  auto datapath_status = datapath_->Start(*egress_response, *transform_params);
+  auto datapath_status =
+      datapath_->Start(*add_egress_response_, *transform_params);
   if (!datapath_status.ok()) {
     LOG(ERROR) << "Datapath initialization failed with status:"
                << datapath_status;
@@ -660,12 +470,6 @@ std::optional<NetworkInfo> Session::active_network_info() const {
   return active_network_info_;
 }
 
-void Session::EgressUnavailable(const absl::Status& status) {
-  absl::MutexLock l(&mutex_);
-  LOG(ERROR) << "Egress unavailable with status: " << status;
-  SetState(State::kSessionError, status);
-}
-
 void Session::DatapathEstablished() {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "Datapath is established";
@@ -682,11 +486,10 @@ void Session::ResetAllDatapathReattempts() {
   datapath_reattempt_timer_id_ = kInvalidTimerId;
   datapath_reattempt_count_ = 0;
   LOG(INFO) << "Resetting address selector with "
-            << egress_manager_->egress_node_sock_addresses().size()
-            << " possible addresses with "
+            << egress_node_sock_addresses_.size() << " possible addresses with "
             << (active_network_info_ ? "an active network" : "no network");
-  datapath_address_selector_.Reset(
-      egress_manager_->egress_node_sock_addresses(), active_network_info_);
+  datapath_address_selector_.Reset(egress_node_sock_addresses_,
+                                   active_network_info_);
 }
 
 void Session::AttemptDatapathReconnect() {
@@ -705,11 +508,11 @@ void Session::AttemptDatapathReconnect() {
   // network fd is not withdrawn from the datapath.
   if (datapath_connected_) {
     LOG(INFO) << "Datapath is already connected, not reattempting";
-    // Do nothing and return as datapath came up.
+    // Do nothing and return as the datapath came up.
     return;
   }
 
-  // Check if there is active network.
+  // Check if there is an active network.
   if (!active_network_info_) {
     auto status = latest_datapath_status_;
     auto* notification = notification_;
@@ -816,11 +619,12 @@ absl::Status Session::SwitchDatapath() {
 
   // This value is not used here, but will be fetched again by
   // CreateTunnelIfNeeded. This check may or may not be helpful.
-  auto egress_response = egress_manager_->GetEgressSessionDetails();
-  if (!egress_response.ok()) {
+  if (!add_egress_response_) {
     LOG(ERROR) << "AddEgress was successful, but could not fetch details";
-    SetState(State::kSessionError, egress_response.status());
-    return egress_response.status();
+    auto status =
+        absl::FailedPreconditionError("AddEgressResponse is not initialized");
+    SetState(State::kSessionError, status);
+    return status;
   }
 
   auto tunnel_status = CreateTunnelIfNeeded();
@@ -842,9 +646,8 @@ absl::Status Session::SwitchDatapath() {
   PPN_ASSIGN_OR_RETURN(const auto& ip,
                        datapath_address_selector_.SelectDatapathAddress());
 
-  auto switch_data_status =
-      datapath_->SwitchNetwork(egress_manager_->uplink_spi(), ip,
-                               active_network_info_, current_restart_counter);
+  auto switch_data_status = datapath_->SwitchNetwork(
+      uplink_spi_, ip, active_network_info_, current_restart_counter);
 
   if (!switch_data_status.ok()) {
     LOG(ERROR) << "Switching networks failed: " << switch_data_status;
@@ -933,6 +736,50 @@ void Session::DoDownlinkMtuUpdate(int downlink_mtu) {
               << downlink_mtu;
     downlink_mtu_ = downlink_mtu;
     PPN_LOG_IF_ERROR(SendPathInfoUpdate());
+  }
+}
+
+void Session::Provisioned(const AddEgressResponse& egress_response,
+                          bool is_rekey) {
+  absl::MutexLock l(&mutex_);
+  LOG(INFO) << "Establishing PpnDataplane [IPsec | Bridge]";
+  // Set the last rekey. This could be the first one where it's initialized or
+  // part of the rekey procedures. Rekey is only valid for PpnDataPlane.
+  last_rekey_time_ = absl::Now();
+
+  add_egress_response_ = egress_response;
+  auto ppn_dataplane = add_egress_response_->ppn_dataplane_response();
+  if (ppn_dataplane.ok()) {
+    uplink_spi_ = ppn_dataplane->uplink_spi();
+  }
+  auto* egress_nodes = ppn_dataplane->mutable_egress_point_sock_addr();
+  egress_node_sock_addresses_.clear();
+  std::copy(egress_nodes->begin(), egress_nodes->end(),
+            std::back_inserter(egress_node_sock_addresses_));
+
+  if (datapath_ == nullptr) {
+    LOG(ERROR) << "No datapath found while rekeying";
+    SetState(State::kSessionError, absl::InternalError("datapath_ == nullptr"));
+    return;
+  }
+
+  // Session start handling.
+  if (!is_rekey) {
+    SetState(State::kEgressSessionCreated, absl::OkStatus());
+    ResetAllDatapathReattempts();
+    StartDatapath();
+    return;
+  }
+
+  RekeyDatapath();
+}
+
+void Session::ProvisioningFailure(absl::Status status, bool permanent) {
+  absl::MutexLock l(&mutex_);
+  if (permanent) {
+    SetState(State::kPermanentError, status);
+  } else {
+    SetState(State::kSessionError, status);
   }
 }
 

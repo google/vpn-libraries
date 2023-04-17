@@ -20,8 +20,9 @@
 #include <memory>
 #include <string>
 
-#include "base/logging.h"
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
+#include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/jni/http_fetcher.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
@@ -29,6 +30,8 @@
 #include "privacy/net/krypton/jni/oauth.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
+#include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
 
@@ -81,13 +84,10 @@ class ProvisionContext : public Provision::NotificationInterface {
                                    looper_.get());
     egress_manager_ = std::make_unique<EgressManager>(
         config_, http_fetcher_.get(), looper_.get());
+    provision_instance_ = std::make_unique<JavaObject>(provision_instance);
     provision_ =
         std::make_unique<Provision>(config_, auth_.get(), egress_manager_.get(),
-                                    http_fetcher_.get(), looper_.get());
-
-    provision_instance_ = std::make_unique<JavaObject>(provision_instance);
-
-    provision_->RegisterNotificationHandler(this);
+                                    http_fetcher_.get(), this, looper_.get());
   }
 
   void Start() { provision_->Start(); }

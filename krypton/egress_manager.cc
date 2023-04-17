@@ -14,33 +14,34 @@
 
 #include "privacy/net/krypton/egress_manager.h"
 
-#include <algorithm>
 #include <atomic>
-#include <cstddef>
 #include <cstdint>
-#include <iterator>
-#include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 
-#include "base/logging.h"
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/http_fetcher.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/functional/bind_front.h"
+#include "third_party/absl/log/check.h"
+#include "third_party/absl/log/die_if_null.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/clock.h"
+#include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 
 namespace privacy {
@@ -137,15 +138,6 @@ absl::Status EgressManager::SaveEgressDetails(
         "PPN dataplane response missing uplink SPI.");
   }
   uplink_spi_ = ppn_data_plane_response.uplink_spi();
-
-  if (ppn_data_plane_response.egress_point_sock_addr_size() == 0) {
-    return absl::InvalidArgumentError(
-        "PPN dataplane response missing uplink SPI.");
-  }
-  auto* egress_nodes = ppn_data_plane_response.mutable_egress_point_sock_addr();
-  egress_node_sock_addresses_.clear();
-  std::copy(egress_nodes->begin(), egress_nodes->end(),
-            std::back_inserter(egress_node_sock_addresses_));
 
   return absl::OkStatus();
 }

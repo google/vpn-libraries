@@ -17,7 +17,6 @@
 
 #include <atomic>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,12 +27,12 @@
 #include "privacy/net/krypton/http_fetcher.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
-#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
 
@@ -84,7 +83,7 @@ class EgressManager {
   }
 
   // Update the notification where the events are generated to.
-  void RegisterNotificationHandler(
+  virtual void RegisterNotificationHandler(
       EgressManager::NotificationInterface* notification) {
     notification_ = notification;
   }
@@ -97,12 +96,6 @@ class EgressManager {
   uint32_t uplink_spi() const {
     absl::MutexLock l(&mutex_);
     return uplink_spi_;
-  }
-
-  const std::vector<std::string>& egress_node_sock_addresses() const
-      ABSL_LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock l(&mutex_);
-    return egress_node_sock_addresses_;
   }
 
   absl::Status SaveEgressDetailsTestOnly(
@@ -132,7 +125,6 @@ class EgressManager {
   State state_ ABSL_GUARDED_BY(mutex_);
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
   uint32_t uplink_spi_ ABSL_GUARDED_BY(mutex_) = -1;
-  std::vector<std::string> egress_node_sock_addresses_ ABSL_GUARDED_BY(mutex_);
   std::vector<google::protobuf::Duration> latencies_ ABSL_GUARDED_BY(mutex_);
   absl::Time request_time_ ABSL_GUARDED_BY(mutex_) = absl::InfinitePast();
 };

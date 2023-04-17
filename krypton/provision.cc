@@ -14,35 +14,46 @@
 
 #include "privacy/net/krypton/provision.h"
 
-#include <sys/socket.h>
-#include <unistd.h>
-
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "google/protobuf/timestamp.proto.h"
+#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
+#include "privacy/net/krypton/auth_and_sign_response.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/proto/network_info.proto.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/log/check.h"
+#include "third_party/absl/log/die_if_null.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
+#include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
+
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <sys/socket.h>
+#endif
 
 namespace privacy {
 namespace krypton {
 namespace {
 
-// Reattempts excludes the first attempt.
+// Reattempts exclude the first attempt.
 constexpr char kDefaultCopperAddress[] = "na.b.g-tun.com";
 
 }  // namespace
@@ -50,13 +61,15 @@ constexpr char kDefaultCopperAddress[] = "na.b.g-tun.com";
 Provision::Provision(const KryptonConfig& config, Auth* auth,
                      EgressManager* egress_manager,
                      HttpFetcherInterface* http_fetcher,
+                     NotificationInterface* notification,
                      utils::LooperThread* notification_thread)
     : config_(config),
       auth_(ABSL_DIE_IF_NULL(auth)),
       egress_manager_(ABSL_DIE_IF_NULL(egress_manager)),
+      notification_(ABSL_DIE_IF_NULL(notification)),
+      notification_thread_(ABSL_DIE_IF_NULL(notification_thread)),
       http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
-                    ABSL_DIE_IF_NULL(notification_thread)),
-      notification_thread_(ABSL_DIE_IF_NULL(notification_thread)) {
+                    ABSL_DIE_IF_NULL(notification_thread)) {
   auth_->RegisterNotificationHandler(this);
   egress_manager->RegisterNotificationHandler(this);
 
@@ -91,6 +104,12 @@ absl::Status Provision::Rekey() {
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::string> Provision::GenerateSignature(
+    absl::string_view data) {
+  absl::MutexLock l(&mutex_);
+  return key_material_->GenerateSignature(data);
+}
+
 absl::StatusOr<TransformParams> Provision::GetTransformParams() {
   absl::MutexLock l(&mutex_);
   return key_material_->GetTransformParams();
@@ -101,7 +120,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
             << ((is_rekey == true) ? "True" : "False");
   AuthAndSignResponse auth_response = auth_->auth_response();
   // If auth_response specifies a copper control plane address, use it;
-  // otherwise if there is config option for the address, use it.
+  // otherwise if there is a config option for the address, use it.
   std::string copper_hostname;
   if (config_.has_copper_hostname_override() &&
       !config_.copper_hostname_override().empty()) {
@@ -144,9 +163,30 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
           false);
       return;
     }
-    if (absl::Base64Unescape(
-            auth_->auth_response().blinded_token_signatures().at(0),
-            &blinded_signature)) {
+    // set unblinded_token_signature
+    if (config_.public_metadata_enabled()) {
+      // TODO Add tests covering this if statement.
+      auto signed_tokens = auth_->GetUnblindedATToken();
+      if (!signed_tokens.ok()) {
+        LOG(ERROR) << "No unblinded token signatures found";
+        FailWithStatus(signed_tokens.status(), false);
+        return;
+      }
+      if (signed_tokens->size() != 1) {
+        LOG(ERROR) << "Incorrect number of signed tokens found.";
+        FailWithStatus(absl::FailedPreconditionError(
+                           "Incorrect number of signed tokens found"),
+                       false);
+        return;
+      }
+      params.unblinded_token = signed_tokens->at(0).input().plaintext_message();
+      params.unblinded_token_signature =
+          absl::Base64Escape(signed_tokens->at(0).token().token());
+      params.message_mask =
+          absl::Base64Escape(signed_tokens->at(0).token().message_mask());
+    } else if (absl::Base64Unescape(
+                   auth_->auth_response().blinded_token_signatures().at(0),
+                   &blinded_signature)) {
       auto token = auth_->GetBrassUnblindedToken(blinded_signature);
       if (!token.has_value()) {
         LOG(ERROR) << "No unblinded token signatures found";

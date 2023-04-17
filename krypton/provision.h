@@ -16,25 +16,28 @@
 #define PRIVACY_NET_KRYPTON_PROVISION_H_
 
 #include <memory>
-#include <optional>
 #include <string>
 
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/egress_manager.h"
+#include "privacy/net/krypton/http_fetcher.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
 namespace krypton {
 
 // Handles provisioning an egress through Auth and EgressManager.
-// This is the parts of Session that are not related to the datapath.
+// These are the parts of Session that are not related to the datapath.
 class Provision : public Auth::NotificationInterface,
                   public EgressManager::NotificationInterface {
  public:
@@ -51,19 +54,18 @@ class Provision : public Auth::NotificationInterface,
 
   Provision(const KryptonConfig& config, Auth* auth,
             EgressManager* egress_manager, HttpFetcherInterface* http_fetcher,
+            NotificationInterface* notification,
             utils::LooperThread* notification_thread);
 
   ~Provision() override = default;
-
-  // Register for status change notifications.
-  void RegisterNotificationHandler(NotificationInterface* notification) {
-    notification_ = notification;
-  }
 
   // Starts provisioning.
   void Start() ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::Status Rekey() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  absl::StatusOr<std::string> GenerateSignature(absl::string_view data)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::StatusOr<TransformParams> GetTransformParams()
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -90,11 +92,11 @@ class Provision : public Auth::NotificationInterface,
 
   KryptonConfig config_;
 
-  Auth* auth_;                           // Not owned.
-  EgressManager* egress_manager_;        // Not owned.
-  NotificationInterface* notification_;  // Not owned.
-  HttpFetcher http_fetcher_;
+  Auth* auth_;                                // Not owned.
+  EgressManager* egress_manager_;             // Not owned.
+  NotificationInterface* notification_;       // Not owned.
   utils::LooperThread* notification_thread_;  // Not owned.
+  HttpFetcher http_fetcher_;
 
   std::unique_ptr<crypto::SessionCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
 };
