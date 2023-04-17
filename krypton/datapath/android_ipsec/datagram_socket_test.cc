@@ -17,20 +17,28 @@
 #include "privacy/net/krypton/datapath/android_ipsec/datagram_socket.h"
 
 #include <sys/socket.h>
+#include <unistd.h>
 
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "privacy/net/krypton/datapath/android_ipsec/mss_mtu_detector_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/simple_udp_server.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/str_format.h"
+#include "third_party/absl/synchronization/notification.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -39,8 +47,17 @@ namespace android {
 namespace {
 
 using ::testing::_;
+using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
 using ::testing::status::StatusIs;
+
+class MockMssMtuDetector : public MssMtuDetectorInterface {
+ public:
+  MOCK_METHOD(void, Start,
+              (NotificationInterface*, krypton::utils::LooperThread*),
+              (override));
+  MOCK_METHOD(void, Stop, (), (override));
+};
 
 class MockMtuTracker : public MtuTrackerInterface {
  public:
@@ -50,8 +67,7 @@ class MockMtuTracker : public MtuTrackerInterface {
   MOCK_METHOD(int, GetTunnelMtu, (), (const override));
   MOCK_METHOD(int, GetDownlinkMtu, (), (const override));
   MOCK_METHOD(void, RegisterNotificationHandler,
-              (NotificationInterface * notification,
-               krypton::utils::LooperThread* notification_thread),
+              (NotificationInterface*, krypton::utils::LooperThread*),
               (override));
 };
 
@@ -64,12 +80,14 @@ absl::StatusOr<std::unique_ptr<DatagramSocket>> CreateSocket() {
 }
 
 absl::StatusOr<std::unique_ptr<DatagramSocket>> CreateSocket(
+    std::unique_ptr<MssMtuDetectorInterface> mss_mtu_detector,
     std::unique_ptr<MtuTrackerInterface> mtu_tracker) {
   int fd = socket(AF_INET6, SOCK_DGRAM, 0);
   if (fd < 0) {
     return absl::InternalError("Unable to create socket");
   }
-  return DatagramSocket::Create(fd, std::move(mtu_tracker));
+  return DatagramSocket::Create(fd, std::move(mss_mtu_detector),
+                                std::move(mtu_tracker));
 }
 
 absl::StatusOr<Endpoint> GetLocalhost(int port) {
@@ -313,10 +331,13 @@ TEST(DatagramSocketTest, DynamicMtuCreateAndConnect) {
   auto mtu_tracker = std::make_unique<MockMtuTracker>();
   MockMtuTracker* mtu_tracker_ptr = mtu_tracker.get();
 
+  auto mss_mtu_detector = std::make_unique<MockMssMtuDetector>();
+
   EXPECT_CALL(*mtu_tracker_ptr, UpdateUplinkMtu(_)).Times(1);
 
   // Create the socket.
-  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket(std::move(mtu_tracker)));
+  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket(std::move(mss_mtu_detector),
+                                               std::move(mtu_tracker)));
   ASSERT_OK_AND_ASSIGN(auto localhost, GetLocalhost(server.port()));
   ASSERT_OK(sock->Connect(localhost));
 }
@@ -327,10 +348,13 @@ TEST(DatagramSocketTest, DynamicMtuWriteSkippedDueToMtu) {
   auto mtu_tracker = std::make_unique<MockMtuTracker>();
   MockMtuTracker* mtu_tracker_ptr = mtu_tracker.get();
 
+  auto mss_mtu_detector = std::make_unique<MockMssMtuDetector>();
+
   EXPECT_CALL(*mtu_tracker_ptr, GetTunnelMtu()).WillRepeatedly(Return(3));
 
   // Create the socket.
-  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket(std::move(mtu_tracker)));
+  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket(std::move(mss_mtu_detector),
+                                               std::move(mtu_tracker)));
   ASSERT_OK_AND_ASSIGN(auto localhost, GetLocalhost(server.port()));
   ASSERT_OK(sock->Connect(localhost));
 
@@ -361,11 +385,14 @@ TEST(DatagramSocketTest, DynamicMtuWriteSocketFailureDueToMtu) {
   auto mtu_tracker = std::make_unique<MockMtuTracker>();
   MockMtuTracker* mtu_tracker_ptr = mtu_tracker.get();
 
+  auto mss_mtu_detector = std::make_unique<MockMssMtuDetector>();
+
   EXPECT_CALL(*mtu_tracker_ptr, GetTunnelMtu()).WillRepeatedly(Return(70000));
   EXPECT_CALL(*mtu_tracker_ptr, UpdateUplinkMtu(65536)).Times(2);
 
   // Create the socket.
-  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket(std::move(mtu_tracker)));
+  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket(std::move(mss_mtu_detector),
+                                               std::move(mtu_tracker)));
   ASSERT_OK_AND_ASSIGN(auto localhost, GetLocalhost(server.port()));
   ASSERT_OK(sock->Connect(localhost));
 
@@ -383,6 +410,45 @@ TEST(DatagramSocketTest, DynamicMtuWriteSocketFailureDueToMtu) {
 
   ASSERT_OK_AND_ASSIGN((auto [port, data]), server.ReceivePacket());
   EXPECT_EQ(data, msg2);
+
+  ASSERT_OK(sock->Close());
+}
+
+TEST(DatagramSocketTest, DynamicMtuMssMtuDetection) {
+  testing::SimpleUdpServer server;
+
+  auto mtu_tracker = std::make_unique<MockMtuTracker>();
+  MockMtuTracker* mtu_tracker_ptr = mtu_tracker.get();
+
+  auto mss_mtu_detector = std::make_unique<MockMssMtuDetector>();
+  MockMssMtuDetector* mss_mtu_detector_ptr = mss_mtu_detector.get();
+
+  EXPECT_CALL(*mtu_tracker_ptr, GetTunnelMtu()).WillRepeatedly(Return(1500));
+  EXPECT_CALL(*mtu_tracker_ptr, UpdateUplinkMtu(65536)).Times(1);
+  EXPECT_CALL(*mtu_tracker_ptr, UpdateUplinkMtu(1000)).Times(1);
+  EXPECT_CALL(*mtu_tracker_ptr, UpdateDownlinkMtu(2000)).Times(1);
+
+  absl::Notification mss_mtu_detector_started;
+  EXPECT_CALL(*mss_mtu_detector_ptr, Start(_, _))
+      .WillOnce(InvokeWithoutArgs(&mss_mtu_detector_started,
+                                  &absl::Notification::Notify));
+
+  // Create the socket.
+  ASSERT_OK_AND_ASSIGN(auto sock, CreateSocket(std::move(mss_mtu_detector),
+                                               std::move(mtu_tracker)));
+  ASSERT_OK_AND_ASSIGN(auto localhost, GetLocalhost(server.port()));
+  ASSERT_OK(sock->Connect(localhost));
+
+  ASSERT_TRUE(mss_mtu_detector_started.WaitForNotificationWithTimeout(
+      absl::Seconds(5)));
+
+  sock->MssMtuSuccess(1000, 2000);
+
+  // Msg1 should be larger than the max MTU to ensure it cannot send
+  std::string msg1(3, 'a');
+  std::vector<Packet> packets;
+  packets.emplace_back(msg1.c_str(), msg1.size(), IPProtocol::kIPv6, []() {});
+  ASSERT_OK(sock->WritePackets(std::move(packets)));
 
   ASSERT_OK(sock->Close());
 }

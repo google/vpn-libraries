@@ -19,17 +19,29 @@
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
-#include <functional>
+#include <cerrno>
+#include <climits>
+#include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "base/logging.h"
+#include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mss_mtu_detector_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
+#include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/log/log.h"
+#include "third_party/absl/memory/memory.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/substitute.h"
 #include "third_party/absl/synchronization/mutex.h"
 
@@ -50,10 +62,12 @@ absl::StatusOr<std::unique_ptr<DatagramSocket>> DatagramSocket::Create(
 }
 
 absl::StatusOr<std::unique_ptr<DatagramSocket>> DatagramSocket::Create(
-    int socket_fd, std::unique_ptr<MtuTrackerInterface> mtu_tracker) {
+    int socket_fd, std::unique_ptr<MssMtuDetectorInterface> mss_mtu_detector,
+    std::unique_ptr<MtuTrackerInterface> mtu_tracker) {
   auto socket = absl::WrapUnique(new DatagramSocket(socket_fd));
   PPN_RETURN_IF_ERROR(socket->Init());
-  PPN_RETURN_IF_ERROR(socket->EnablePathMtuDiscovery(std::move(mtu_tracker)));
+  PPN_RETURN_IF_ERROR(socket->EnablePathMtuDiscovery(
+      std::move(mtu_tracker), std::move(mss_mtu_detector)));
   return socket;
 }
 
@@ -62,6 +76,10 @@ DatagramSocket::DatagramSocket(int socket_fd)
       dynamic_mtu_enabled_(false),
       uplink_packets_dropped_(0),
       kernel_mtu_(INT_MAX),
+      looper_("DatagramSocket Looper"),
+      uplink_mss_mtu_(0),
+      downlink_mss_mtu_(0),
+      mss_mtu_available_(false),
       mtu_tracker_(nullptr) {}
 
 DatagramSocket::~DatagramSocket() {
@@ -152,6 +170,11 @@ absl::Status DatagramSocket::WritePackets(std::vector<Packet> packets) {
   if (fd < 0) {
     return absl::InternalError("Attempted to write to a closed socket.");
   }
+  if (mss_mtu_available_) {
+    mss_mtu_available_ = false;
+    mtu_tracker_->UpdateUplinkMtu(uplink_mss_mtu_);
+    mtu_tracker_->UpdateDownlinkMtu(downlink_mss_mtu_);
+  }
   for (const auto& packet : packets) {
     // Check if the packet is too large to be sent
     if (dynamic_mtu_enabled_ &&
@@ -205,6 +228,7 @@ absl::Status DatagramSocket::Connect(Endpoint dest) {
 
   if (dynamic_mtu_enabled_) {
     PPN_RETURN_IF_ERROR(UpdateMtuFromKernel(dest.ip_protocol()));
+    mss_mtu_detector_->Start(this, &looper_);
   }
 
   return absl::OkStatus();
@@ -218,6 +242,18 @@ void DatagramSocket::GetDebugInfo(DatapathDebugInfo* debug_info) {
 
 std::string DatagramSocket::DebugString() {
   return absl::StrCat("FD=", socket_fd_.load());
+}
+
+void DatagramSocket::MssMtuSuccess(int uplink_mss_mtu, int downlink_mss_mtu) {
+  LOG(INFO) << "MssMtuDetector succeeded with uplink MTU=" << uplink_mss_mtu
+            << " and downlink MTU=" << downlink_mss_mtu;
+  uplink_mss_mtu_ = uplink_mss_mtu;
+  downlink_mss_mtu_ = downlink_mss_mtu;
+  mss_mtu_available_ = true;
+}
+
+void DatagramSocket::MssMtuFailure(absl::Status status) {
+  LOG(ERROR) << "MssMtuDetector failed: " << status;
 }
 
 absl::Status DatagramSocket::Init() {
@@ -252,7 +288,8 @@ absl::Status DatagramSocket::ClearEventFd(int fd) {
 }
 
 absl::Status DatagramSocket::EnablePathMtuDiscovery(
-    std::unique_ptr<MtuTrackerInterface> mtu_tracker) {
+    std::unique_ptr<MtuTrackerInterface> mtu_tracker,
+    std::unique_ptr<MssMtuDetectorInterface> mss_mtu_detector) {
   int fd = socket_fd_;
   if (fd < 0) {
     return absl::InternalError("Attempted to set options on a closed socket.");
@@ -319,6 +356,12 @@ absl::Status DatagramSocket::EnablePathMtuDiscovery(
         "Enabled Path MTU Discovery with a null MTU Tracker");
   }
   mtu_tracker_ = std::move(mtu_tracker);
+
+  if (mss_mtu_detector == nullptr) {
+    return absl::InternalError(
+        "Enabled Path MTU Discovery with a null MSS MTU Detector");
+  }
+  mss_mtu_detector_ = std::move(mss_mtu_detector);
 
   dynamic_mtu_enabled_ = true;
 

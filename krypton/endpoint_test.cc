@@ -18,6 +18,8 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
+#include <cstring>
+
 #include "privacy/net/krypton/pal/packet.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
@@ -57,7 +59,7 @@ TEST(EndpointTest, TestEqual) {
   EXPECT_NE(endpoint1, endpoint4);
 }
 
-TEST(EndpointTest, TestIpv4SockAddr) {
+TEST(EndpointTest, TestGetSockAddrWithIpv4Addr) {
   ASSERT_OK_AND_ASSIGN(Endpoint endpoint,
                        GetEndpointFromHostPort("192.168.0.1:2153"));
 
@@ -71,11 +73,48 @@ TEST(EndpointTest, TestIpv4SockAddr) {
   EXPECT_EQ(ipv4_sockaddr->sin_addr.s_addr, expected_addr.s_addr);
 }
 
-TEST(EndpointTest, TestIpv6SockAddr) {
+TEST(EndpointTest, TestGetSockAddrWithIpv6Addr) {
   ASSERT_OK_AND_ASSIGN(Endpoint endpoint,
                        GetEndpointFromHostPort("[2604:ca00:f004:3::5]:2153"));
 
   ASSERT_OK_AND_ASSIGN(auto sockaddr, endpoint.GetSockAddr());
+
+  auto* ipv6_sockaddr = reinterpret_cast<sockaddr_in6*>(&sockaddr.sockaddr);
+  EXPECT_EQ(ipv6_sockaddr->sin6_family, AF_INET6);
+  EXPECT_EQ(ipv6_sockaddr->sin6_port, htons(2153));
+  in6_addr expected_addr;
+  inet_pton(AF_INET6, "2604:ca00:f004:3::5", &expected_addr);
+  EXPECT_EQ(memcmp(ipv6_sockaddr->sin6_addr.s6_addr, expected_addr.s6_addr,
+                   sizeof(expected_addr.s6_addr)),
+            0);
+}
+
+TEST(EndpointTest, TestGetSockAddrV6OnlyWithIpv4Addr) {
+  ASSERT_OK_AND_ASSIGN(Endpoint endpoint,
+                       GetEndpointFromHostPort("192.168.0.1:2153"));
+
+  ASSERT_OK_AND_ASSIGN(auto sockaddr, endpoint.GetSockAddrV6Only());
+
+  auto* ipv6_sockaddr = reinterpret_cast<sockaddr_in6*>(&sockaddr.sockaddr);
+  EXPECT_EQ(ipv6_sockaddr->sin6_family, AF_INET6);
+  EXPECT_EQ(ipv6_sockaddr->sin6_port, htons(2153));
+  in_addr expected_ipv4_addr;
+  inet_pton(AF_INET, "192.168.0.1", &expected_ipv4_addr);
+  in6_addr expected_ipv6_addr;
+  expected_ipv6_addr.s6_addr32[0] = 0x00000000;
+  expected_ipv6_addr.s6_addr32[1] = 0x00000000;
+  expected_ipv6_addr.s6_addr32[2] = htonl(0x0000FFFF);
+  expected_ipv6_addr.s6_addr32[3] = expected_ipv4_addr.s_addr;
+  EXPECT_EQ(
+      memcmp(&ipv6_sockaddr->sin6_addr, &expected_ipv6_addr, sizeof(in6_addr)),
+      0);
+}
+
+TEST(EndpointTest, TestGetSockAddrV6OnlyWithIpv6Addr) {
+  ASSERT_OK_AND_ASSIGN(Endpoint endpoint,
+                       GetEndpointFromHostPort("[2604:ca00:f004:3::5]:2153"));
+
+  ASSERT_OK_AND_ASSIGN(auto sockaddr, endpoint.GetSockAddrV6Only());
 
   auto* ipv6_sockaddr = reinterpret_cast<sockaddr_in6*>(&sockaddr.sockaddr);
   EXPECT_EQ(ipv6_sockaddr->sin6_family, AF_INET6);

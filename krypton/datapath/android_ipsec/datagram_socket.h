@@ -16,7 +16,6 @@
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_DATAGRAM_SOCKET_H_
 
 #include <atomic>
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,11 +23,14 @@
 #include "privacy/net/krypton/datapath/android_ipsec/event_fd.h"
 #include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mss_mtu_detector_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
+#include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/synchronization/mutex.h"
 
@@ -37,7 +39,8 @@ namespace krypton {
 namespace datapath {
 namespace android {
 
-class DatagramSocket : public IpSecSocketInterface {
+class DatagramSocket : public IpSecSocketInterface,
+                       public MssMtuDetectorInterface::NotificationInterface {
  public:
   // Creates a DatagramSocket without path MTU discovery enabled.
   static absl::StatusOr<std::unique_ptr<DatagramSocket>> Create(int socket_fd);
@@ -46,7 +49,8 @@ class DatagramSocket : public IpSecSocketInterface {
   // MtuTrackerInterface object will be used to keep track of the currently
   // known path MTU information.
   static absl::StatusOr<std::unique_ptr<DatagramSocket>> Create(
-      int socket_fd, std::unique_ptr<MtuTrackerInterface>);
+      int socket_fd, std::unique_ptr<MssMtuDetectorInterface> mss_mtu_detector,
+      std::unique_ptr<MtuTrackerInterface> mtu_tracker);
 
   ~DatagramSocket() override;
   DatagramSocket(const DatagramSocket&) = delete;
@@ -70,6 +74,10 @@ class DatagramSocket : public IpSecSocketInterface {
 
   std::string DebugString();
 
+  void MssMtuSuccess(int uplink_mss_mtu, int downlink_mss_mtu) override;
+
+  void MssMtuFailure(absl::Status status) override;
+
  private:
   explicit DatagramSocket(int socket_fd);
 
@@ -78,7 +86,8 @@ class DatagramSocket : public IpSecSocketInterface {
   absl::Status ClearEventFd(int fd);
 
   absl::Status EnablePathMtuDiscovery(
-      std::unique_ptr<MtuTrackerInterface> mtu_tracker);
+      std::unique_ptr<MtuTrackerInterface> mtu_tracker,
+      std::unique_ptr<MssMtuDetectorInterface> mss_mtu_detector);
 
   absl::Status UpdateMtuFromKernel(IPProtocol ip_protocol);
 
@@ -95,6 +104,12 @@ class DatagramSocket : public IpSecSocketInterface {
   bool dynamic_mtu_enabled_;
   std::atomic_int uplink_packets_dropped_;
   int kernel_mtu_ ABSL_GUARDED_BY(mutex_);
+
+  utils::LooperThread looper_;
+  std::unique_ptr<MssMtuDetectorInterface> mss_mtu_detector_;
+  int uplink_mss_mtu_;
+  int downlink_mss_mtu_;
+  std::atomic_bool mss_mtu_available_;
 
   // Only accessed from Connect and WritePackets functions
   std::unique_ptr<MtuTrackerInterface> mtu_tracker_;

@@ -91,6 +91,7 @@ class IpSecDatapathTest : public ::testing::Test {
         }],
         "egress_point_sock_addr": ["192.0.2.0:8080", "[2604:ca00:f001:4::5]:2153"],
         "egress_point_public_value": "a22j+91TxHtS5qa625KCD5ybsyzPR1wkTDWHV2qSQQc=",
+        "mss_detection_sock_addr": ["192.168.0.1:2153", "[2604:ca00:f004:3::5]:2153"],
         "server_nonce": "Uzt2lEzyvZYzjLAP3E+dAA==",
         "uplink_spi": 1234,
         "expiry": "2020-08-07T01:06:13+00:00"
@@ -156,13 +157,20 @@ TEST_F(IpSecDatapathTest, SwitchNetworkAndNoKeyMaterial) {
 TEST_F(IpSecDatapathTest, SwitchNetworkHappyPath) {
   auto socket_ptr = std::make_unique<MockIpSecSocket>();
 
+  Endpoint expected_endpoint("192.0.2.0:8080", "192.0.2.0", 8080,
+                             IPProtocol::kIPv4);
+  Endpoint expected_mss_mtu_endpoint("192.168.0.1:2153", "192.168.0.1", 2153,
+                                     IPProtocol::kIPv4);
+
   // Need to keep a reference to the socket to simulate data being sent.
   MockIpSecSocket *socket = socket_ptr.get();
-  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _))
-      .Times(1)
+  EXPECT_CALL(vpn_service_,
+              CreateProtectedNetworkSocket(_, expected_endpoint,
+                                           expected_mss_mtu_endpoint, _))
       .WillOnce(
           [&socket_ptr](const NetworkInfo & /*network_info*/,
                         const Endpoint & /*endpoint*/,
+                        const Endpoint & /*mss_mtu_detection_endpoint*/,
                         std::unique_ptr<MtuTrackerInterface> mtu_tracker) {
             mtu_tracker->UpdateUplinkMtu(1500);
             return std::move(socket_ptr);
@@ -233,7 +241,7 @@ TEST_F(IpSecDatapathTest, SwitchTunnel) {
 
   // Need to keep a reference to the socket to simulate data being sent.
   MockIpSecSocket *socket = socket_ptr.get();
-  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _))
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _, _))
       .WillOnce(Return(std::move(socket_ptr)));
   EXPECT_CALL(*socket, GetFd()).WillOnce(Return(1));
 
@@ -311,8 +319,7 @@ TEST_F(IpSecDatapathTest, SwitchTunnel) {
 TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
   // create failure to create network socket.
   EXPECT_CALL(notification_, DatapathFailed).Times(1);
-  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _))
-      .Times(1)
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _, _))
       .WillOnce(Return(absl::InternalError("Failure")));
 
   EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));

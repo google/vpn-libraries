@@ -21,8 +21,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 
 #include "privacy/net/krypton/datapath/android_ipsec/event_fd.h"
@@ -39,9 +40,11 @@ namespace krypton {
 namespace datapath {
 namespace android {
 
-// Obtains MTU from the TCP MSS. All the operations on the TCP socket is
-// non-blocking. This class is thread-unsafe. All the member functions are
-// supposed to be called within a single thread.
+// Obtains MTU from the TCP MSS. Each MssMtuDetector can only be started once
+// and will only run one time. Once the MssMtuDetector has been started it will
+// always inform the notification handler of the success or failure. All the
+// operations on the TCP socket are non-blocking. This class is thread-unsafe.
+// All the member functions are supposed to be called within a single thread.
 class MssMtuDetector : public MssMtuDetectorInterface {
  public:
   // fd: The TCP socket from which the TCP MSS will be detected.
@@ -49,14 +52,13 @@ class MssMtuDetector : public MssMtuDetectorInterface {
   // notification_interface: pointer to a notification interface to handle
   // MssMtuDetector status.
   MssMtuDetector(int fd, const Endpoint& endpoint,
-                 std::unique_ptr<SyscallInterface> syscall_interface,
-                 NotificationInterface* notification,
-                 utils::LooperThread* notification_thread);
+                 std::unique_ptr<SyscallInterface> syscall_interface);
   ~MssMtuDetector() override;
 
   // Starts the MSS detection process. Will connect the socket to the server and
   // start the MSS MTU Detection in a new thread.
-  void Start() override;
+  void Start(NotificationInterface* notification,
+             utils::LooperThread* notification_thread) override;
 
   // Stops the MSS detection process. If the MSS detection was not completed
   // MssMtuFailure will be called on the notification handler with an aborted
@@ -103,6 +105,7 @@ class MssMtuDetector : public MssMtuDetectorInterface {
   bool fd_closed_ = false;
   bool sock_fd_added_to_events_ = false;
   bool stop_fd_added_to_events_ = false;
+  std::atomic_bool detector_started_ = false;
 
   std::unique_ptr<SyscallInterface> syscall_interface_;
 
@@ -118,7 +121,7 @@ class MssMtuDetector : public MssMtuDetectorInterface {
   EventFd stop_event_;
   utils::LooperThread thread_;
 
-  static constexpr int kDownlinkMssMtuBufferSize = 4;
+  static constexpr int kDownlinkMssMtuBufferSize = sizeof(downlink_mss_mtu_);
   char downlink_mss_mtu_buffer_[kDownlinkMssMtuBufferSize];
   int bytes_in_buffer_ = 0;
 };

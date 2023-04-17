@@ -15,25 +15,36 @@
 #include "privacy/net/krypton/datapath/android_ipsec/mss_mtu_detector.h"
 
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
-#include <algorithm>
+#include <cerrno>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 
-#include "base/logging.h"
 #include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mss_mtu_detector_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/socket_util.h"
+#include "privacy/net/krypton/datapath/android_ipsec/syscall_interface.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/log/die_if_null.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/strings/substitute.h"
 
 namespace privacy {
@@ -58,19 +69,24 @@ std::string MssMtuDetector::StateStr(State state) {
 
 MssMtuDetector::MssMtuDetector(
     int fd, const Endpoint& endpoint,
-    std::unique_ptr<SyscallInterface> syscall_interface,
-    NotificationInterface* notification,
-    utils::LooperThread* notification_thread)
+    std::unique_ptr<SyscallInterface> syscall_interface)
     : fd_(fd),
       endpoint_(endpoint),
       syscall_interface_(std::move(syscall_interface)),
-      notification_(notification),
-      notification_thread_(notification_thread),
+      notification_(nullptr),
+      notification_thread_(nullptr),
       thread_("MSS MTU Detector Thread") {}
 
 MssMtuDetector::~MssMtuDetector() { Stop(); }
 
-void MssMtuDetector::Start() {
+void MssMtuDetector::Start(NotificationInterface* notification,
+                           utils::LooperThread* notification_thread) {
+  if (detector_started_.exchange(true)) {
+    LOG(INFO) << "MSS MTU Detector already started.";
+    return;
+  }
+  notification_ = ABSL_DIE_IF_NULL(notification);
+  notification_thread_ = ABSL_DIE_IF_NULL(notification_thread);
   absl::Status status = StartInternal();
   if (status.ok()) {
     thread_.Post([&]() { HandleEvents(); });
@@ -85,16 +101,29 @@ absl::Status MssMtuDetector::StartInternal() {
   absl::Status status = SetSocketNonBlocking(fd_);
   if (!status.ok()) return status;
 
-  PPN_ASSIGN_OR_RETURN(auto sockaddr_info, endpoint_.GetSockAddr());
+  int af;
+  socklen_t opt_len = sizeof(af);
+  if (syscall_interface_->GetSockOpt(fd_, SOL_SOCKET, SO_DOMAIN, &af,
+                                     &opt_len) == -1) {
+    return absl::InternalError(absl::StrCat("Reading SO_DOMAIN failed on fd ",
+                                            fd_, ": ", strerror(errno)));
+  }
+
+  Endpoint::SockAddrInfo sockaddr_info;
+  if (af == AF_INET) {
+    PPN_ASSIGN_OR_RETURN(sockaddr_info, endpoint_.GetSockAddr());
+  } else {
+    PPN_ASSIGN_OR_RETURN(sockaddr_info, endpoint_.GetSockAddrV6Only());
+  }
 
   // Connection on nonblocking socket cannot be completed immediately and will
   // return with the error EINPROGRESS.
   if (connect(fd_, reinterpret_cast<const sockaddr*>(&sockaddr_info.sockaddr),
               sockaddr_info.socklen) == -1 &&
       errno != EINPROGRESS) {
-    return absl::InternalError(absl::StrCat("Connect TCP Socket (fd: ", fd_,
+    return absl::InternalError(absl::StrCat("Connect TCP Socket (fd=", fd_,
                                             ") to ", endpoint_.ToString(),
-                                            " failed"));
+                                            " failed: ", strerror(errno)));
   }
 
   status = events_helper_.AddFile(fd_, EventsHelper::EventWritableFlags());
@@ -296,7 +325,14 @@ MssMtuDetector::UpdateDownlinkMssMtu() {
   bytes_in_buffer_ += ret;
   if (bytes_in_buffer_ == kDownlinkMssMtuBufferSize) {
     // Big endian.
-    downlink_mss_mtu_ = ntohl(UNALIGNED_LOAD32(downlink_mss_mtu_buffer_));
+    uint32_t downlink_mss_mtu_temp;
+    if (kDownlinkMssMtuBufferSize != sizeof(downlink_mss_mtu_temp)) {
+      return absl::InternalError(
+          "downlink_mss_mtu_buffer_ is an unexpected size.");
+    }
+    memcpy(&downlink_mss_mtu_temp, downlink_mss_mtu_buffer_,
+           kDownlinkMssMtuBufferSize);
+    downlink_mss_mtu_ = ntohl(downlink_mss_mtu_temp);
     return UpdateResult::kUpdated;
   }
   return UpdateResult::kNotUpdated;

@@ -56,7 +56,7 @@ class MockIpSecVpnService : public IpSecDatapath::IpSecVpnServiceInterface {
 
   MOCK_METHOD((absl::StatusOr<std::unique_ptr<IpSecSocketInterface>>),
               CreateProtectedNetworkSocket,
-              (const NetworkInfo &, const Endpoint &,
+              (const NetworkInfo &, const Endpoint &, const Endpoint &,
                std::unique_ptr<MtuTrackerInterface>),
               (override));
 

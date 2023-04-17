@@ -14,20 +14,28 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/mss_mtu_detector.h"
 
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#include <cstdint>
 #include <memory>
-#include <optional>
 #include <tuple>
 #include <utility>
 
+#include "privacy/net/krypton/datapath/android_ipsec/mss_mtu_detector_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/syscall_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/test_utils.h"
+#include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/synchronization/notification.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -92,7 +100,7 @@ class MssMtuDetectorTest
 
     mss_mtu_detector_ = std::make_unique<MssMtuDetector>(
         client_sock_.DetachFd(), server_sock_.endpoint(),
-        std::move(mock_syscall), &notification_, &thread_);
+        std::move(mock_syscall));
   }
 
   IPProtocol LocalSocketFamily() const { return std::get<0>(GetParam()); }
@@ -131,7 +139,7 @@ TEST_P(MssMtuDetectorTest, MssDetectionSuccessful) {
       .WillOnce(testing::InvokeWithoutArgs(&mss_mtu_done,
                                            &absl::Notification::Notify));
 
-  mss_mtu_detector_->Start();
+  mss_mtu_detector_->Start(&notification_, &thread_);
 
   EXPECT_TRUE(mss_mtu_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
@@ -144,7 +152,7 @@ TEST_P(MssMtuDetectorTest, NoServer) {
       .WillOnce(testing::InvokeWithoutArgs(&mss_mtu_done,
                                            &absl::Notification::Notify));
 
-  mss_mtu_detector_->Start();
+  mss_mtu_detector_->Start(&notification_, &thread_);
 
   EXPECT_TRUE(mss_mtu_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
@@ -163,7 +171,7 @@ TEST_P(MssMtuDetectorTest, DownlinkMtuNotReceived) {
       .WillOnce(testing::InvokeWithoutArgs(&mss_mtu_done,
                                            &absl::Notification::Notify));
 
-  mss_mtu_detector_->Start();
+  mss_mtu_detector_->Start(&notification_, &thread_);
 
   EXPECT_TRUE(mss_mtu_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
@@ -181,7 +189,7 @@ TEST_P(MssMtuDetectorTest, StopBeforeMssDetectionComplete) {
       .WillOnce(testing::InvokeWithoutArgs(&mss_mtu_done,
                                            &absl::Notification::Notify));
 
-  mss_mtu_detector_->Start();
+  mss_mtu_detector_->Start(&notification_, &thread_);
 
   mss_mtu_detector_->Stop();
 

@@ -15,6 +15,7 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MSS_MTU_DETECTOR_INTERFACE_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MSS_MTU_DETECTOR_INTERFACE_H_
 
+#include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/status/status.h"
 
 namespace privacy {
@@ -41,7 +42,8 @@ class MssMtuDetectorInterface {
 
   virtual ~MssMtuDetectorInterface() = default;
 
-  virtual void Start() = 0;
+  virtual void Start(NotificationInterface* notification,
+                     utils::LooperThread* notification_thread) = 0;
 
   virtual void Stop() = 0;
 };

@@ -56,7 +56,13 @@ class Endpoint {
   // The protocol of the packet data.
   IPProtocol ip_protocol() const { return ip_protocol_; }
 
+  // This will return an IPv6 sockaddr if the endpoint is IPv6 or an IPv4
+  // sockaddr if the endpoint is IPv4
   absl::StatusOr<SockAddrInfo> GetSockAddr() const;
+
+  // This will return either a normal IPv6 sockaddr if the endpoint is IPv6 or
+  // an IPv4-mapped IPv6 sockaddr if the endpoint is IPv4
+  absl::StatusOr<SockAddrInfo> GetSockAddrV6Only() const;
 
   // Formatted string using `address:port` for IPv4 and `[address]:port` for
   // IPv6.

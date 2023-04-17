@@ -43,7 +43,7 @@ namespace android {
 
 IpSecDatapath::~IpSecDatapath() { Stop(); }
 
-absl::Status IpSecDatapath::Start(const AddEgressResponse& /*egress_response*/,
+absl::Status IpSecDatapath::Start(const AddEgressResponse& egress_response,
                                   const TransformParams& params) {
   DCHECK(notification_ != nullptr)
       << "Notification needs to be set before calling |Start|";
@@ -55,6 +55,21 @@ absl::Status IpSecDatapath::Start(const AddEgressResponse& /*egress_response*/,
   key_material_ = params.ipsec();
   LOG(INFO) << "Start IpSec with uplink_spi=" << key_material_->uplink_spi()
             << " downlink_spi=" << key_material_->downlink_spi();
+
+  PPN_ASSIGN_OR_RETURN(auto ppn_dataplane,
+                       egress_response.ppn_dataplane_response());
+  for (const auto& tcp_mss_sockaddr : ppn_dataplane.mss_detection_sock_addr()) {
+    PPN_ASSIGN_OR_RETURN(auto endpoint,
+                         GetEndpointFromHostPort(tcp_mss_sockaddr));
+    if (endpoint.ip_protocol() == IPProtocol::kIPv4) {
+      ipv4_tcp_mss_endpoint_ = endpoint;
+    } else if (endpoint.ip_protocol() == IPProtocol::kIPv6) {
+      ipv6_tcp_mss_endpoint_ = endpoint;
+    } else {
+      LOG(ERROR) << "Invalid MSS Detection Sock Addr received.";
+    }
+  }
+
   return absl::OkStatus();
 }
 
@@ -101,8 +116,12 @@ absl::Status IpSecDatapath::SwitchNetwork(
       mtu_tracker = std::make_unique<MtuTracker>(endpoint.ip_protocol());
     }
     mtu_tracker->RegisterNotificationHandler(this, &mtu_tracker_thread_);
+    auto mss_mtu_detection_endpoint =
+        endpoint.ip_protocol() == IPProtocol::kIPv4 ? ipv4_tcp_mss_endpoint_
+                                                    : ipv6_tcp_mss_endpoint_;
     network_socket = vpn_service_->CreateProtectedNetworkSocket(
-        *network_info, endpoint, std::move(mtu_tracker));
+        *network_info, endpoint, mss_mtu_detection_endpoint,
+        std::move(mtu_tracker));
   } else {
     network_socket =
         vpn_service_->CreateProtectedNetworkSocket(*network_info, endpoint);

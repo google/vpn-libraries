@@ -74,6 +74,7 @@ class VpnService
   absl::StatusOr<std::unique_ptr<datapath::android::IpSecSocketInterface>>
   CreateProtectedNetworkSocket(
       const NetworkInfo& network_info, const Endpoint& endpoint,
+      const Endpoint& mss_mtu_detection_endpoint,
       std::unique_ptr<datapath::android::MtuTrackerInterface> mtu_tracker)
       override;
 

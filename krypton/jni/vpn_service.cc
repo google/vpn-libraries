@@ -26,7 +26,9 @@
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_tunnel.h"
+#include "privacy/net/krypton/datapath/android_ipsec/mss_mtu_detector.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
+#include "privacy/net/krypton/datapath/android_ipsec/syscall_proxy.h"
 #include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 
 #include "privacy/net/krypton/datapath_interface.h"
@@ -211,10 +213,18 @@ VpnService::CreateProtectedNetworkSocket(const NetworkInfo& network_info,
 absl::StatusOr<std::unique_ptr<datapath::android::IpSecSocketInterface>>
 VpnService::CreateProtectedNetworkSocket(
     const NetworkInfo& network_info, const Endpoint& endpoint,
+    const Endpoint& mss_mtu_detection_endpoint,
     std::unique_ptr<datapath::android::MtuTrackerInterface> mtu_tracker) {
+  PPN_ASSIGN_OR_RETURN(int mss_mtu_detection_fd,
+                       CreateProtectedTcpSocket(network_info));
+  auto syscall_proxy = std::make_unique<datapath::android::SyscallProxy>();
+  auto mss_mtu_detector = std::make_unique<datapath::android::MssMtuDetector>(
+      mss_mtu_detection_fd, mss_mtu_detection_endpoint,
+      std::move(syscall_proxy));
   PPN_ASSIGN_OR_RETURN(auto fd, CreateProtectedNetworkSocket(network_info));
   PPN_ASSIGN_OR_RETURN(auto socket, datapath::android::DatagramSocket::Create(
-                                        fd, std::move(mtu_tracker)));
+                                        fd, std::move(mss_mtu_detector),
+                                        std::move(mtu_tracker)));
   PPN_RETURN_IF_ERROR(ConfigureNetworkSocket(socket.get(), endpoint));
   return socket;
 }
