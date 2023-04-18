@@ -175,7 +175,7 @@ class Auth {
   absl::Time auth_call_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
   absl::Duration expiry_increments_ = absl::Minutes(15);
   ppn::GetInitialDataResponse get_initial_data_response_
-      ABSL_LOCKS_EXCLUDED(mutex_);
+      ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace krypton
