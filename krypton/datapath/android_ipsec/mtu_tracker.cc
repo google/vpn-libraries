@@ -86,11 +86,7 @@ void MtuTracker::UpdateDownlinkMtu(int downlink_mtu) {
   }
 }
 
-int MtuTracker::GetUplinkMtu() const { return uplink_mtu_; }
-
 int MtuTracker::GetTunnelMtu() const { return tunnel_mtu_; }
-
-int MtuTracker::GetDownlinkMtu() const { return downlink_mtu_; }
 
 void MtuTracker::RegisterNotificationHandler(
     NotificationInterface* notification,

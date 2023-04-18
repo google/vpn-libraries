@@ -33,11 +33,7 @@ class MtuTracker : public MtuTrackerInterface {
 
   void UpdateDownlinkMtu(int downlink_mtu) override;
 
-  int GetUplinkMtu() const override;
-
   int GetTunnelMtu() const override;
-
-  int GetDownlinkMtu() const override;
 
   void RegisterNotificationHandler(
       NotificationInterface* notification,

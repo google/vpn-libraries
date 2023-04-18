@@ -45,11 +45,7 @@ class MtuTrackerInterface {
 
   virtual void UpdateDownlinkMtu(int downlink_mtu) = 0;
 
-  virtual int GetUplinkMtu() const = 0;
-
   virtual int GetTunnelMtu() const = 0;
-
-  virtual int GetDownlinkMtu() const = 0;
 
   virtual void RegisterNotificationHandler(
       NotificationInterface* notification,
