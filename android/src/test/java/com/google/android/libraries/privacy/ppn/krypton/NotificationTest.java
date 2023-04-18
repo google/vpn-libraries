@@ -19,7 +19,6 @@ import static com.google.common.truth.Truth.assertThat;
 import android.os.ConditionVariable;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.work.testing.WorkManagerTestInitHelper;
-import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnSnoozeStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
@@ -73,11 +72,15 @@ public class NotificationTest {
 
   private KryptonImpl createKrypton(KryptonListener listener) {
     OAuthTokenProvider tokenProvider =
-        new AttestingOAuthTokenProvider(
-            ApplicationProvider.getApplicationContext(), new PpnOptions.Builder().build()) {
+        new OAuthTokenProvider() {
           @Override
           public String getOAuthToken() {
             return "some_oauth_token";
+          }
+
+          @Override
+          public byte[] getAttestationData(String nonce) {
+            return null;
           }
         };
     return new KryptonImpl(

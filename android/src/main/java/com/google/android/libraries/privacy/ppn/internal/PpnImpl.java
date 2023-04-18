@@ -56,7 +56,6 @@ import com.google.android.libraries.privacy.ppn.internal.service.PpnServiceDebug
 import com.google.android.libraries.privacy.ppn.internal.service.ProtectedSocketFactoryFactory;
 import com.google.android.libraries.privacy.ppn.internal.service.VpnBypassDns;
 import com.google.android.libraries.privacy.ppn.internal.service.VpnManager;
-import com.google.android.libraries.privacy.ppn.krypton.AttestingOAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.krypton.Krypton;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonException;
 import com.google.android.libraries.privacy.ppn.krypton.KryptonFactory;
@@ -336,8 +335,9 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
     final OAuthTokenProvider oAuthTokenProvider;
     if (options.isIntegrityAttestationEnabled()) {
+      final AttestationHelper attestationHelper = new AttestationHelper(context, options);
       oAuthTokenProvider =
-          new AttestingOAuthTokenProvider(context, options) {
+          new OAuthTokenProvider() {
             @Override
             public String getOAuthToken() {
               try {
@@ -346,6 +346,12 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
                 Log.e(TAG, "Unable to get Zinc OAuth token.", e);
               }
               return "";
+            }
+
+            @Override
+            @Nullable
+            public byte[] getAttestationData(String nonce) {
+              return attestationHelper.getAttestationData(nonce);
             }
           };
     } else {

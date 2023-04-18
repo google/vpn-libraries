@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.android.libraries.privacy.ppn.krypton;
+package com.google.android.libraries.privacy.ppn.internal;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -50,10 +50,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-/** OAuthTokenProvider with getAttestationData(String nonce) implemented. */
+/** Provides getAttestationData for OAuthTokenProvider. */
 @RequiresApi(23)
-public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider {
-  private static final String TAG = "AttestingOAuthTokenProv";
+public class AttestationHelper {
+  private static final String TAG = "AttestationHelper";
   private static final String ANDROID_KEYSTORE_NAME = "AndroidKeyStore";
   private static final String HARDWARE_CERTIFICATE_ALIAS = "AndroidHardwareCerts";
   private static final String NONCE_HASH_FUNCTION = "SHA-256";
@@ -61,30 +61,33 @@ public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider 
   public static final String ANDROID_ATTESTATION_DATA_TYPE_URL =
       "type.googleapis.com/privacy.ppn.AndroidAttestationData";
 
+  /** AttestationException is an exception for any attestation failure. */
+  private static class AttestationException extends Exception {
+    public AttestationException(String message, Throwable throwable) {
+      super(message, throwable);
+    }
+  }
+
   private final PpnOptions options;
   private final IntegrityManager integrityManager;
 
-  public AttestingOAuthTokenProvider(Context context, PpnOptions options) {
+  public AttestationHelper(Context context, PpnOptions options) {
     this.integrityManager = IntegrityManagerFactory.create(context.getApplicationContext());
     this.options = options;
   }
 
-  @Override
-  public abstract String getOAuthToken();
-
   /**
-   * Returns attestation data. Returns a byte-array or null on failure.
+   * Returns attestation data.
    *
-   * @return Serialized AndroidAttestationData.
+   * @return AndroidAttestationData as bytes or null on failure.
    */
-  @Override
   @Nullable
   public byte[] getAttestationData(String nonce) {
     AndroidAttestationData.Builder data = AndroidAttestationData.newBuilder();
     String integrityToken;
     try {
       integrityToken = getIntegrityToken(nonce);
-    } catch (KryptonException e) {
+    } catch (AttestationException e) {
       Log.e(TAG, "Unable to fetch integrity token.", e);
       return null;
     }
@@ -96,7 +99,7 @@ public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider 
       }
       try {
         data.addAllHardwareBackedCerts(getHardwareBackedCerts(nonce));
-      } catch (KryptonException e) {
+      } catch (AttestationException e) {
         // If we can't fetch them, then just leave them out. This happens on test devices that don't
         // have certificates. But we want the attestation to fail on the backend, not the client.
         Log.e(TAG, "Unable to get hardware-backed certs.", e);
@@ -113,7 +116,7 @@ public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider 
     return attestationData.toByteArray();
   }
 
-  private String getIntegrityToken(String nonce) throws KryptonException {
+  private String getIntegrityToken(String nonce) throws AttestationException {
     // Requests the integrity token by providing a nonce.
     try {
       IntegrityTokenRequest.Builder tokenRequestBuilder =
@@ -125,23 +128,23 @@ public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider 
           Tasks.await(integrityManager.requestIntegrityToken(tokenRequestBuilder.build()));
       return token.token();
     } catch (ExecutionException | InterruptedException e) {
-      throw getErrorMessage("Failed to retrieve integrity token", e);
+      throw new AttestationException("Failed to retrieve integrity token", e);
     }
   }
 
-  private List<ByteString> getHardwareBackedCerts(String nonce) throws KryptonException {
+  private List<ByteString> getHardwareBackedCerts(String nonce) throws AttestationException {
     KeyPairGenerator keyPairGenerator;
     try {
       keyPairGenerator =
           KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, ANDROID_KEYSTORE_NAME);
     } catch (NoSuchAlgorithmException | NoSuchProviderException e) {
-      throw getErrorMessage("Failed to fetch RSA KeyPairGenerator", e);
+      throw new AttestationException("Failed to fetch RSA KeyPairGenerator", e);
     }
 
     try {
       keyPairGenerator.initialize(buildKeyGenParameterSpec(nonce));
     } catch (InvalidAlgorithmParameterException | NoSuchAlgorithmException e) {
-      throw getErrorMessage("Failed to generate hardware certificates", e);
+      throw new AttestationException("Failed to generate hardware certificates", e);
     }
     // Result of Key pair generation is unused but is necessary to generate the certificates (?)
     // according to the Android documentation:
@@ -161,7 +164,7 @@ public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider 
         | IOException
         | NoSuchAlgorithmException
         | ProviderException e) {
-      throw getErrorMessage("Failed to retrieve hardware certificates", e);
+      throw new AttestationException("Failed to retrieve hardware certificates", e);
     }
   }
 
@@ -179,11 +182,6 @@ public abstract class AttestingOAuthTokenProvider implements OAuthTokenProvider 
         .setDevicePropertiesAttestationIncluded(true)
         .setAttestationChallenge(sha256(nonce.getBytes(UTF_8)))
         .build();
-  }
-
-  private static KryptonException getErrorMessage(String message, Throwable throwable)
-      throws KryptonException {
-    throw new KryptonException(message, throwable);
   }
 
   private static byte[] sha256(byte[] data) throws NoSuchAlgorithmException {

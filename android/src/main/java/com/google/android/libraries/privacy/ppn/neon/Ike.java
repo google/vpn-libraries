@@ -23,8 +23,8 @@ import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.libraries.privacy.ppn.PpnException;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
+import com.google.android.libraries.privacy.ppn.internal.AttestationHelper;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
-import com.google.android.libraries.privacy.ppn.krypton.AttestingOAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.krypton.OAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.proto.PpnIkeResponse;
 
@@ -40,13 +40,21 @@ public class Ike {
   public static Task<ProvisionResponse> provision(
       Context context, PpnOptions options, String oauthToken) {
     HttpFetcher httpFetcher = new HttpFetcher(new ProvisionSocketFactoryFactory());
+
     final OAuthTokenProvider tokenProvider;
     if (options.isHardwareAttestationEnabled()) {
+      final AttestationHelper attestationHelper = new AttestationHelper(context, options);
       tokenProvider =
-          new AttestingOAuthTokenProvider(context, options) {
+          new OAuthTokenProvider() {
             @Override
             public String getOAuthToken() {
               return oauthToken;
+            }
+
+            @Override
+            @Nullable
+            public byte[] getAttestationData(String nonce) {
+              return attestationHelper.getAttestationData(nonce);
             }
           };
     } else {

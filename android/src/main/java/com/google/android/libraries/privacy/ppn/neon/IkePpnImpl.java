@@ -46,9 +46,9 @@ import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnTelemetry;
 import com.google.android.libraries.privacy.ppn.internal.AccountCache;
+import com.google.android.libraries.privacy.ppn.internal.AttestationHelper;
 import com.google.android.libraries.privacy.ppn.internal.GoogleAccountManager;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
-import com.google.android.libraries.privacy.ppn.krypton.AttestingOAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.krypton.OAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.proto.PpnIkeResponse;
 import com.google.common.util.concurrent.Futures;
@@ -83,8 +83,9 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
     this.accountCache = new AccountCache(context, backgroundExecutor, accountManager);
 
     if (options.isIntegrityAttestationEnabled()) {
+      final AttestationHelper attestationHelper = new AttestationHelper(context, options);
       tokenProvider =
-          new AttestingOAuthTokenProvider(context, options) {
+          new OAuthTokenProvider() {
             @Override
             public String getOAuthToken() {
               try {
@@ -94,6 +95,12 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
                 // Return empty string, because this is called by JNI.
                 return "";
               }
+            }
+
+            @Override
+            @Nullable
+            public byte[] getAttestationData(String nonce) {
+              return attestationHelper.getAttestationData(nonce);
             }
           };
     } else {

@@ -18,14 +18,12 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.robolectric.Shadows.shadowOf;
 
 import android.os.Looper;
-import androidx.test.core.app.ApplicationProvider;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnOptions.DatapathProtocol;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
-import com.google.android.libraries.privacy.ppn.krypton.AttestingOAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.krypton.MockBrass;
 import com.google.android.libraries.privacy.ppn.krypton.MockZinc;
 import com.google.android.libraries.privacy.ppn.krypton.OAuthTokenProvider;
@@ -55,11 +53,15 @@ public class ProvisionTest {
   }
 
   private OAuthTokenProvider createTokenProvider() {
-    PpnOptions options = new PpnOptions.Builder().build();
-    return new AttestingOAuthTokenProvider(ApplicationProvider.getApplicationContext(), options) {
+    return new OAuthTokenProvider() {
       @Override
       public String getOAuthToken() {
         return "some token";
+      }
+
+      @Override
+      public byte[] getAttestationData(String nonce) {
+        return null;
       }
     };
   }

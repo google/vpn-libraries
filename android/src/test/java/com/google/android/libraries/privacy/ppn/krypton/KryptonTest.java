@@ -26,10 +26,10 @@ import android.os.Looper;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.work.testing.WorkManagerTestInitHelper;
 import com.google.android.libraries.privacy.ppn.IpGeoLevel;
-import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
 import com.google.android.libraries.privacy.ppn.internal.AndroidAttestationData;
+import com.google.android.libraries.privacy.ppn.internal.AttestationHelper;
 import com.google.android.libraries.privacy.ppn.internal.DisconnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.KryptonConfig;
 import com.google.android.libraries.privacy.ppn.internal.KryptonConfig.DatapathProtocol;
@@ -84,9 +84,8 @@ public class KryptonTest {
     when(socketFactoryFactory.withCurrentNetwork()).thenReturn(SocketFactory.getDefault());
     when(socketFactoryFactory.withNetwork(any())).thenReturn(SocketFactory.getDefault());
     HttpFetcher httpFetcher = new HttpFetcher(socketFactoryFactory);
-    PpnOptions options = new PpnOptions.Builder().setIntegrityAttestationEnabled(true).build();
     OAuthTokenProvider tokenProvider =
-        new AttestingOAuthTokenProvider(ApplicationProvider.getApplicationContext(), options) {
+        new OAuthTokenProvider() {
           @Override
           public String getOAuthToken() {
             return "some_auth_token";
@@ -101,8 +100,7 @@ public class KryptonTest {
                 AttestationData.newBuilder()
                     .setAttestationData(
                         Any.newBuilder()
-                            .setTypeUrl(
-                                AttestingOAuthTokenProvider.ANDROID_ATTESTATION_DATA_TYPE_URL)
+                            .setTypeUrl(AttestationHelper.ANDROID_ATTESTATION_DATA_TYPE_URL)
                             .setValue(androidAttestationData.toByteString()))
                     .build();
 
@@ -542,7 +540,7 @@ public class KryptonTest {
       AuthAndSignRequest proto =
           AuthAndSignRequest.parseFrom(protoBytes, ExtensionRegistryLite.getEmptyRegistry());
       assertThat(proto.getAttestation().getAttestationData().getTypeUrl())
-          .isEqualTo(AttestingOAuthTokenProvider.ANDROID_ATTESTATION_DATA_TYPE_URL);
+          .isEqualTo(AttestationHelper.ANDROID_ATTESTATION_DATA_TYPE_URL);
 
     } finally {
       krypton.stop();
