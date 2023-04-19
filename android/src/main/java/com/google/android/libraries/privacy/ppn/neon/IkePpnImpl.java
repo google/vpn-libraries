@@ -100,7 +100,7 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
             @Override
             @Nullable
             public byte[] getAttestationData(String nonce) {
-              return attestationHelper.getAttestationData(nonce);
+              return attestationHelper.getAttestationData(nonce, null);
             }
           };
     } else {

@@ -18,6 +18,7 @@ package com.google.android.libraries.privacy.ppn.internal;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import android.content.Context;
+import android.net.Network;
 import android.os.Build;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
@@ -82,11 +83,11 @@ public class AttestationHelper {
    * @return AndroidAttestationData as bytes or null on failure.
    */
   @Nullable
-  public byte[] getAttestationData(String nonce) {
+  public byte[] getAttestationData(String nonce, @Nullable Network network) {
     AndroidAttestationData.Builder data = AndroidAttestationData.newBuilder();
     String integrityToken;
     try {
-      integrityToken = getIntegrityToken(nonce);
+      integrityToken = getIntegrityToken(nonce, network);
     } catch (AttestationException e) {
       Log.e(TAG, "Unable to fetch integrity token.", e);
       return null;
@@ -116,7 +117,8 @@ public class AttestationHelper {
     return attestationData.toByteArray();
   }
 
-  private String getIntegrityToken(String nonce) throws AttestationException {
+  private String getIntegrityToken(String nonce, @Nullable Network unusedNetwork)
+      throws AttestationException {
     // Requests the integrity token by providing a nonce.
     try {
       IntegrityTokenRequest.Builder tokenRequestBuilder =
@@ -124,6 +126,7 @@ public class AttestationHelper {
       if (!options.getAttestationCloudProjectNumber().isEmpty()) {
         tokenRequestBuilder.setCloudProjectNumber(options.getAttestationCloudProjectNumber().get());
       }
+      // TODO: Pass in the network here.
       IntegrityTokenResponse token =
           Tasks.await(integrityManager.requestIntegrityToken(tokenRequestBuilder.build()));
       return token.token();

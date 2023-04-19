@@ -351,7 +351,12 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
             @Override
             @Nullable
             public byte[] getAttestationData(String nonce) {
-              return attestationHelper.getAttestationData(nonce);
+              Network network = null;
+              PpnNetwork ppnNetwork = vpnManager.getNetwork();
+              if (ppnNetwork != null) {
+                network = ppnNetwork.getNetwork();
+              }
+              return attestationHelper.getAttestationData(nonce, network);
             }
           };
     } else {

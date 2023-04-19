@@ -17,6 +17,7 @@
 package com.google.android.libraries.privacy.ppn.neon;
 
 import android.content.Context;
+import android.net.Network;
 import androidx.annotation.Nullable;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
@@ -39,6 +40,18 @@ public class Ike {
    */
   public static Task<ProvisionResponse> provision(
       Context context, PpnOptions options, String oauthToken) {
+    return provision(context, options, oauthToken, null);
+  }
+
+  /**
+   * Attempts to provision IKE credentials for PPN one time.
+   *
+   * <p>If provisioning fails, returned Task will be failed. If the Exception is of type
+   * ProvisionException, then it can be checked for whether the error is permanent or transient. If
+   * any other type of Exception occurs, it should be considered permanent.
+   */
+  public static Task<ProvisionResponse> provision(
+      Context context, PpnOptions options, String oauthToken, @Nullable Network network) {
     HttpFetcher httpFetcher = new HttpFetcher(new ProvisionSocketFactoryFactory());
 
     final OAuthTokenProvider tokenProvider;
@@ -54,7 +67,7 @@ public class Ike {
             @Override
             @Nullable
             public byte[] getAttestationData(String nonce) {
-              return attestationHelper.getAttestationData(nonce);
+              return attestationHelper.getAttestationData(nonce, network);
             }
           };
     } else {
