@@ -89,8 +89,6 @@ class SessionCrypto {
     rekey_signature_ = std::optional<std::string>(signature);
   }
 
-  BN_CTX* bn_ctx() { return bn_ctx_.get(); }
-
  private:
   absl::StatusOr<TransformParams> ComputeIpSecKeyMaterial();
   absl::StatusOr<TransformParams> ComputeBridgeKeyMaterial();
