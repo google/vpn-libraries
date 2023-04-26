@@ -15,6 +15,7 @@
 #ifndef PRIVACY_NET_KRYPTON_AUTH_AND_SIGN_REQUEST_H_
 #define PRIVACY_NET_KRYPTON_AUTH_AND_SIGN_REQUEST_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -50,10 +51,11 @@ class InitialDataRequest {
   InitialDataRequest(
       bool use_attestation, absl::string_view service_type,
       ppn::GetInitialDataRequest::LocationGranularity location_granularity,
-      absl::string_view auth_token)
+      int64_t validation_version, absl::string_view auth_token)
       : use_attestation_(use_attestation),
         service_type_(service_type),
         granularity_(location_granularity),
+        validation_version_(validation_version),
         auth_token_(auth_token) {}
   ~InitialDataRequest() = default;
   HttpRequest EncodeToProto() const;
@@ -62,6 +64,7 @@ class InitialDataRequest {
   const bool use_attestation_;
   const std::string service_type_;
   ppn::GetInitialDataRequest::LocationGranularity granularity_;
+  const int64_t validation_version_;
   const std::string auth_token_;
 };
 

@@ -62,6 +62,8 @@ namespace krypton {
 namespace {
 
 const uint32_t kLatencyCollectionLimit = 5;
+// Specify public metadata rules that must be matched by GetInitialDataResponse.
+const int64_t kValidationVersion = 1;
 
 std::string StateString(Auth::State state) {
   switch (state) {
@@ -413,7 +415,7 @@ void Auth::RequestForInitialData(bool is_rekey) {
   auto granularity = GetLocationGranularity(config_.ip_geo_level());
 
   InitialDataRequest request(use_attestation, service_type, granularity,
-                             *auth_token);
+                             kValidationVersion, *auth_token);
   auto get_initial_data_proto = request.EncodeToProto();
   get_initial_data_proto.set_url(config_.initial_data_url());
   http_fetcher_.PostJsonAsync(

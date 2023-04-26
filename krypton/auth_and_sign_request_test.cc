@@ -145,6 +145,7 @@ TEST(AuthAndSignRequest, TestInitialDataRequestProtoEncoding) {
   auto request = InitialDataRequest(/*use_attestation=*/true,
                                     /*service_type=*/"123",
                                     /*location_granularity=*/granularity,
+                                    /*validation_version=*/1,
                                     /*auth_token=*/"abc");
   HttpRequest proto = request.EncodeToProto();
   EXPECT_THAT("Bearer abc", Eq(proto.headers().find("Authorization")->second));
@@ -158,6 +159,7 @@ TEST(AuthAndSignRequest, TestInitialDataRequestProtoEncoding) {
                 use_attestation: true
                 service_type: "123"
                 location_granularity: 2
+                validation_version: 1
               )pb"));
 }
 }  // namespace krypton

@@ -14,6 +14,7 @@
 
 #include "privacy/net/krypton/auth.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -307,9 +308,10 @@ class AuthTest : public ::testing::Test {
     auto use_attestation = true;
     auto service_type = "service_type";
     auto granularity = ppn::GetInitialDataRequest::COUNTRY;
+    int64_t validation_version = 1;
 
-    InitialDataRequest request_class(use_attestation, service_type,
-                                     granularity, "some_token");
+    InitialDataRequest request_class(use_attestation, service_type, granularity,
+                                     validation_version, "some_token");
 
     HttpRequest request = request_class.EncodeToProto();
     request.set_url("http://www.example.com/initial_data");

@@ -23,6 +23,7 @@
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/json_util.h"
+#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/json/include/nlohmann/json.hpp"
@@ -120,6 +121,7 @@ HttpRequest InitialDataRequest::EncodeToProto() const {
   initial_data_request.set_use_attestation(use_attestation_);
   initial_data_request.set_service_type(service_type_);
   initial_data_request.set_location_granularity(granularity_);
+  initial_data_request.set_validation_version(validation_version_);
   http_request.set_proto_body(initial_data_request.SerializeAsString());
   (*http_request.mutable_headers())["Authorization"] =
       absl::StrCat("Bearer ", auth_token_);
