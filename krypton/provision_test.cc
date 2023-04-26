@@ -119,6 +119,7 @@ class ProvisionTest : public ::testing::Test {
           exit_location: { country: "US", city_geo_id: "us_ca_san_diego" },
           service_type: "service_type",
           expiration: { seconds: 900, nanos: 0 },
+          debug_mode: 0,
         },
         validation_version: 1
       },
@@ -198,6 +199,7 @@ class ProvisionTest : public ::testing::Test {
     EXPECT_THAT(params.expiration,
                 testing::Eq(absl::FromUnixSeconds(
                     public_metadata.expiration().seconds())));
+    EXPECT_THAT(params.debug_mode, testing::Eq(public_metadata.debug_mode()));
   }
 
   KryptonConfig config_{ParseTextProtoOrDie(

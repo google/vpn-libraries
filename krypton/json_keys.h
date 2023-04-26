@@ -104,6 +104,7 @@ class JsonKeys {
   static const char kExitLocation[];
   static const char kServiceType[];
   static const char kExpiration[];
+  static const char kDebugMode[];
 
   // Location
   static const char kCountry[];

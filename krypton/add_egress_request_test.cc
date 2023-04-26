@@ -17,6 +17,7 @@
 #include <optional>
 #include <string>
 
+#include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
@@ -221,6 +222,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   params.expiration = absl::FromUnixMillis(1002);
   params.service_type = "foo";
   params.signing_key_version = 3;
+  params.debug_mode = privacy::ppn::PublicMetadata::UNSPECIFIED_DEBUG_MODE;
   auto http_request = request.EncodeToProtoForPpn(params);
 
   ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
@@ -264,6 +266,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   EXPECT_EQ(public_metadata["service_type"], "foo");
   EXPECT_EQ(public_metadata["expiration"]["seconds"], 1);
   EXPECT_EQ(public_metadata["expiration"]["nanos"], 2000000);
+  EXPECT_EQ(public_metadata["debug_mode"], 0);
 }
 
 }  // namespace krypton

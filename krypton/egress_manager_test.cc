@@ -132,7 +132,8 @@ class EgressManagerTest : public ::testing::Test {
       "public_metadata" : {
         "exit_location" : {
           "country" : "",
-          "city_geo_id" : ""
+          "city_geo_id" : "",
+          "debug_mode" : ""
         },
         "expiration" : {
           "seconds" : "",
@@ -154,6 +155,7 @@ class EgressManagerTest : public ::testing::Test {
     public_metadata[JsonKeys::kServiceType] = "foo";
     public_metadata[JsonKeys::kExpiration][JsonKeys::kSeconds] = 1;
     public_metadata[JsonKeys::kExpiration][JsonKeys::kNanos] = 2000000;
+    public_metadata[JsonKeys::kDebugMode] = 0;
 
     expected[JsonKeys::kSigningKeyVersion] = 3;
     expected[JsonKeys::kPublicMetadata] = public_metadata;
@@ -295,6 +297,7 @@ TEST_F(EgressManagerTest, GetEgressNodeForPpnIpSecWithBerylliumFields) {
   params.expiration = absl::FromUnixMillis(1002);
   params.service_type = "foo";
   params.signing_key_version = 3;
+  params.debug_mode = 0;
 
   ASSERT_OK(egress_manager.GetEgressNodeForPpnIpSec(params));
 

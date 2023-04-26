@@ -69,6 +69,7 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
     public_metadata[JsonKeys::kExitLocation] = exit_location;
     public_metadata[JsonKeys::kServiceType] = params.service_type;
     public_metadata[JsonKeys::kExpiration] = expiration;
+    public_metadata[JsonKeys::kDebugMode] = params.debug_mode;
 
     json_body[JsonKeys::kPublicMetadata] = public_metadata;
     json_body[JsonKeys::kSigningKeyVersion] = params.signing_key_version;

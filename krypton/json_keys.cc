@@ -101,6 +101,7 @@ const char JsonKeys::kValidationVersion[] = "validation_version";
 const char JsonKeys::kExitLocation[] = "exit_location";
 const char JsonKeys::kServiceType[] = "service_type";
 const char JsonKeys::kExpiration[] = "expiration";
+const char JsonKeys::kDebugMode[] = "debug_mode";
 
 // Location
 const char JsonKeys::kCountry[] = "country";

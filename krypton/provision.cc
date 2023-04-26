@@ -215,6 +215,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
     params.country = public_metadata.exit_location().country();
     params.city_geo_id = public_metadata.exit_location().city_geo_id();
     params.service_type = public_metadata.service_type();
+    params.debug_mode = public_metadata.debug_mode();
     // expiration() nanos were verified to be zero in auth.cc
     params.expiration =
         absl::FromUnixSeconds(public_metadata.expiration().seconds());

@@ -15,6 +15,7 @@
 #ifndef PRIVACY_NET_KRYPTON_ADD_EGRESS_REQUEST_H_
 #define PRIVACY_NET_KRYPTON_ADD_EGRESS_REQUEST_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -65,6 +66,8 @@ class AddEgressRequest {
     std::string region_token_and_signature;
     // Used to mask plaintext message before cryptographic verification
     std::string message_mask;
+    // Indicates the debug context of this payload.
+    uint32_t debug_mode;
 
     // Beryllium Only
     int64_t signing_key_version;
