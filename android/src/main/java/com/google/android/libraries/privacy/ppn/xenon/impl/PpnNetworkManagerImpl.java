@@ -693,13 +693,13 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
 
         // If the new bestNetwork is different from the current active one, update and publish.
         if (!bestNetwork.equals(activeNetwork)) {
-          activeNetwork = bestNetwork;
-
           Log.w(
               TAG,
               String.format(
-                  "[EvaluateNetworkStrategy] Network Switch! New Best Network: %s.",
-                  activeNetwork));
+                  "[EvaluateNetworkStrategy] Switching best network from %s to %s.",
+                  activeNetwork, bestNetwork));
+
+          activeNetwork = bestNetwork;
           mainHandler.post(() -> listener.onNetworkAvailable(bestNetwork));
 
           // We need to reset the ConnectionQuality and publish this event whenever we switch to a
@@ -716,8 +716,8 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
           Log.w(
               TAG,
               String.format(
-                  "[EvaluateNetworkStrategy] activeNetwork %s is already bestNetwork",
-                  activeNetwork));
+                  "[EvaluateNetworkStrategy] activeNetwork %s is already bestNetwork %s",
+                  activeNetwork, bestNetwork));
         }
       } finally {
         // We need to make sure we ALWAYS reset the evaluting variable.
@@ -880,6 +880,7 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
 
   // Handles all the necessary clean up of the ActiveNetwork.
   private void clearActiveNetwork() {
+    Log.w(TAG, "Clearing active network.");
     activeNetwork = null;
     connectionQuality = ConnectionQuality.UNKNOWN_QUALITY;
   }

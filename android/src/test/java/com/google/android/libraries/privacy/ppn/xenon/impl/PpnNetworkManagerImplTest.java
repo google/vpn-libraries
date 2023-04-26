@@ -1009,6 +1009,14 @@ public final class PpnNetworkManagerImplTest {
         .isEqualTo(NetworkType.WIFI.name());
   }
 
+  @Test
+  public void ppnNetwork_isEqual_respectsType() {
+    PpnNetwork network1 = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
+    PpnNetwork network2 = new PpnNetwork(wifiAndroidNetwork, NetworkType.CELLULAR);
+    assertThat(network1.equals(network2)).isFalse();
+    assertThat(network2.equals(network1)).isFalse();
+  }
+
   private static com.google.android.libraries.privacy.ppn.internal.NetworkInfo createNetworkInfo(
       long networkId) {
     return com.google.android.libraries.privacy.ppn.internal.NetworkInfo.newBuilder()
