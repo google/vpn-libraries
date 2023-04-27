@@ -45,7 +45,7 @@ class AddEgressRequest {
   struct PpnDataplaneRequestParams {
    public:
     const crypto::SessionCrypto* crypto;  // Not owned.
-    std::string copper_control_plane_address;
+    std::string control_plane_sockaddr;
     ppn::PpnDataplaneRequest::CryptoSuite suite;
     KryptonConfig::DatapathProtocol dataplane_protocol;
     bool is_rekey;

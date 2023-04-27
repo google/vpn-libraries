@@ -31,6 +31,7 @@
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/mock_oauth_interface.h"
 #include "privacy/net/krypton/pal/mock_timer_interface.h"
@@ -44,9 +45,11 @@
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/tunnel_manager_interface.h"
+#include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/cleanup/cleanup.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/str_replace.h"
@@ -55,6 +58,7 @@
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
+#include "third_party/json/include/nlohmann/json.hpp"
 #include "util/task/status.h"
 
 namespace privacy {
@@ -66,6 +70,7 @@ using ::testing::_;
 using ::testing::DoAll;
 using ::testing::Eq;
 using ::testing::EqualsProto;
+using ::testing::HasSubstr;
 using ::testing::Invoke;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
@@ -837,11 +842,115 @@ TEST_F(SessionTest, DownlinkMtuUpdateHandler) {
   EXPECT_EQ(session_->GetDownlinkMtuTestOnly(), 123);
 }
 
+TEST_F(SessionTest, UplinkMtuUpdateHandlerHttpStatusOk) {
+  BringDatapathToConnected();
+
+  EXPECT_CALL(
+      tunnel_manager_,
+      EnsureTunnelIsUp(EqualsProto(R"pb(tunnel_ip_addresses {
+                                          ip_family: IPV4
+                                          ip_range: "10.2.2.123"
+                                          prefix: 32
+                                        }
+                                        tunnel_ip_addresses {
+                                          ip_family: IPV6
+                                          ip_range: "fec2:0001::3"
+                                          prefix: 64
+                                        }
+                                        tunnel_dns_addresses {
+                                          ip_family: IPV4
+                                          ip_range: "8.8.8.8"
+                                          prefix: 32
+                                        }
+                                        tunnel_dns_addresses {
+                                          ip_family: IPV4
+                                          ip_range: "8.8.4.4"
+                                          prefix: 32
+                                        }
+                                        tunnel_dns_addresses {
+                                          ip_family: IPV6
+                                          ip_range: "2001:4860:4860::8888"
+                                          prefix: 128
+                                        }
+                                        tunnel_dns_addresses {
+                                          ip_family: IPV6
+                                          ip_range: "2001:4860:4860::8844"
+                                          prefix: 128
+                                        }
+                                        is_metered: false
+                                        mtu: 456)pb")))
+      .Times(1);
+
+  EXPECT_CALL(notification_, ControlPlaneDisconnected(_)).Times(0);
+
+  session_->DoUplinkMtuUpdate(123, 456);
+
+  EXPECT_EQ(session_->GetUplinkMtuTestOnly(), 123);
+  EXPECT_EQ(session_->GetTunnelMtuTestOnly(), 456);
+}
+
+TEST_F(SessionTest, DownlinkMtuUpdateHandlerHttpStatusOk) {
+  BringDatapathToConnected();
+
+  absl::Notification mtu_update_done;
+  std::string json_body;
+  EXPECT_CALL(http_fetcher_, PostJson(_))
+      .WillOnce([&mtu_update_done, &json_body](const HttpRequest& request) {
+        absl::Cleanup cleanup = [&mtu_update_done] {
+          mtu_update_done.Notify();
+        };
+        json_body = request.json_body();
+        HttpResponse http_response;
+        auto* http_status = http_response.mutable_status();
+        http_status->set_code(200);
+        return http_response;
+      });
+
+  EXPECT_CALL(notification_, ControlPlaneDisconnected(_)).Times(0);
+
+  session_->DoDownlinkMtuUpdate(123);
+
+  ASSERT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+
+  EXPECT_EQ(session_->GetDownlinkMtuTestOnly(), 123);
+  ASSERT_OK_AND_ASSIGN(auto json_obj, utils::StringToJson(json_body));
+  ASSERT_TRUE(json_obj.contains(JsonKeys::kUplinkMtu));
+  ASSERT_TRUE(json_obj.contains(JsonKeys::kDownlinkMtu));
+  EXPECT_EQ(json_obj[JsonKeys::kUplinkMtu], 0);
+  EXPECT_EQ(json_obj[JsonKeys::kDownlinkMtu], 123);
+}
+
+TEST_F(SessionTest, DownlinkMtuUpdateHandlerHttpStatusBadRequest) {
+  BringDatapathToConnected();
+
+  EXPECT_CALL(http_fetcher_, PostJson(_))
+      .WillOnce([](const HttpRequest& /*request*/) {
+        HttpResponse http_response;
+        auto* http_status = http_response.mutable_status();
+        http_status->set_code(400);
+        http_status->set_message("Bad Request");
+        return http_response;
+      });
+
+  absl::Notification notification_done;
+  EXPECT_CALL(notification_, ControlPlaneDisconnected(
+                                 StatusIs(absl::StatusCode::kInvalidArgument,
+                                          HasSubstr("Bad Request"))))
+      .WillOnce([&notification_done] { notification_done.Notify(); });
+
+  session_->DoDownlinkMtuUpdate(123);
+
+  ASSERT_TRUE(
+      notification_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+}
+
 TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonDefaultValues) {
   ppn::UpdatePathInfoRequest update_path_info;
   auto json_str = ProtoToJsonString(update_path_info);
   std::string expected = R"string(
   {
+    "apn_type":"",
+    "control_plane_sock_addr":"",
     "downlink_mtu":0,
     "mtu_update_signature":"",
     "session_id":0,
@@ -859,9 +968,13 @@ TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonNonDefaultValues) {
   update_path_info.set_downlink_mtu(3);
   update_path_info.set_verification_key("foo");
   update_path_info.set_mtu_update_signature("bar");
+  update_path_info.set_control_plane_sock_addr("192.168.1.1:1234");
+  update_path_info.set_apn_type("ppn");
   auto json_str = ProtoToJsonString(update_path_info);
   std::string expected = R"string(
   {
+    "apn_type":"ppn",
+    "control_plane_sock_addr":"192.168.1.1:1234",
     "downlink_mtu":3,
     "mtu_update_signature":"YmFy",
     "session_id":1,

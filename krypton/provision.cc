@@ -30,6 +30,7 @@
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
+#include "privacy/net/krypton/utils/ip_range.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/log/check.h"
@@ -55,6 +56,8 @@ namespace {
 
 // Reattempts exclude the first attempt.
 constexpr char kDefaultCopperAddress[] = "na.b.g-tun.com";
+
+constexpr int kControlPlanePort = 1849;
 
 }  // namespace
 
@@ -115,34 +118,56 @@ absl::StatusOr<TransformParams> Provision::GetTransformParams() {
   return key_material_->GetTransformParams();
 }
 
+std::string Provision::GetApnType() {
+  absl::MutexLock l(&mutex_);
+  return auth_->auth_response().apn_type();
+}
+
+absl::StatusOr<std::string> Provision::GetControlPlaneSockaddr() {
+  absl::MutexLock l(&mutex_);
+  if (control_plane_sockaddr_.empty()) {
+    return absl::FailedPreconditionError("Control plane sockaddr not set");
+  }
+  return control_plane_sockaddr_;
+}
+
 void Provision::PpnDataplaneRequest(bool is_rekey) {
   LOG(INFO) << "Doing PPN dataplane request. Rekey:"
             << ((is_rekey == true) ? "True" : "False");
   AuthAndSignResponse auth_response = auth_->auth_response();
-  // If auth_response specifies a copper control plane address, use it;
-  // otherwise if there is a config option for the address, use it.
-  std::string copper_hostname;
-  if (config_.has_copper_hostname_override() &&
-      !config_.copper_hostname_override().empty()) {
-    copper_hostname = config_.copper_hostname_override();
-  } else if (!auth_response.copper_controller_hostname().empty()) {
-    copper_hostname = auth_response.copper_controller_hostname();
-  } else if (config_.has_copper_controller_address()) {
-    copper_hostname = config_.copper_controller_address();
-  } else {
-    copper_hostname = kDefaultCopperAddress;
-  }
-  LOG(INFO) << "Copper hostname for DNS lookup: " << copper_hostname;
-  auto resolved_address = http_fetcher_.LookupDns(copper_hostname);
-  if (!resolved_address.ok()) {
-    FailWithStatus(resolved_address.status(), false);
-    return;
-  }
+  // Rekey should use the same control plane address as was used for
+  // the initial provisioning.
+  if (!is_rekey) {
+    // If auth_response specifies a copper control plane address, use it;
+    // otherwise if there is a config option for the address, use it.
+    std::string copper_hostname;
+    if (config_.has_copper_hostname_override() &&
+        !config_.copper_hostname_override().empty()) {
+      copper_hostname = config_.copper_hostname_override();
+    } else if (!auth_response.copper_controller_hostname().empty()) {
+      copper_hostname = auth_response.copper_controller_hostname();
+    } else if (config_.has_copper_controller_address()) {
+      copper_hostname = config_.copper_controller_address();
+    } else {
+      copper_hostname = kDefaultCopperAddress;
+    }
+    LOG(INFO) << "Copper hostname for DNS lookup: " << copper_hostname;
+    auto resolved_address = http_fetcher_.LookupDns(copper_hostname);
+    if (!resolved_address.ok()) {
+      FailWithStatus(resolved_address.status(), false);
+      return;
+    }
 
-  auto copper_address_ = *resolved_address;
-  LOG(INFO) << "Copper server address:" << copper_address_;
+    auto ip_range = utils::IPRange::Parse(*resolved_address);
+    if (!ip_range.ok()) {
+      FailWithStatus(ip_range.status(), false);
+      return;
+    }
+    control_plane_sockaddr_ = ip_range->HostPortString(kControlPlanePort);
+  }
+  LOG(INFO) << "Control plane sockaddr:" << control_plane_sockaddr_;
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.copper_control_plane_address = copper_address_;
+  params.control_plane_sockaddr = control_plane_sockaddr_;
   params.is_rekey = is_rekey;
   params.suite = config_.cipher_suite_key_length() == 256
                      ? ppn::PpnDataplaneRequest::AES256_GCM

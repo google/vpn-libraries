@@ -14,30 +14,23 @@
 
 #include "privacy/net/krypton/add_egress_request.h"
 
-#include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 
-#include "base/logging.h"
+#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/json_keys.h"
-#include "privacy/net/krypton/utils/ip_range.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/json_util.h"
-#include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/escaping.h"
-#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
+#include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
 namespace krypton {
-namespace {
-
-constexpr int kCopperPort = 1849;
-
-}  // namespace
 
 HttpRequest AddEgressRequest::EncodeToProtoForPpn(
     const PpnDataplaneRequestParams& params) {
@@ -105,11 +98,7 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
   ppn[JsonKeys::kSuite] =
       ppn::PpnDataplaneRequest::CryptoSuite_Name(params.suite);
 
-  auto ip_range = utils::IPRange::Parse(params.copper_control_plane_address);
-  if (ip_range.status().ok()) {
-    ppn[JsonKeys::kControlPlaneSockAddr] =
-        ip_range->HostPortString(kCopperPort);
-  }
+  ppn[JsonKeys::kControlPlaneSockAddr] = params.control_plane_sockaddr;
 
   auto verification_key = params.crypto->GetRekeyVerificationKey();
   if (verification_key.ok()) {

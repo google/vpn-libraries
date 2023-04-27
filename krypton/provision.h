@@ -70,6 +70,13 @@ class Provision : public Auth::NotificationInterface,
   absl::StatusOr<TransformParams> GetTransformParams()
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  std::string GetApnType() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Provides the sockaddr used for the control plane during provisioning. The
+  // value will either be of the format IPv4:port or [IPv6]:port
+  absl::StatusOr<std::string> GetControlPlaneSockaddr()
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Override methods from the interface.
   void AuthSuccessful(bool is_rekey) override ABSL_LOCKS_EXCLUDED(mutex_);
   void AuthFailure(const absl::Status& status) override
@@ -99,6 +106,7 @@ class Provision : public Auth::NotificationInterface,
   HttpFetcher http_fetcher_;
 
   std::unique_ptr<crypto::SessionCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
+  std::string control_plane_sockaddr_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace krypton

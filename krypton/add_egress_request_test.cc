@@ -17,6 +17,7 @@
 #include <optional>
 #include <string>
 
+#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
@@ -31,7 +32,7 @@
 namespace privacy {
 namespace krypton {
 
-const char kCopperControlPlaneAddress[] = "192.168.0.10";
+const char kCopperControlPlaneAddress[] = "192.168.0.10:1849";
 
 class AddEgressRequestTest : public ::testing::Test {
  public:
@@ -56,7 +57,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
 
   AddEgressRequest::PpnDataplaneRequestParams params;
   params.crypto = &crypto;
-  params.copper_control_plane_address = kCopperControlPlaneAddress;
+  params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;
@@ -88,7 +89,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
   EXPECT_EQ(actual["ppn"]["client_public_value"], public_value_encoded);
   EXPECT_EQ(actual["ppn"]["client_nonce"], nonce_encoded);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
-            absl::StrCat(kCopperControlPlaneAddress, ":1849"));
+            kCopperControlPlaneAddress);
   EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
@@ -113,7 +114,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
 
   AddEgressRequest::PpnDataplaneRequestParams params;
   params.crypto = &crypto;
-  params.copper_control_plane_address = kCopperControlPlaneAddress;
+  params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;
@@ -146,7 +147,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
   EXPECT_EQ(actual["ppn"]["client_public_value"], public_value_encoded);
   EXPECT_EQ(actual["ppn"]["client_nonce"], nonce_encoded);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
-            absl::StrCat(kCopperControlPlaneAddress, ":1849"));
+            kCopperControlPlaneAddress);
   EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
@@ -163,7 +164,7 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
   AddEgressRequest request(std::optional("apiKey"));
   AddEgressRequest::PpnDataplaneRequestParams params;
   params.crypto = &crypto;
-  params.copper_control_plane_address = kCopperControlPlaneAddress;
+  params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = true;
@@ -191,7 +192,7 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
   EXPECT_EQ(actual["ppn"]["client_public_value"], public_value_encoded);
   EXPECT_EQ(actual["ppn"]["client_nonce"], nonce_encoded);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
-            absl::StrCat(kCopperControlPlaneAddress, ":1849"));
+            kCopperControlPlaneAddress);
   EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
@@ -211,7 +212,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
                            AddEgressRequest::RequestDestination::kBeryllium);
   AddEgressRequest::PpnDataplaneRequestParams params;
   params.crypto = &crypto;
-  params.copper_control_plane_address = kCopperControlPlaneAddress;
+  params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = true;
@@ -249,8 +250,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   EXPECT_FALSE(ppn["apn_type"].is_null());
   EXPECT_EQ(ppn["client_public_value"], public_value_encoded);
   EXPECT_EQ(ppn["client_nonce"], nonce_encoded);
-  EXPECT_EQ(ppn["control_plane_sock_addr"],
-            absl::StrCat(kCopperControlPlaneAddress, ":1849"));
+  EXPECT_EQ(ppn["control_plane_sock_addr"], kCopperControlPlaneAddress);
   EXPECT_EQ(ppn["downlink_spi"], crypto.downlink_spi());
   EXPECT_EQ(ppn["suite"], "AES128_GCM");
   EXPECT_EQ(ppn["dataplane_protocol"], "BRIDGE");

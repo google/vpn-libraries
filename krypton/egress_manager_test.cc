@@ -17,11 +17,13 @@
 #include <cstdint>
 #include <string>
 
+#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/looper.h"
@@ -34,6 +36,7 @@
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
+#include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -245,7 +248,7 @@ TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
 
   AddEgressRequest::PpnDataplaneRequestParams params;
   params.crypto = &crypto_;
-  params.copper_control_plane_address = "192.168.0.10";
+  params.control_plane_sockaddr = "192.168.0.10:1849";
   params.dataplane_protocol = KryptonConfig::IPSEC;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;
@@ -287,7 +290,7 @@ TEST_F(EgressManagerTest, GetEgressNodeForPpnIpSecWithBerylliumFields) {
 
   AddEgressRequest::PpnDataplaneRequestParams params;
   params.crypto = &crypto_;
-  params.copper_control_plane_address = "192.168.0.10";
+  params.control_plane_sockaddr = "192.168.0.10:1849";
   params.dataplane_protocol = KryptonConfig::IPSEC;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;

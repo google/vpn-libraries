@@ -33,6 +33,7 @@
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
@@ -197,30 +198,51 @@ std::string ProtoToJsonString(
   json_obj[JsonKeys::kDownlinkMtu] = update_path_info_request.downlink_mtu();
   json_obj[JsonKeys::kVerificationKey] = verification_key_encoded;
   json_obj[JsonKeys::kMtuUpdateSignature] = mtu_update_signature_encoded;
+  json_obj[JsonKeys::kApnType] = update_path_info_request.apn_type();
+  json_obj[JsonKeys::kControlPlaneSockAddr] =
+      update_path_info_request.control_plane_sock_addr();
   return utils::JsonToString(json_obj);
 }
 
-absl::Status Session::SendPathInfoUpdate() {
+absl::Status Session::SendUpdatePathInfoRequest() {
   ppn::UpdatePathInfoRequest update_path_info_request;
   update_path_info_request.set_session_id(uplink_spi_);
-  update_path_info_request.set_uplink_mtu(uplink_mtu_);
   update_path_info_request.set_downlink_mtu(downlink_mtu_);
+  update_path_info_request.set_apn_type(provision_->GetApnType());
+  PPN_ASSIGN_OR_RETURN(auto control_plane_sock_addr,
+                       provision_->GetControlPlaneSockaddr());
+  update_path_info_request.set_control_plane_sock_addr(control_plane_sock_addr);
 
   std::string signed_data =
       absl::StrCat("path_info;", update_path_info_request.session_id(), ";",
                    update_path_info_request.uplink_mtu(), ";",
                    update_path_info_request.downlink_mtu());
-
   PPN_ASSIGN_OR_RETURN(auto signature,
                        provision_->GenerateSignature(signed_data));
   update_path_info_request.set_mtu_update_signature(signature);
 
-  auto path_info_update_json = ProtoToJsonString(update_path_info_request);
+  auto request_json_str = ProtoToJsonString(update_path_info_request);
 
-  // TODO: Update to send to Brass or Beryllium once the handler
-  // has been set up.
+  HttpRequest http_request;
+  http_request.set_url(config_.update_path_info_url());
+  http_request.set_json_body(request_json_str);
+
+  http_fetcher_.PostJsonAsync(
+      http_request,
+      absl::bind_front(&Session::HandleUpdatePathInfoResponse, this));
 
   return absl::OkStatus();
+}
+
+void Session::HandleUpdatePathInfoResponse(const HttpResponse& response) {
+  if (response.status().code() == 200) {
+    LOG(INFO) << "Updating path info completed successfully.";
+  } else {
+    auto status = utils::GetStatusForHttpStatus(response.status().code(),
+                                                response.status().message());
+    absl::MutexLock l(&mutex_);
+    SetState(State::kSessionError, status);
+  }
 }
 
 void Session::SetState(State state, absl::Status status) {
@@ -725,7 +747,6 @@ void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
     LOG(INFO) << "Updating uplink MTU from " << uplink_mtu_ << " to "
               << uplink_mtu;
     uplink_mtu_ = uplink_mtu;
-    PPN_LOG_IF_ERROR(SendPathInfoUpdate());
   }
 }
 
@@ -735,7 +756,7 @@ void Session::DoDownlinkMtuUpdate(int downlink_mtu) {
     LOG(INFO) << "Updating downlink MTU from " << downlink_mtu_ << " to "
               << downlink_mtu;
     downlink_mtu_ = downlink_mtu;
-    PPN_LOG_IF_ERROR(SendPathInfoUpdate());
+    PPN_LOG_IF_ERROR(SendUpdatePathInfoRequest());
   }
 }
 

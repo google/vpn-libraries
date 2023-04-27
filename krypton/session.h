@@ -32,6 +32,7 @@
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
@@ -215,7 +216,11 @@ class Session : public DatapathInterface::NotificationInterface,
   void CancelDatapathReattemptTimerIfRunning()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  absl::Status SendPathInfoUpdate() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  absl::Status SendUpdatePathInfoRequest()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void HandleUpdatePathInfoResponse(const HttpResponse& http_response)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   mutable absl::Mutex mutex_;
 
@@ -257,7 +262,6 @@ class Session : public DatapathInterface::NotificationInterface,
   int tunnel_mtu_ ABSL_GUARDED_BY(mutex_) = 1395;
 
   std::atomic_bool datapath_connected_ ABSL_GUARDED_BY(mutex_) = false;
-  std::string copper_address_ ABSL_GUARDED_BY(mutex_);
   absl::Time last_rekey_time_ ABSL_GUARDED_BY(mutex_);
   // Keep track of the last reported network switches.
   std::atomic_int last_repoted_network_switches_ = 0;
