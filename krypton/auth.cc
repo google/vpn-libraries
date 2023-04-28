@@ -106,6 +106,13 @@ absl::Status VerifyPublicMetadata(const ppn::PublicMetadata& public_metadata,
         "HandleInitialDataResponse failed due to incorrect service type "
         "in response.");
   }
+  if (public_metadata.debug_mode() !=
+          ppn::PublicMetadata::UNSPECIFIED_DEBUG_MODE &&
+      !config.debug_mode_allowed()) {
+    return absl::InternalError(
+        "HandleInitialDataResponse failed due to debug mode specified when not "
+        "allowed. Must set debug_mode_allowed before specifying a debug mode.");
+  }
   return absl::OkStatus();
 }
 

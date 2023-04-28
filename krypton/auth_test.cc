@@ -276,6 +276,18 @@ class AuthTest : public ::testing::Test {
     return response;
   }
 
+  HttpResponse buildDebugModeEnabledInitialDataHttpResponse() {
+    HttpResponse response;
+
+    auto initial_data_response = createGetInitialDataResponse();
+    initial_data_response.mutable_public_metadata_info()
+        ->mutable_public_metadata()
+        ->set_debug_mode(ppn::PublicMetadata::DEBUG_ALL);
+    response.set_proto_body(initial_data_response.SerializeAsString());
+    response.mutable_status()->set_code(200);
+    return response;
+  }
+
   void inspectInitialDataResponse(
       ppn::GetInitialDataResponse initial_data_response) {
     auto expected_response = createGetInitialDataResponse();
@@ -668,6 +680,34 @@ TEST_P(AuthParamsTest, InitialDataRequestNonEmptyCityGeoId) {
       auth_notification_,
       AuthFailure(absl::InternalError(
           "Received city_geo_id when request specified other geo level.")))
+      .WillOnce(
+          InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
+
+  auth_->Start(/*is_rekey=*/GetParam());
+  EXPECT_TRUE(
+      http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+
+  EXPECT_THAT(auth_->GetState(), ::testing::Eq(Auth::State::kUnauthenticated));
+}
+
+TEST_P(AuthParamsTest, InitialDataRequestDebugModeSpecifiedWhenNotAllowed) {
+  absl::Notification http_fetcher_done;
+  auto config =
+      CreateKryptonConfig(/*blind_signing=*/true, /*enable_attestation=*/true);
+  config.set_api_key("testApiKey");
+  config.set_public_metadata_enabled(true);
+  config.set_initial_data_url("http://www.example.com/initial_data");
+  config.set_ip_geo_level(ppn::COUNTRY);
+  config.set_debug_mode_allowed(false);
+  ConfigureAuth(config);
+
+  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+  EXPECT_CALL(http_fetcher_,
+              PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
+      .WillOnce(
+          ::testing::Return(buildDebugModeEnabledInitialDataHttpResponse()));
+
+  EXPECT_CALL(auth_notification_, AuthFailure(::testing::_))
       .WillOnce(
           InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
 

@@ -122,4 +122,9 @@ message KryptonConfig {
   optional bool public_metadata_enabled = 30 [default = false];
 
   optional privacy.ppn.IpGeoLevel ip_geo_level = 33 [default = COUNTRY];
+
+  // This flag allows Phosphor to return Public Metadata with debug_mode = true.
+  // If this flag is set to false, any Public Metadata with debug_mode = true
+  // will be rejected.
+  optional bool debug_mode_allowed = 34 [default = false];
 }
