@@ -42,6 +42,10 @@ HttpResponse PPNHttpFetcher::PostJson(const HttpRequest &request) {
     NSString *keyString = [[NSString alloc] initWithUTF8String:key.c_str()];
     NSString *valueString = [[NSString alloc] initWithUTF8String:value.c_str()];
     headers[keyString] = valueString;
+    // A Bundle-Identifier header is required if Api-Key header is present.
+    if ([keyString isEqualToString:@"X-Goog-Api-Key"]) {
+      headers[@"X-Ios-Bundle-Identifier"] = NSBundle.mainBundle.bundleIdentifier;
+    }
   }
 
   std::string requestBody = jsonRequest ? request.json_body() : request.proto_body();

@@ -23,6 +23,7 @@
 #import "third_party/objective_c/gtm_session_fetcher/Source/GTMSessionFetcher.h"
 #import "third_party/objective_c/gtm_session_fetcher/Source/GTMSessionFetcherService.h"
 #import "third_party/objective_c/ocmock/v3/Source/OCMock/OCMock.h"
+#import "third_party/objective_c/ocmock/v3/Source/OCMock/OCMockMacros.h"
 
 @interface PPNHttpFetcherTest : XCTestCase
 @end
@@ -245,6 +246,55 @@
 
   privacy::krypton::PPNHttpFetcher httpFetcher;
   privacy::krypton::HttpResponse response = httpFetcher.PostJson(request);
+}
+
+- (void)testRequestHeaderWithApiKey {
+  void (^fetchProxyBlock)(NSInvocation *) = ^(NSInvocation *invocation) {
+    __unsafe_unretained GTMSessionFetcherCompletionHandler fetchCompletionBlock;
+    [invocation getArgument:&fetchCompletionBlock atIndex:2];
+    NSDictionary<NSString *, NSString *> *responseHeaders =
+        @{@"Content-Type" : @"application/json"};
+    OCMStub([_mockFetcher responseHeaders]).andReturn(responseHeaders);
+    OCMStub([_mockFetcher statusCode]).andReturn(200);
+    NSData *data = [@"test data" dataUsingEncoding:NSUTF8StringEncoding];
+    fetchCompletionBlock(data, nil);
+  };
+  OCMStub([_mockFetcher beginFetchWithCompletionHandler:[OCMArg any]]).andDo(fetchProxyBlock);
+  OCMExpect([_mockFetcher setRequestValue:[OCMArg any]
+                       forHTTPHeaderField:@"X-Ios-Bundle-Identifier"]);
+
+  privacy::krypton::HttpRequest request;
+  request.set_url("http://unknown");
+  request.set_json_body("{\"a\":\"b\"}");
+  (*request.mutable_headers())["X-Goog-Api-Key"] = "some_api_key";
+  privacy::krypton::PPNHttpFetcher httpFetcher;
+  privacy::krypton::HttpResponse response = httpFetcher.PostJson(request);
+
+  OCMVerifyAll(_mockFetcher);
+}
+
+- (void)testRequestHeaderWithNoApiKey {
+  void (^fetchProxyBlock)(NSInvocation *) = ^(NSInvocation *invocation) {
+    __unsafe_unretained GTMSessionFetcherCompletionHandler fetchCompletionBlock;
+    [invocation getArgument:&fetchCompletionBlock atIndex:2];
+    NSDictionary<NSString *, NSString *> *responseHeaders =
+        @{@"Content-Type" : @"application/json"};
+    OCMStub([_mockFetcher responseHeaders]).andReturn(responseHeaders);
+    OCMStub([_mockFetcher statusCode]).andReturn(200);
+    NSData *data = [@"test data" dataUsingEncoding:NSUTF8StringEncoding];
+    fetchCompletionBlock(data, nil);
+  };
+  OCMStub([_mockFetcher beginFetchWithCompletionHandler:[OCMArg any]]).andDo(fetchProxyBlock);
+  OCMReject([_mockFetcher setRequestValue:[OCMArg any]
+                       forHTTPHeaderField:@"X-Ios-Bundle-Identifier"]);
+
+  privacy::krypton::HttpRequest request;
+  request.set_url("http://unknown");
+  request.set_json_body("{\"a\":\"b\"}");
+  privacy::krypton::PPNHttpFetcher httpFetcher;
+  privacy::krypton::HttpResponse response = httpFetcher.PostJson(request);
+
+  OCMVerifyAll(_mockFetcher);
 }
 
 @end
