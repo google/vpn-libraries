@@ -105,6 +105,8 @@ public class PpnOptions {
 
   private final Optional<Boolean> publicMetadataEnabled;
 
+  private final Optional<Boolean> debugModeAllowed;
+
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
     this.zincPublicSigningKeyUrl = builder.zincPublicSigningKeyUrl;
@@ -155,6 +157,8 @@ public class PpnOptions {
     this.ipv6KeepaliveInterval = builder.ipv6KeepaliveInterval;
 
     this.publicMetadataEnabled = builder.publicMetadataEnabled;
+
+    this.debugModeAllowed = builder.debugModeAllowed;
   }
 
   public String getZincUrl() {
@@ -313,6 +317,10 @@ public class PpnOptions {
     return publicMetadataEnabled;
   }
 
+  public Optional<Boolean> isDebugModeAllowed() {
+    return debugModeAllowed;
+  }
+
   /** Creates a KryptonConfig.Builder using the current options. */
   public KryptonConfig.Builder createKryptonConfigBuilder() {
     ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
@@ -412,6 +420,10 @@ public class PpnOptions {
     if (isPublicMetadataEnabled().isPresent()) {
       builder.setPublicMetadataEnabled(isPublicMetadataEnabled().get());
     }
+
+    if (isDebugModeAllowed().isPresent()) {
+      builder.setDebugModeAllowed(isDebugModeAllowed().get());
+    }
     return builder;
   }
 
@@ -462,6 +474,8 @@ public class PpnOptions {
     private Optional<Duration> ipv6KeepaliveInterval = Optional.empty();
 
     private Optional<Boolean> publicMetadataEnabled = Optional.empty();
+
+    private Optional<Boolean> debugModeAllowed = Optional.empty();
 
     public Builder() {}
 
@@ -882,6 +896,13 @@ public class PpnOptions {
     @CanIgnoreReturnValue
     public Builder setPublicMetadataEnabled(boolean publicMetadataEnabled) {
       this.publicMetadataEnabled = Optional.of(publicMetadataEnabled);
+      return this;
+    }
+
+    /** Sets whether debug mode is allowed or not. */
+    @CanIgnoreReturnValue
+    public Builder setDebugModeAllowed(boolean debugModeAllowed) {
+      this.debugModeAllowed = Optional.of(debugModeAllowed);
       return this;
     }
 

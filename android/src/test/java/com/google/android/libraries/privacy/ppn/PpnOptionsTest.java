@@ -603,6 +603,7 @@ public class PpnOptionsTest {
             .setPublicMetadataEnabled(true)
             .setInitialDataUrl("h")
             .setUpdatePathInfoUrl("i")
+            .setDebugModeAllowed(true)
             .build();
 
     KryptonConfig config = options.createKryptonConfigBuilder().build();
@@ -641,6 +642,7 @@ public class PpnOptionsTest {
     assertThat(config.getPublicMetadataEnabled()).isTrue();
     assertThat(config.getInitialDataUrl()).isEqualTo("h");
     assertThat(config.getUpdatePathInfoUrl()).isEqualTo("i");
+    assertThat(config.getDebugModeAllowed()).isTrue();
   }
 
   @Test
@@ -675,6 +677,7 @@ public class PpnOptionsTest {
     assertThat(config.getPublicMetadataEnabled()).isFalse();
     assertThat(config.getInitialDataUrl()).isNotEmpty();
     assertThat(config.getUpdatePathInfoUrl()).isNotEmpty();
+    assertThat(config.getDebugModeAllowed()).isFalse();
   }
 
   @Test
@@ -709,5 +712,17 @@ public class PpnOptionsTest {
   public void setPublicMetadataEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setPublicMetadataEnabled(true).build();
     assertThat(options.isPublicMetadataEnabled().get()).isTrue();
+  }
+
+  @Test
+  public void setDebugModeAllowed_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.isDebugModeAllowed()).isEmpty();
+  }
+
+  @Test
+  public void setDebugModeAllowed_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setDebugModeAllowed(true).build();
+    assertThat(options.isDebugModeAllowed().get()).isTrue();
   }
 }
