@@ -66,6 +66,7 @@
   XCTAssertEqualObjects(copperHostnameSuffixElem, @"g-tun.com");
   XCTAssertTrue(kryptonConfig.ipv6_enabled());
   XCTAssertFalse(kryptonConfig.public_metadata_enabled());
+  XCTAssertFalse(kryptonConfig.debug_mode_allowed());
   XCTAssertFalse(kryptonConfig.has_api_key());
   NSString *apiKey = [[NSString alloc] initWithUTF8String:kryptonConfig.api_key().c_str()];
   XCTAssertEqualObjects(apiKey, @"");
@@ -91,6 +92,7 @@
     PPNPublicMetadataEnabled : @YES,
     PPNAPIKey : @"beryllium_api_key",
     PPNOptionIPGeoLevel : @"CITY",
+    PPNDebugModeAllowed : @YES,
   };
   privacy::krypton::KryptonConfig kryptonConfig = PPNKryptonConfigFromOptions(options);
 
@@ -129,6 +131,7 @@
   XCTAssertEqual(kryptonConfig.copper_hostname_suffix(0), "copperHostnameSuffix");
   XCTAssertFalse(kryptonConfig.ipv6_enabled());
   XCTAssertTrue(kryptonConfig.public_metadata_enabled());
+  XCTAssertTrue(kryptonConfig.debug_mode_allowed());
 }
 
 @end

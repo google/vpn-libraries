@@ -100,6 +100,8 @@ PPNOptionKey const PPNAPIKey = @"apiKey";
 
 PPNOptionKey const PPNOptionIPGeoLevel = @"ipGeoLevel";
 
+PPNOptionKey const PPNDebugModeAllowed = @"debugModeAllowed";
+
 #pragma mark - Default Option Values
 
 static PPNOptionKey const PPNOptionDefaultZincURLString =
@@ -235,6 +237,11 @@ privacy::krypton::KryptonConfig PPNKryptonConfigFromOptions(
   NSNumber *publicMetadataEnabled = options[PPNPublicMetadataEnabled];
   if (publicMetadataEnabled != nullptr) {
     kryptonConfig.set_public_metadata_enabled(publicMetadataEnabled.boolValue);
+  }
+
+  NSNumber *debugModeAllowed = options[PPNDebugModeAllowed];
+  if (debugModeAllowed != nullptr) {
+    kryptonConfig.set_debug_mode_allowed(debugModeAllowed.boolValue);
   }
 
   NSString *apiKey = options[PPNAPIKey];

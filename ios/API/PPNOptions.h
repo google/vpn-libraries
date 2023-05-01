@@ -205,4 +205,9 @@ FOUNDATION_EXTERN PPNOptionKey const PPNRespectAllNetworkSwitches;
  */
 FOUNDATION_EXTERN PPNOptionKey const PPNOptionIPGeoLevel;
 
+/**
+ * Indicates whether debug mode is allowed.
+ */
+FOUNDATION_EXTERN PPNOptionKey const PPNDebugModeAllowed;
+
 NS_ASSUME_NONNULL_END
