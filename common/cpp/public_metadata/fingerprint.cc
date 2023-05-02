@@ -41,7 +41,7 @@ absl::Status FingerprintPublicMetadata(const PublicMetadata& metadata,
       metadata.service_type(),
       OmitDefault(metadata.expiration().seconds()),
       OmitDefault(metadata.expiration().nanos()),
-      PublicMetadata_DebugMode_Name(metadata.debug_mode()),
+      OmitDefault(metadata.debug_mode()),
   };
   // The signer needs to ensure that | is not allowed in any metadata value so
   // intentional collisions cannot be created.
