@@ -21,7 +21,7 @@ namespace {
 TEST(FingerprintPublicMetadataTest, OmitEmptyFields) {
   // Ensure that FingerprintPublicMetadata doesn't change values when new fields
   // are added.
-  uint64_t cmp = 8672061727253318213u;
+  uint64_t cmp = 14425702572122860291u;
   uint64_t default_instance_fingerprint = 0;
   ASSERT_OK(FingerprintPublicMetadata(PublicMetadata::default_instance(),
                                       &default_instance_fingerprint));
@@ -33,6 +33,7 @@ TEST(FingerprintPublicMetadataTest, OmitEmptyFields) {
   with_default_values.set_service_type("");
   with_default_values.mutable_expiration()->set_seconds(0);
   with_default_values.mutable_expiration()->set_nanos(0);
+  with_default_values.set_debug_mode(PublicMetadata::UNSPECIFIED_DEBUG_MODE);
   uint64_t default_value_fingerprint = 0;
   ASSERT_OK(FingerprintPublicMetadata(with_default_values,
                                       &default_value_fingerprint));
@@ -65,9 +66,10 @@ TEST(FingerprintPublicMetadataTest, ChangeDetector) {
   metadata.set_service_type("g1");
   metadata.mutable_expiration()->set_seconds(123);
   metadata.mutable_expiration()->set_nanos(456);
+  metadata.set_debug_mode(PublicMetadata::DEBUG_ALL);
   uint64_t metadata_fingerprint = 0;
   ASSERT_OK(FingerprintPublicMetadata(metadata, &metadata_fingerprint));
-  EXPECT_EQ(metadata_fingerprint, 15862914424147880325ULL);
+  EXPECT_EQ(metadata_fingerprint, 17430318200230452452ULL);
   // When new fields are added, feel free to expand this test by setting
   // those fields and adding another assertion below the existing ones.
 }
