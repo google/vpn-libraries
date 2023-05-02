@@ -71,31 +71,9 @@ const char JsonKeys::kUnblindedToken[] = "unblinded_token";
 const char JsonKeys::kPpn[] = "ppn";
 const char JsonKeys::kUnblindedTokenSignature[] = "unblinded_token_signature";
 const char JsonKeys::kRegionTokenAndSignature[] = "region_token_and_signature";
+const char JsonKeys::kPublicMetadata[] = "public_metadata";
 const char JsonKeys::kSigningKeyVersion[] = "signing_key_version";
 const char JsonKeys::kMessageMask[] = "message_mask";
-
-// GetInitialDataResponse
-const char JsonKeys::kAtPublicMetadataPublicKey[] =
-    "at_public_metadata_public_key";
-const char JsonKeys::kPublicMetadataInfo[] = "public_metadata_info";
-const char JsonKeys::kAttestation[] = "attestation";
-
-// AtPublicMetadataPublicKey
-const char JsonKeys::kUseCase[] = "use_case";
-const char JsonKeys::kKeyVersion[] = "key_version";
-const char JsonKeys::kSerializedPublicKey[] = "serialized_public_key";
-const char JsonKeys::kExpirationTime[] = "expiration_time";
-const char JsonKeys::kKeyValidityStartTime[] = "key_validity_start_time";
-const char JsonKeys::kSigHashType[] = "sig_hash_type";
-const char JsonKeys::kMaskGenFunction[] = "mask_gen_function";
-const char JsonKeys::kSaltLength[] = "salt_length";
-const char JsonKeys::kKeySize[] = "key_size";
-const char JsonKeys::kMessageMaskType[] = "message_mask_type";
-const char JsonKeys::kMessageMaskSize[] = "message_mask_size";
-
-// PublicMetadataInfo
-const char JsonKeys::kPublicMetadata[] = "public_metadata";
-const char JsonKeys::kValidationVersion[] = "validation_version";
 
 // PublicMetadata
 const char JsonKeys::kExitLocation[] = "exit_location";

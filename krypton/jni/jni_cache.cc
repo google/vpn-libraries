@@ -21,7 +21,6 @@
 #include <optional>
 #include <string>
 
-#include "privacy/net/krypton/jni/jni_utils.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
@@ -79,8 +78,6 @@ constexpr char kTimerIdManagerStartTimerMethod[] = "startTimer";
 constexpr char kTimerIdManagerStartTimerMethodSignature[] = "(II)Z";
 constexpr char kTimerIdManagerCancelTimerMethod[] = "cancelTimer";
 constexpr char kTimerIdManagerCancelTimerMethodSignature[] = "(I)Z";
-constexpr char kTimerIdManagerCancelAllTimersMethod[] = "cancelAllTimers";
-constexpr char kTimerIdManagerCancelAllTimersMethodSignature[] = "()V";
 // LINT.ThenChange(
 // //depot/google3/java/com/google/android/libraries/privacy/ppn/krypton/TimerIdManager.java)
 
@@ -308,12 +305,6 @@ absl::Status JniCache::InitializeTimerIdManager(JNIEnv* env,
       timer_id_manager_cancel_timer_method_,
       GetMethod(env, timer_id_manager_class, kTimerIdManagerCancelTimerMethod,
                 kTimerIdManagerCancelTimerMethodSignature));
-
-  PPN_ASSIGN_OR_RETURN(
-      timer_id_manager_cancel_all_timers_method_,
-      GetMethod(env, timer_id_manager_class,
-                kTimerIdManagerCancelAllTimersMethod,
-                kTimerIdManagerCancelAllTimersMethodSignature));
 
   return absl::OkStatus();
 }

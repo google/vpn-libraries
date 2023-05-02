@@ -75,30 +75,9 @@ class JsonKeys {
   static const char kPpn[];
   static const char kUnblindedTokenSignature[];
   static const char kRegionTokenAndSignature[];
+  static const char kPublicMetadata[];
   static const char kSigningKeyVersion[];
   static const char kMessageMask[];
-
-  // GetInitialDataResponse
-  static const char kAtPublicMetadataPublicKey[];
-  static const char kPublicMetadataInfo[];
-  static const char kAttestation[];
-
-  // AtPublicMetadataPublicKey
-  static const char kUseCase[];
-  static const char kKeyVersion[];
-  static const char kSerializedPublicKey[];
-  static const char kExpirationTime[];
-  static const char kKeyValidityStartTime[];
-  static const char kSigHashType[];
-  static const char kMaskGenFunction[];
-  static const char kSaltLength[];
-  static const char kKeySize[];
-  static const char kMessageMaskType[];
-  static const char kMessageMaskSize[];
-
-  // PublicMetadataInfo
-  static const char kPublicMetadata[];
-  static const char kValidationVersion[];
 
   // PublicMetadata
   static const char kExitLocation[];

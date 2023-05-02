@@ -40,9 +40,6 @@ class JniTimerInterfaceImpl : public TimerInterface {
   // Cancels a running timer.
   void CancelTimer(int timer_id) override;
 
-  // Cancel all timers
-  void CancelAllTimers();
-
  private:
   std::unique_ptr<JavaObject> timer_id_manager_instance_;
 };

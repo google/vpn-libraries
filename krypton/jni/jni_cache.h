@@ -23,7 +23,6 @@
 
 #include "base/logging.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/types/optional.h"
 
 namespace privacy {
@@ -48,9 +47,6 @@ class JniCache {
   // Can be called multiple times and this will reinitialize the java methods.
   void Init(JNIEnv* env);
   void Init(JNIEnv* env, bool include_neon);
-
-  // Current VM.
-  JavaVM* GetJavaVm() const { return java_vm_; }
 
   // Retrieves the Java Environment to call the appropriate Java method.
   std::optional<JNIEnv*> GetJavaEnv();
@@ -81,9 +77,6 @@ class JniCache {
   }
   jmethodID GetTimerIdManagerCancelTimerMethod() const {
     return timer_id_manager_cancel_timer_method_;
-  }
-  jmethodID GetTimerIdManagerCancelAllTimersMethod() const {
-    return timer_id_manager_cancel_all_timers_method_;
   }
 
   // com.google.android.libraries.privacy.ppn.krypton.KryptonImpl.
@@ -180,7 +173,6 @@ class JniCache {
 
   // privacy.ppn.krypton.TimerIdManager
   jmethodID timer_id_manager_start_timer_method_ = nullptr;
-  jmethodID timer_id_manager_cancel_all_timers_method_ = nullptr;
   jmethodID timer_id_manager_cancel_timer_method_ = nullptr;
 
   // privacy.ppn.krypton.Krypton

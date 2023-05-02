@@ -77,9 +77,6 @@ constexpr absl::Duration kFetchTimerDuration = absl::Minutes(5);
 constexpr absl::Duration kDatapathReattemptDuration = absl::Milliseconds(500);
 constexpr absl::Duration kDefaultRekeyDuration = absl::Hours(24);
 
-// Reattempts exclude the first attempt.
-constexpr char kDefaultCopperAddress[] = "na.b.g-tun.com";
-
 std::string StateString(Session::State state) {
   switch (state) {
     case Session::State::kInitialized:

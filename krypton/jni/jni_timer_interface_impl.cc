@@ -70,20 +70,6 @@ void JniTimerInterfaceImpl::CancelTimer(int timer_id) {
   }
 }
 
-// Cancel all timers
-void JniTimerInterfaceImpl::CancelAllTimers() {
-  LOG(INFO) << "Calling CancelAllTimers JNI method";
-
-  auto jni_ppn = JniCache::Get();
-  auto env = jni_ppn->GetJavaEnv();
-  if (!env) {
-    return;
-  }
-
-  env.value()->CallVoidMethod(
-      timer_id_manager_instance_->get(),
-      jni_ppn->GetTimerIdManagerCancelAllTimersMethod());
-}
 }  // namespace jni
 }  // namespace krypton
 }  // namespace privacy
