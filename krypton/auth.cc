@@ -25,6 +25,7 @@
 
 #include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/common/cpp/public_metadata/fingerprint.h"
+#include "privacy/net/common/cpp/public_metadata/serialize.h"
 #include "privacy/net/common/proto/auth_and_sign.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/common/proto/key_services.proto.h"
@@ -332,7 +333,8 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
                  << fingerprint_status;
       return;
     }
-    plaintext_message.set_public_metadata(absl::StrCat(fingerprint));
+
+    plaintext_message.set_public_metadata(ppn::Uint64ToBytes(fingerprint));
     plaintext_tokens.push_back(plaintext_message);
 
     auto at_sign_request = bssa_client.value()->CreateRequest(plaintext_tokens);
