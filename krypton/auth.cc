@@ -348,10 +348,11 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
     bssa_client_ = *std::move(bssa_client);
     at_sign_request_ = at_sign_request.value();
     if (!get_initial_data_response_.attestation().attestation_nonce().empty()) {
-      nonce = get_initial_data_response_.attestation().attestation_nonce();
+      nonce = absl::Base64Escape(
+          get_initial_data_response_.attestation().attestation_nonce());
     }
   }
-  LOG(INFO) << "HandleInitialDataResponseExiting InitialDataResponseHandler";
+  LOG(INFO) << "HandleInitialDataResponse Exiting InitialDataResponseHandler";
 
   AuthenticatePublicMetadata(is_rekey, nonce);
 }
