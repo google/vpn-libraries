@@ -16,7 +16,6 @@
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_IPSEC_PACKET_FORWARDER_H_
 
 #include <atomic>
-#include <memory>
 #include <vector>
 
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
@@ -44,18 +43,21 @@ class IpSecPacketForwarder {
 
     // Datapath failed with status.
     // NOTE: Clients should call Stop() after receiving this notification.
-    virtual void IpSecPacketForwarderFailed(const absl::Status&) = 0;
+    virtual void IpSecPacketForwarderFailed(const absl::Status& status,
+                                            int forwarder_id) = 0;
     // Permanent Datapath failure
     // NOTE: Clients should call Stop() after receiving this notification.
-    virtual void IpSecPacketForwarderPermanentFailure(const absl::Status&) = 0;
+    virtual void IpSecPacketForwarderPermanentFailure(
+        const absl::Status& status, int forwarder_id) = 0;
     // PacketForward did successfully forward one packet since Start is called.
-    virtual void IpSecPacketForwarderConnected() = 0;
+    virtual void IpSecPacketForwarderConnected(int forwarder_id) = 0;
   };
 
   explicit IpSecPacketForwarder(TunnelInterface* utun_interface,
                                 IpSecSocketInterface* network_socket,
                                 utils::LooperThread* looper,
-                                NotificationInterface* notification);
+                                NotificationInterface* notification,
+                                int forwarder_id);
   ~IpSecPacketForwarder();
 
   // Whether or not the forwarder has started.
@@ -95,6 +97,7 @@ class IpSecPacketForwarder {
   bool started_ ABSL_GUARDED_BY(mutex_);
   bool shutdown_ ABSL_GUARDED_BY(mutex_);
   std::atomic_flag connected_;
+  int forwarder_id_;
 
   std::atomic_int64_t uplink_packets_read_;
   std::atomic_int64_t downlink_packets_read_;

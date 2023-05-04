@@ -15,7 +15,6 @@
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_packet_forwarder.h"
 
 #include <atomic>
-#include <memory>
 #include <utility>
 #include <vector>
 
@@ -38,13 +37,15 @@ namespace android {
 IpSecPacketForwarder::IpSecPacketForwarder(TunnelInterface* utun_interface,
                                            IpSecSocketInterface* network_socket,
                                            utils::LooperThread* looper,
-                                           NotificationInterface* notification)
+                                           NotificationInterface* notification,
+                                           int forwarder_id)
     : utun_interface_(utun_interface),
       network_socket_(network_socket),
       notification_thread_(looper),
       notification_(notification),
       started_(false),
       shutdown_(false),
+      forwarder_id_(forwarder_id),
       uplink_packets_read_(0),
       downlink_packets_read_(0),
       uplink_packets_dropped_(0),
@@ -153,8 +154,10 @@ void IpSecPacketForwarder::WritePacketsToTun(std::vector<Packet> packets) {
   if (!write_status.ok()) {
     LOG(ERROR) << "Write device pipe error: " << write_status;
     auto* notification = notification_;
-    notification_thread_->Post([notification, write_status]() {
-      notification->IpSecPacketForwarderPermanentFailure(write_status);
+    auto forwarder_id = forwarder_id_;
+    notification_thread_->Post([notification, write_status, forwarder_id]() {
+      notification->IpSecPacketForwarderPermanentFailure(write_status,
+                                                         forwarder_id);
     });
     return;
   }
@@ -163,8 +166,10 @@ void IpSecPacketForwarder::WritePacketsToTun(std::vector<Packet> packets) {
   if (!connected_.test_and_set()) {
     LOG(INFO) << "IpSecPacketForwarder[" << this << "] is connected.";
     auto* notification = notification_;
-    notification_thread_->Post(
-        [notification]() { notification->IpSecPacketForwarderConnected(); });
+    auto forwarder_id = forwarder_id_;
+    notification_thread_->Post([notification, forwarder_id]() {
+      notification->IpSecPacketForwarderConnected(forwarder_id);
+    });
   }
 }
 
@@ -212,8 +217,9 @@ void IpSecPacketForwarder::PostDatapathFailure(const absl::Status& status) {
   LOG(ERROR) << "IpSecPacketForwarder permanent failure: " << status;
 
   auto* notification = notification_;
-  notification_thread_->Post([notification, status]() {
-    notification->IpSecPacketForwarderFailed(status);
+  auto forwarder_id = forwarder_id_;
+  notification_thread_->Post([notification, status, forwarder_id]() {
+    notification->IpSecPacketForwarderFailed(status, forwarder_id);
   });
 }
 

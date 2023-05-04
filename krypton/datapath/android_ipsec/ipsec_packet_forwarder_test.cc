@@ -14,7 +14,6 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_packet_forwarder.h"
 
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -33,15 +32,13 @@ namespace datapath {
 namespace android {
 namespace {
 
-using ::testing::_;
-
 class MockNotification : public IpSecPacketForwarder::NotificationInterface {
  public:
-  MOCK_METHOD(void, IpSecPacketForwarderFailed, (const absl::Status&),
+  MOCK_METHOD(void, IpSecPacketForwarderFailed, (const absl::Status&, int),
               (override));
-  MOCK_METHOD(void, IpSecPacketForwarderPermanentFailure, (const absl::Status&),
-              (override));
-  MOCK_METHOD(void, IpSecPacketForwarderConnected, (), (override));
+  MOCK_METHOD(void, IpSecPacketForwarderPermanentFailure,
+              (const absl::Status&, int), (override));
+  MOCK_METHOD(void, IpSecPacketForwarderConnected, (int), (override));
 };
 
 class IpSecPacketForwarderTest : public ::testing::Test {
@@ -54,7 +51,8 @@ class IpSecPacketForwarderTest : public ::testing::Test {
 
 TEST_F(IpSecPacketForwarderTest, TestStartAndStop) {
   auto forwarder = IpSecPacketForwarder(&utun_interface_, &network_socket_,
-                                        &notification_thread_, &notification_);
+                                        &notification_thread_, &notification_,
+                                        /*forwarder_id=*/123);
 
   absl::Notification network_closed;
   absl::Notification utun_closed;
@@ -110,13 +108,15 @@ TEST_F(IpSecPacketForwarderTest, TestDownlinkPacketHandling) {
   }
 
   auto forwarder = IpSecPacketForwarder(&utun_interface_, &network_socket_,
-                                        &notification_thread_, &notification_);
+                                        &notification_thread_, &notification_,
+                                        /*forwarder_id=*/123);
 
   absl::Notification connected;
   absl::Notification network_closed;
   absl::Notification utun_closed;
 
-  EXPECT_CALL(notification_, IpSecPacketForwarderConnected())
+  EXPECT_CALL(notification_,
+              IpSecPacketForwarderConnected(/*forwarder_id=*/123))
       .WillOnce([&connected]() { connected.Notify(); });
 
   EXPECT_CALL(network_socket_, ReadPackets())
@@ -184,7 +184,8 @@ TEST_F(IpSecPacketForwarderTest, TestUplinkPacketHandling) {
   }
 
   auto forwarder = IpSecPacketForwarder(&utun_interface_, &network_socket_,
-                                        &notification_thread_, &notification_);
+                                        &notification_thread_, &notification_,
+                                        /*forwarder_id=*/123);
 
   absl::Notification connected;
   absl::Notification network_closed;
@@ -243,7 +244,8 @@ TEST_F(IpSecPacketForwarderTest, TestUplinkPacketHandling) {
 
 TEST_F(IpSecPacketForwarderTest, TestNetworkWriteFail) {
   auto forwarder = IpSecPacketForwarder(&utun_interface_, &network_socket_,
-                                        &notification_thread_, &notification_);
+                                        &notification_thread_, &notification_,
+                                        /*forwarder_id=*/123);
 
   absl::Status write_status = absl::InternalError("Error writing to socket");
 
@@ -280,8 +282,8 @@ TEST_F(IpSecPacketForwarderTest, TestNetworkWriteFail) {
     return absl::OkStatus();
   });
 
-  EXPECT_CALL(notification_, IpSecPacketForwarderFailed(_))
-      .With(testing::Eq(std::make_tuple(write_status)))
+  EXPECT_CALL(notification_,
+              IpSecPacketForwarderFailed(write_status, /*forwarder_id=*/123))
       .WillOnce([&failed]() { failed.Notify(); });
 
   EXPECT_CALL(network_socket_, Close()).Times(0);
@@ -298,7 +300,8 @@ TEST_F(IpSecPacketForwarderTest, TestNetworkWriteFail) {
 
 TEST_F(IpSecPacketForwarderTest, TestNetworkReadFail) {
   auto forwarder = IpSecPacketForwarder(&utun_interface_, &network_socket_,
-                                        &notification_thread_, &notification_);
+                                        &notification_thread_, &notification_,
+                                        /*forwarder_id=*/123);
 
   absl::Status read_status = absl::InternalError("Error reading from socket");
 
@@ -318,8 +321,8 @@ TEST_F(IpSecPacketForwarderTest, TestNetworkReadFail) {
     return absl::OkStatus();
   });
 
-  EXPECT_CALL(notification_, IpSecPacketForwarderFailed(_))
-      .With(testing::Eq(std::make_tuple(read_status)))
+  EXPECT_CALL(notification_,
+              IpSecPacketForwarderFailed(read_status, /*forwarder_id=*/123))
       .WillOnce([&failed]() { failed.Notify(); });
 
   EXPECT_CALL(network_socket_, Close()).Times(0);
@@ -334,9 +337,69 @@ TEST_F(IpSecPacketForwarderTest, TestNetworkReadFail) {
   notification_thread_.Join();
 }
 
+TEST_F(IpSecPacketForwarderTest, TestTunnelWriteFail) {
+  auto forwarder = IpSecPacketForwarder(&utun_interface_, &network_socket_,
+                                        &notification_thread_, &notification_,
+                                        /*forwarder_id=*/123);
+
+  absl::Status write_status = absl::InternalError("Error writing to tunnel");
+
+  std::vector<Packet> packets;
+  packets.emplace_back("foo", 3, IPProtocol::kIPv6, []() {});
+
+  absl::Notification failed;
+  absl::Notification network_closed;
+  absl::Notification utun_closed;
+
+  // Simulate one successful read and then a blocking read.
+  EXPECT_CALL(network_socket_, ReadPackets())
+      .WillOnce(testing::Return(std::move(packets)))
+      .WillOnce([&network_closed]() {
+        network_closed.WaitForNotification();
+        return std::vector<Packet>();
+      });
+
+  // Unblock the ReadPackets call.
+  EXPECT_CALL(network_socket_, CancelReadPackets())
+      .WillOnce([&network_closed]() {
+        network_closed.Notify();
+        return absl::OkStatus();
+      });
+
+  // Simulate a failed write.
+  EXPECT_CALL(utun_interface_, WritePackets(testing::_))
+      .WillOnce(testing::Return(write_status));
+
+  // Simulate a blocking read until the socket is closed.
+  EXPECT_CALL(utun_interface_, ReadPackets()).WillOnce([&utun_closed]() {
+    utun_closed.WaitForNotification();
+    return std::vector<Packet>();
+  });
+
+  // Unblock the ReadPackets call.
+  EXPECT_CALL(utun_interface_, CancelReadPackets()).WillOnce([&utun_closed]() {
+    utun_closed.Notify();
+    return absl::OkStatus();
+  });
+
+  EXPECT_CALL(notification_, IpSecPacketForwarderPermanentFailure(
+                                 write_status, /*forwarder_id=*/123))
+      .WillOnce([&failed]() { failed.Notify(); });
+
+  forwarder.Start();
+
+  EXPECT_TRUE(failed.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
+
+  forwarder.Stop();
+
+  notification_thread_.Stop();
+  notification_thread_.Join();
+}
+
 TEST_F(IpSecPacketForwarderTest, TestTunnelReadFail) {
   auto forwarder = IpSecPacketForwarder(&utun_interface_, &network_socket_,
-                                        &notification_thread_, &notification_);
+                                        &notification_thread_, &notification_,
+                                        /*forwarder_id=*/123);
 
   absl::Status read_status = absl::InternalError("Error reading from tunnel");
 
@@ -357,8 +420,8 @@ TEST_F(IpSecPacketForwarderTest, TestTunnelReadFail) {
   EXPECT_CALL(utun_interface_, ReadPackets())
       .WillOnce(testing::Return(read_status));
 
-  EXPECT_CALL(notification_, IpSecPacketForwarderFailed(_))
-      .With(testing::Eq(std::make_tuple(read_status)))
+  EXPECT_CALL(notification_,
+              IpSecPacketForwarderFailed(read_status, /*forwarder_id=*/123))
       .WillOnce([&failed]() { failed.Notify(); });
 
   EXPECT_CALL(network_socket_, Close()).Times(0);

@@ -75,7 +75,7 @@ absl::Status IpSecDatapath::Start(const AddEgressResponse& egress_response,
 
 void IpSecDatapath::Stop() {
   absl::MutexLock l(&mutex_);
-  ShutdownIpSecPacketForwarder(/*close_network_socket=*/true);
+  StopInternal();
 }
 
 absl::Status IpSecDatapath::SwitchNetwork(
@@ -115,7 +115,7 @@ absl::Status IpSecDatapath::SwitchNetwork(
     } else {
       mtu_tracker = std::make_unique<MtuTracker>(endpoint.ip_protocol());
     }
-    mtu_tracker->RegisterNotificationHandler(this, &mtu_tracker_thread_);
+    mtu_tracker->RegisterNotificationHandler(this, &looper_);
     auto mss_mtu_detection_endpoint =
         endpoint.ip_protocol() == IPProtocol::kIPv4 ? ipv4_tcp_mss_endpoint_
                                                     : ipv6_tcp_mss_endpoint_;
@@ -174,9 +174,8 @@ absl::Status IpSecDatapath::SwitchNetwork(
   network_socket_ = *std::move(network_socket);
 
   forwarder_ = std::make_unique<IpSecPacketForwarder>(
-      tunnel, network_socket_.get(), notification_thread_, this);
-
-  LOG(INFO) << "Starting packet forwarder.";
+      tunnel, network_socket_.get(), &looper_, this, ++curr_forwarder_id_);
+  LOG(INFO) << "Starting packet forwarder with ID=" << curr_forwarder_id_;
   forwarder_->Start();
 
   return absl::OkStatus();
@@ -193,7 +192,8 @@ void IpSecDatapath::SwitchTunnel() {
   absl::MutexLock l(&mutex_);
   auto tunnel = vpn_service_->GetTunnel();
   forwarder_ = std::make_unique<IpSecPacketForwarder>(
-      tunnel, network_socket_.get(), notification_thread_, this);
+      tunnel, network_socket_.get(), &looper_, this, ++curr_forwarder_id_);
+  LOG(INFO) << "Starting packet forwarder with ID=" << curr_forwarder_id_;
   forwarder_->Start();
 }
 
@@ -211,6 +211,10 @@ absl::Status IpSecDatapath::SetKeyMaterials(const TransformParams& params) {
             << " downlink_spi=" << key_material_->downlink_spi();
 
   return absl::OkStatus();
+}
+
+void IpSecDatapath::StopInternal() {
+  ShutdownIpSecPacketForwarder(/*close_network_socket=*/true);
 }
 
 void IpSecDatapath::ShutdownIpSecPacketForwarder(bool close_network_socket) {
@@ -234,26 +238,46 @@ void IpSecDatapath::CloseNetworkSocket() {
   LOG(INFO) << "The network socket is closed.";
 }
 
-void IpSecDatapath::IpSecPacketForwarderFailed(const absl::Status& status) {
+bool IpSecDatapath::IsForwarderNotificationValid(int forwarder_id) {
+  if (forwarder_ == nullptr) {
+    LOG(WARNING) << "Received notification after packet forwarder closed";
+    return false;
+  }
+  if (forwarder_id != curr_forwarder_id_) {
+    LOG(WARNING) << "Received notification with ID=" << forwarder_id
+                 << " which does not match current ID=" << curr_forwarder_id_;
+    return false;
+  }
+  return true;
+}
+
+void IpSecDatapath::IpSecPacketForwarderFailed(const absl::Status& status,
+                                               int packet_forwarder_id) {
+  absl::MutexLock l(&mutex_);
+  if (!IsForwarderNotificationValid(packet_forwarder_id)) return;
   LOG(WARNING) << "IpSecDatapath packet forwarder failed: " << status;
-  Stop();
+  StopInternal();
   auto* notification = notification_;
   notification_thread_->Post(
       [notification, status]() { notification->DatapathFailed(status); });
 }
 
 void IpSecDatapath::IpSecPacketForwarderPermanentFailure(
-    const absl::Status& status) {
+    const absl::Status& status, int packet_forwarder_id) {
+  absl::MutexLock l(&mutex_);
+  if (!IsForwarderNotificationValid(packet_forwarder_id)) return;
   LOG(WARNING) << "IpSecDatapath packet forwarder permanently failed: "
                << status;
-  Stop();
+  StopInternal();
   auto* notification = notification_;
   notification_thread_->Post([notification, status]() {
     notification->DatapathPermanentFailure(status);
   });
 }
 
-void IpSecDatapath::IpSecPacketForwarderConnected() {
+void IpSecDatapath::IpSecPacketForwarderConnected(int packet_forwarder_id) {
+  absl::MutexLock l(&mutex_);
+  if (!IsForwarderNotificationValid(packet_forwarder_id)) return;
   LOG(WARNING) << "IpSecDatapath packet forwarder connected.";
   auto* notification = notification_;
   notification_thread_->Post(

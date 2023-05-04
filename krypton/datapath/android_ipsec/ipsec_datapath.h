@@ -76,7 +76,8 @@ class IpSecDatapath : public DatapathInterface,
         vpn_service_(vpn_service),
         ipv4_tcp_mss_endpoint_("", "", 0, IPProtocol::kUnknown),
         ipv6_tcp_mss_endpoint_("", "", 0, IPProtocol::kUnknown),
-        mtu_tracker_thread_("MTU Tracker Notification Thread") {}
+        looper_("IpSecDatapath Looper"),
+        curr_forwarder_id_(0) {}
   ~IpSecDatapath() override;
 
   // Initialize the Ipsec data path.
@@ -107,11 +108,15 @@ class IpSecDatapath : public DatapathInterface,
   absl::Status SetKeyMaterials(const TransformParams& params) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void IpSecPacketForwarderFailed(const absl::Status&) override;
+  void IpSecPacketForwarderFailed(const absl::Status& status, int forwarder_id)
+      ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  void IpSecPacketForwarderPermanentFailure(const absl::Status&) override;
+  void IpSecPacketForwarderPermanentFailure(const absl::Status& status,
+                                            int forwarder_id)
+      ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  void IpSecPacketForwarderConnected() override;
+  void IpSecPacketForwarderConnected(int forwarder_id)
+      ABSL_LOCKS_EXCLUDED(mutex_) override;
 
   void GetDebugInfo(DatapathDebugInfo* debug_info) override;
 
@@ -120,10 +125,16 @@ class IpSecDatapath : public DatapathInterface,
   void DownlinkMtuUpdated(int downlink_mtu) override;
 
  private:
+  void StopInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   void ShutdownIpSecPacketForwarder(bool close_network_socket)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void CloseNetworkSocket() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  // Verify the provided forwarder ID matches the ID of the current forwarder
+  bool IsForwarderNotificationValid(int forwarder_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   absl::Mutex mutex_;
 
@@ -135,11 +146,13 @@ class IpSecDatapath : public DatapathInterface,
   Endpoint ipv4_tcp_mss_endpoint_;
   Endpoint ipv6_tcp_mss_endpoint_;
 
-  // The mtu_tracker_thread_ must outlive network_socket_. The MtuTracker, which
-  // is owned by network_socket_, will be using mtu_tracker_thread_.
-  utils::LooperThread mtu_tracker_thread_;
+  // The looper_ must outlive both network_socket_ and forwarder_. The
+  // forwarder_ directly relies on looper_, while the network_socket_ will own
+  // an MTU tracker, which relies on looper_.
+  utils::LooperThread looper_;
 
   std::optional<IpSecTransformParams> key_material_ ABSL_GUARDED_BY(mutex_);
+  int curr_forwarder_id_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<IpSecPacketForwarder> forwarder_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<IpSecSocketInterface> network_socket_ ABSL_GUARDED_BY(mutex_);
 };
