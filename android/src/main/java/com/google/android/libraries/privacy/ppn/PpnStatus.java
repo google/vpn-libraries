@@ -20,7 +20,7 @@ import java.util.Map;
 
 /** Java representation of C++ absl::Status. */
 public class PpnStatus {
-  public static final PpnStatus STATUS_OK = new PpnStatus(Code.OK, "");
+  public static final PpnStatus STATUS_OK = new PpnStatus.Builder(Code.OK, "").build();
 
   /**
    * Java representation of absl::StatusCode as defined in

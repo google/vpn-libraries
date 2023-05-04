@@ -89,7 +89,8 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   // default value will only be used if the Service is somehow stopped without the VPN first being
   // revoked or stopped by Krypton.
   private static final PpnStatus KRYPTON_STOPPED_STATUS_UNKNOWN =
-      new PpnStatus(Code.UNKNOWN, "Service was stopped while Krypton was still running.");
+      new PpnStatus.Builder(Code.UNKNOWN, "Service was stopped while Krypton was still running.")
+          .build();
 
   private final Context context;
 

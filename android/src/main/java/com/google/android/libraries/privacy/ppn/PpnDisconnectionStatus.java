@@ -62,7 +62,7 @@ public class PpnDisconnectionStatus {
    * an internal class, so it's not part of the supported public API.
    */
   public static PpnDisconnectionStatus fromProto(DisconnectionStatus status) {
-    PpnStatus reason = new PpnStatus(status.getCode(), status.getMessage());
+    PpnStatus reason = new PpnStatus.Builder(status.getCode(), status.getMessage()).build();
     return new PpnDisconnectionStatus(
         reason, status.getIsBlockingTraffic(), status.getHasAvailableNetworks());
   }
