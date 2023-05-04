@@ -62,7 +62,7 @@ class Provision : public Auth::NotificationInterface,
   // Starts provisioning.
   void Start() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::Status Rekey() ABSL_LOCKS_EXCLUDED(mutex_);
+  void Rekey() ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::StatusOr<std::string> GenerateSignature(absl::string_view data)
       ABSL_LOCKS_EXCLUDED(mutex_);

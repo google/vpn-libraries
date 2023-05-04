@@ -72,11 +72,10 @@ Provision::Provision(const KryptonConfig& config, Auth* auth,
       notification_(ABSL_DIE_IF_NULL(notification)),
       notification_thread_(ABSL_DIE_IF_NULL(notification_thread)),
       http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
-                    ABSL_DIE_IF_NULL(notification_thread)) {
+                    ABSL_DIE_IF_NULL(notification_thread)),
+      key_material_(nullptr) {
   auth_->RegisterNotificationHandler(this);
   egress_manager->RegisterNotificationHandler(this);
-
-  key_material_ = std::make_unique<crypto::SessionCrypto>(config);
 }
 
 void Provision::FailWithStatus(absl::Status status, bool permanent) {
@@ -90,31 +89,56 @@ void Provision::Start() {
   absl::MutexLock l(&mutex_);
   DCHECK(notification_);
   LOG(INFO) << "Starting provisioning";
+  key_material_ = nullptr;
+  auto key_material = crypto::SessionCrypto::Create(config_);
+  if (!key_material.ok()) {
+    FailWithStatus(key_material.status(), false);
+    return;
+  }
+  key_material_ = *std::move(key_material);
   auth_->Start(/*is_rekey=*/false);
 }
 
-absl::Status Provision::Rekey() {
+void Provision::Rekey() {
   absl::MutexLock l(&mutex_);
-  // Generate the rekey parameters that are needed and generate a signature from
-  // the old crypto keys.
-  auto new_key_material = std::make_unique<crypto::SessionCrypto>(config_);
-  PPN_ASSIGN_OR_RETURN(auto signature, key_material_->GenerateSignature(
-                                           new_key_material->public_value()));
-  new_key_material->SetSignature(signature);
+  if (!key_material_) {
+    FailWithStatus(absl::FailedPreconditionError("key_material_ is missing"),
+                   false);
+    return;
+  }
+  // Generate the rekey parameters that are needed and generate a signature
+  // from the old crypto keys.
+  auto new_key_material = crypto::SessionCrypto::Create(config_);
+  if (!new_key_material.ok()) {
+    FailWithStatus(new_key_material.status(), false);
+    return;
+  }
+  auto signature =
+      key_material_->GenerateSignature((*new_key_material)->public_value());
+  if (!signature.ok()) {
+    FailWithStatus(signature.status(), false);
+    return;
+  }
+  (*new_key_material)->SetSignature(*signature);
   key_material_.reset();
-  key_material_ = std::move(new_key_material);
+  key_material_ = *std::move(new_key_material);
   auth_->Start(/*is_rekey=*/true);
-  return absl::OkStatus();
 }
 
 absl::StatusOr<std::string> Provision::GenerateSignature(
     absl::string_view data) {
   absl::MutexLock l(&mutex_);
+  if (!key_material_) {
+    return absl::FailedPreconditionError("key_material_ is missing");
+  }
   return key_material_->GenerateSignature(data);
 }
 
 absl::StatusOr<TransformParams> Provision::GetTransformParams() {
   absl::MutexLock l(&mutex_);
+  if (!key_material_) {
+    return absl::FailedPreconditionError("key_material_ is missing");
+  }
   return key_material_->GetTransformParams();
 }
 

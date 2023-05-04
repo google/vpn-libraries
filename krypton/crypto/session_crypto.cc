@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -23,6 +24,9 @@
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/log/check.h"
+#include "third_party/absl/log/log.h"
+#include "third_party/absl/memory/memory.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/escaping.h"
@@ -71,7 +75,7 @@ absl::StatusOr<std::string> SerializePublicKeyset(
                        ::crypto::tink::BinaryKeysetWriter::New(
                            std::make_unique<std::ostream>(&string_buf)));
 
-  // We only seriaze the public value of the keyset.
+  // We only serialize the public value of the keyset.
   PPN_ASSIGN_OR_RETURN(auto public_key, keyset_handle.GetPublicKeysetHandle());
   PPN_RETURN_IF_ERROR(public_key->WriteNoSecret(keyset_writer_result.get()));
   return string_buf.str();
@@ -79,44 +83,15 @@ absl::StatusOr<std::string> SerializePublicKeyset(
 
 }  // namespace
 
-SessionCrypto::SessionCrypto(const KryptonConfig &config)
-    : bn_ctx_(BN_CTX_new()), config_(config) {
-  DCHECK_NE(bn_ctx_.get(), nullptr);
-  uint8_t private_key[X25519_PRIVATE_KEY_LEN];
-  uint8_t public_value[X25519_PUBLIC_VALUE_LEN];
-
-  // Generate the key pair
-  X25519_keypair(public_value, private_key);
-  private_key_ = std::string(reinterpret_cast<const char *>(private_key),
-                             X25519_PRIVATE_KEY_LEN);
-  public_value_ = std::string(reinterpret_cast<const char *>(public_value),
-                              X25519_PUBLIC_VALUE_LEN);
-
-  uint8_t rand_bytes[kNonceLength];
-  if (RAND_bytes(rand_bytes, kNonceLength) != 1) {
-    LOG(ERROR) << "Error generating Salt random bytes";
-  }
-  local_nonce_ =
-      std::string(reinterpret_cast<const char *>(rand_bytes), kNonceLength);
-
-  downlink_spi_ = ::crypto::tink::subtle::Random::GetRandomUInt32();
-
-  if (!::crypto::tink::SignatureConfig::Register().ok()) {
-    LOG(ERROR) << "Error registering with signature config";
-    return;
-  }
-
-  // TODO: Maybe we should refactor this so that the constructor
-  // can't silently fail.
-  // NOTE: This is a crypto::tink::util::StatusOr, not an absl::StatusOr.
-  auto key_handle = ::crypto::tink::KeysetHandle::GenerateNew(
-      ::crypto::tink::SignatureKeyTemplates::Ed25519());
-  if (!key_handle.ok()) {
-    LOG(ERROR) << "Error generating Ed25519 key handle" << key_handle.status();
-    return;
-  }
-  key_handle_ = std::move(key_handle).ValueOrDie();
+absl::StatusOr<std::unique_ptr<SessionCrypto>> SessionCrypto::Create(
+    const KryptonConfig &config) {
+  auto session_crypto = absl::WrapUnique(new SessionCrypto(config));
+  PPN_RETURN_IF_ERROR(session_crypto->Init());
+  return session_crypto;
 }
+
+SessionCrypto::SessionCrypto(const KryptonConfig &config)
+    : downlink_spi_(0), bn_ctx_(BN_CTX_new()), config_(config) {}
 
 void SessionCrypto::SetLocalNonceTestOnly(absl::string_view client_nonce) {
   local_nonce_ = std::string(client_nonce);
@@ -177,6 +152,44 @@ absl::Status SessionCrypto::SetRemoteKeyMaterial(
     return absl::FailedPreconditionError("Nonce should be 16 bytes");
   }
   remote_nonce_ = std::string(remote_nonce);
+  return absl::OkStatus();
+}
+
+absl::Status SessionCrypto::Init() {
+  if (bn_ctx_.get() == nullptr) {
+    return absl::FailedPreconditionError("bn_ctx_ is null");
+  }
+  uint8_t private_key[X25519_PRIVATE_KEY_LEN];
+  uint8_t public_value[X25519_PUBLIC_VALUE_LEN];
+
+  // Generate the key pair
+  X25519_keypair(public_value, private_key);
+  private_key_ = std::string(reinterpret_cast<const char *>(private_key),
+                             X25519_PRIVATE_KEY_LEN);
+  public_value_ = std::string(reinterpret_cast<const char *>(public_value),
+                              X25519_PUBLIC_VALUE_LEN);
+
+  uint8_t rand_bytes[kNonceLength];
+  if (RAND_bytes(rand_bytes, kNonceLength) != 1) {
+    LOG(ERROR) << "Error generating Salt random bytes";
+  }
+  local_nonce_ =
+      std::string(reinterpret_cast<const char *>(rand_bytes), kNonceLength);
+
+  downlink_spi_ = ::crypto::tink::subtle::Random::GetRandomUInt32();
+
+  if (!::crypto::tink::SignatureConfig::Register().ok()) {
+    return absl::InternalError("Error registering with signature config");
+  }
+
+  // NOTE: This is a crypto::tink::util::StatusOr, not an absl::StatusOr.
+  auto key_handle = ::crypto::tink::KeysetHandle::GenerateNew(
+      ::crypto::tink::SignatureKeyTemplates::Ed25519());
+  if (!key_handle.ok()) {
+    LOG(ERROR) << "Error generating Ed25519 key handle" << key_handle.status();
+    return key_handle.status();
+  }
+  key_handle_ = *std::move(key_handle);
   return absl::OkStatus();
 }
 

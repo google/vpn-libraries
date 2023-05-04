@@ -15,6 +15,7 @@
 #include "privacy/net/krypton/provision.h"
 
 #include <memory>
+#include <string>
 
 #include "google/protobuf/timestamp.proto.h"
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
@@ -376,6 +377,8 @@ TEST_F(ProvisionTest, Rekey) {
         rekey_done.Notify();
       });
 
+  EXPECT_CALL(notification_, ProvisioningFailure(_, _)).Times(0);
+
   provision_->Start();
 
   EXPECT_TRUE(provising_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
@@ -384,7 +387,7 @@ TEST_F(ProvisionTest, Rekey) {
                        provision_->GetTransformParams());
   auto original_ipsec_params = original_transform_params.bridge();
 
-  ASSERT_OK(provision_->Rekey());
+  provision_->Rekey();
 
   EXPECT_TRUE(rekey_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
 
@@ -450,6 +453,30 @@ TEST_F(ProvisionTest, TestEmptyAuthResponseCopperControllerHostname) {
   provision_->Start();
 
   auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
+}
+
+TEST_F(ProvisionTest, RekeyBeforeStartFails) {
+  absl::Notification failed;
+
+  EXPECT_CALL(notification_,
+              ProvisioningFailure(
+                  StatusIs(absl::StatusCode::kFailedPrecondition), false))
+      .WillOnce([&failed] { failed.Notify(); });
+
+  provision_->Rekey();
+
+  EXPECT_TRUE(failed.WaitForNotificationWithTimeout(absl::Seconds(3)));
+}
+
+TEST_F(ProvisionTest, GenerateSignatureBeforeStartFails) {
+  std::string data = "test";
+  EXPECT_THAT(provision_->GenerateSignature(data),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_F(ProvisionTest, GetTransformParamsBeforeStartFails) {
+  EXPECT_THAT(provision_->GetTransformParams(),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

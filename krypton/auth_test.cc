@@ -21,7 +21,6 @@
 #include <utility>
 
 #include "google/protobuf/duration.proto.h"
-#include "google/protobuf/timestamp.proto.h"
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/common/proto/auth_and_sign.proto.h"
@@ -42,12 +41,14 @@
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/anonymous_tokens/cpp/testing/utils.h"
 #include "third_party/anonymous_tokens/proto/anonymous_tokens.proto.h"
 #include "third_party/json/include/nlohmann/json.hpp"
+#include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -130,7 +131,7 @@ class AuthTest : public ::testing::Test {
                                    &looper_thread_);
     auth_->RegisterNotificationHandler(&auth_notification_);
 
-    crypto_ = std::make_unique<crypto::SessionCrypto>(config);
+    ASSERT_OK_AND_ASSIGN(crypto_, crypto::SessionCrypto::Create(config));
   }
 
   void TearDown() override { auth_->Stop(); }

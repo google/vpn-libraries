@@ -210,7 +210,7 @@ class Session : public DatapathInterface::NotificationInterface,
   absl::Status CreateTunnelIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void ResetAllDatapathReattempts() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  absl::Status Rekey() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void Rekey() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void RekeyDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelFetcherTimerIfRunning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelDatapathReattemptTimerIfRunning()

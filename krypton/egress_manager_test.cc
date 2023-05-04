@@ -15,6 +15,7 @@
 #include "privacy/net/krypton/egress_manager.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "privacy/net/brass/rpc/brass.proto.h"
@@ -31,6 +32,7 @@
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/notification.h"
@@ -57,12 +59,14 @@ class EgressManagerTest : public ::testing::Test {
  public:
   MockEgressManagerNotification mock_notification_;
   KryptonConfig config_;
-  crypto::SessionCrypto crypto_{config_};
+  std::unique_ptr<crypto::SessionCrypto> crypto_;
 
   void SetUp() override {
     config_.set_brass_url("http://www.example.com/addegress");
     config_.add_copper_hostname_suffix("g-tun.com");
     config_.set_api_key("testApiKey");
+
+    ASSERT_OK_AND_ASSIGN(crypto_, crypto::SessionCrypto::Create(config_));
   }
 
   absl::StatusOr<HttpRequest> BuildAddEgressRequestPpnIpSec(
@@ -87,9 +91,9 @@ class EgressManagerTest : public ::testing::Test {
       "region_token_and_signature" : ""
     })string"));
 
-    auto keys = crypto_.GetMyKeyMaterial();
+    auto keys = crypto_->GetMyKeyMaterial();
     PPN_ASSIGN_OR_RETURN(auto verification_key,
-                         crypto_.GetRekeyVerificationKey());
+                         crypto_->GetRekeyVerificationKey());
     std::string public_value_encoded;
     std::string nonce_encoded;
     std::string verification_key_encoded;
@@ -164,9 +168,9 @@ class EgressManagerTest : public ::testing::Test {
     expected[JsonKeys::kPublicMetadata] = public_metadata;
     // end public metadata specific
 
-    auto keys = crypto_.GetMyKeyMaterial();
+    auto keys = crypto_->GetMyKeyMaterial();
     PPN_ASSIGN_OR_RETURN(auto verification_key,
-                         crypto_.GetRekeyVerificationKey());
+                         crypto_->GetRekeyVerificationKey());
     std::string public_value_encoded;
     std::string nonce_encoded;
     std::string verification_key_encoded;
@@ -190,8 +194,9 @@ class EgressManagerTest : public ::testing::Test {
   }
 
   absl::StatusOr<HttpResponse> BuildAddEgressResponseForPpnIpSec() {
-    crypto::SessionCrypto server_crypto(config_);
-    auto keys = crypto_.GetMyKeyMaterial();
+    PPN_ASSIGN_OR_RETURN(auto server_crypto,
+                         crypto::SessionCrypto::Create(config_));
+    auto keys = crypto_->GetMyKeyMaterial();
     PPN_ASSIGN_OR_RETURN(auto json_body, utils::StringToJson(R"json({
       "ppn_dataplane": {
         "user_private_ip": [{
@@ -236,7 +241,7 @@ TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
   ASSERT_OK_AND_ASSIGN(
       auto request_proto,
       BuildAddEgressRequestPpnIpSec("http://www.example.com/addegress",
-                                    crypto_.downlink_spi()));
+                                    crypto_->downlink_spi()));
   ASSERT_OK_AND_ASSIGN(auto response_proto,
                        BuildAddEgressResponseForPpnIpSec());
   EXPECT_CALL(http_fetcher, PostJson(EqualsProto(request_proto)))
@@ -247,7 +252,7 @@ TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
           InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
 
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.crypto = &crypto_;
+  params.crypto = crypto_.get();
   params.control_plane_sockaddr = "192.168.0.10:1849";
   params.dataplane_protocol = KryptonConfig::IPSEC;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
@@ -277,8 +282,8 @@ TEST_F(EgressManagerTest, GetEgressNodeForPpnIpSecWithBerylliumFields) {
   ASSERT_OK_AND_ASSIGN(
       auto beryllium_request_proto,
       BuildAddEgressRequestBeryllium("http://www.example.com/addegress",
-                                     crypto_.downlink_spi()));
-  // Response should be same regardless of if request is to beryllium.
+                                     crypto_->downlink_spi()));
+  // Response should be the same regardless of if the request is to beryllium.
   ASSERT_OK_AND_ASSIGN(auto response_proto,
                        BuildAddEgressResponseForPpnIpSec());
   EXPECT_CALL(http_fetcher, PostJson(EqualsProto(beryllium_request_proto)))
@@ -289,7 +294,7 @@ TEST_F(EgressManagerTest, GetEgressNodeForPpnIpSecWithBerylliumFields) {
           InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
 
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.crypto = &crypto_;
+  params.crypto = crypto_.get();
   params.control_plane_sockaddr = "192.168.0.10:1849";
   params.dataplane_protocol = KryptonConfig::IPSEC;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;

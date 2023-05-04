@@ -26,6 +26,7 @@
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/strings/escaping.h"
+#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 
@@ -47,8 +48,8 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
 
   // Use the actual crypto utils to ensure the base64 encoded strings are sent
   // in Json requests.
-  crypto::SessionCrypto crypto(config_);
-  auto keys = crypto.GetMyKeyMaterial();
+  ASSERT_OK_AND_ASSIGN(auto crypto, crypto::SessionCrypto::Create(config_));
+  auto keys = crypto->GetMyKeyMaterial();
 
   HttpResponse response;
   response.set_json_body(R"json({})json");
@@ -56,7 +57,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
   config.add_copper_hostname_suffix("g-tun.com");
 
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.crypto = &crypto;
+  params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
@@ -72,7 +73,8 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
 
-  ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  ASSERT_OK_AND_ASSIGN(auto verification_key,
+                       crypto->GetRekeyVerificationKey());
   std::string public_value_encoded;
   std::string nonce_encoded;
   std::string verification_key_encoded;
@@ -90,7 +92,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
   EXPECT_EQ(actual["ppn"]["client_nonce"], nonce_encoded);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
             kCopperControlPlaneAddress);
-  EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
+  EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto->downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
   EXPECT_EQ(actual["ppn"]["rekey_verification_key"], verification_key_encoded);
@@ -104,8 +106,8 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
 
   // Use the actual crypto utils to ensure the base64 encoded strings are sent
   // in Json requests.
-  crypto::SessionCrypto crypto(config_);
-  auto keys = crypto.GetMyKeyMaterial();
+  ASSERT_OK_AND_ASSIGN(auto crypto, crypto::SessionCrypto::Create(config_));
+  auto keys = crypto->GetMyKeyMaterial();
 
   HttpResponse response;
   response.set_json_body(R"json({})json");
@@ -113,7 +115,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
   config.add_copper_hostname_suffix("g-tun.com");
 
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.crypto = &crypto;
+  params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
@@ -130,7 +132,8 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
 
-  ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  ASSERT_OK_AND_ASSIGN(auto verification_key,
+                       crypto->GetRekeyVerificationKey());
   std::string public_value_encoded;
   std::string nonce_encoded;
   std::string verification_key_encoded;
@@ -148,7 +151,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
   EXPECT_EQ(actual["ppn"]["client_nonce"], nonce_encoded);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
             kCopperControlPlaneAddress);
-  EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
+  EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto->downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
   EXPECT_EQ(actual["ppn"]["rekey_verification_key"], verification_key_encoded);
@@ -158,12 +161,12 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
 }
 
 TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
-  crypto::SessionCrypto crypto(config_);
-  auto keys = crypto.GetMyKeyMaterial();
+  ASSERT_OK_AND_ASSIGN(auto crypto, crypto::SessionCrypto::Create(config_));
+  auto keys = crypto->GetMyKeyMaterial();
 
   AddEgressRequest request(std::optional("apiKey"));
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.crypto = &crypto;
+  params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
@@ -176,7 +179,8 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
 
-  ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  ASSERT_OK_AND_ASSIGN(auto verification_key,
+                       crypto->GetRekeyVerificationKey());
   std::string public_value_encoded;
   std::string nonce_encoded;
   std::string verification_key_encoded;
@@ -193,7 +197,7 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
   EXPECT_EQ(actual["ppn"]["client_nonce"], nonce_encoded);
   EXPECT_EQ(actual["ppn"]["control_plane_sock_addr"],
             kCopperControlPlaneAddress);
-  EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto.downlink_spi());
+  EXPECT_EQ(actual["ppn"]["downlink_spi"], crypto->downlink_spi());
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
   EXPECT_EQ(actual["ppn"]["rekey_verification_key"], verification_key_encoded);
@@ -205,13 +209,13 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
 }
 
 TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
-  crypto::SessionCrypto crypto(config_);
-  auto keys = crypto.GetMyKeyMaterial();
+  ASSERT_OK_AND_ASSIGN(auto crypto, crypto::SessionCrypto::Create(config_));
+  auto keys = crypto->GetMyKeyMaterial();
 
   AddEgressRequest request(std::optional("apiKey"),
                            AddEgressRequest::RequestDestination::kBeryllium);
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.crypto = &crypto;
+  params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
@@ -226,7 +230,8 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   params.debug_mode = privacy::ppn::PublicMetadata::UNSPECIFIED_DEBUG_MODE;
   auto http_request = request.EncodeToProtoForPpn(params);
 
-  ASSERT_OK_AND_ASSIGN(auto verification_key, crypto.GetRekeyVerificationKey());
+  ASSERT_OK_AND_ASSIGN(auto verification_key,
+                       crypto->GetRekeyVerificationKey());
   std::string public_value_encoded;
   std::string nonce_encoded;
   std::string verification_key_encoded;
@@ -251,7 +256,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   EXPECT_EQ(ppn["client_public_value"], public_value_encoded);
   EXPECT_EQ(ppn["client_nonce"], nonce_encoded);
   EXPECT_EQ(ppn["control_plane_sock_addr"], kCopperControlPlaneAddress);
-  EXPECT_EQ(ppn["downlink_spi"], crypto.downlink_spi());
+  EXPECT_EQ(ppn["downlink_spi"], crypto->downlink_spi());
   EXPECT_EQ(ppn["suite"], "AES128_GCM");
   EXPECT_EQ(ppn["dataplane_protocol"], "BRIDGE");
   EXPECT_EQ(ppn["rekey_verification_key"], verification_key_encoded);

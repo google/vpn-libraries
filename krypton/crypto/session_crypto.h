@@ -40,8 +40,14 @@ namespace crypto {
 // This is not thread safe.
 class SessionCrypto {
  public:
-  explicit SessionCrypto(const KryptonConfig& config);
+  static absl::StatusOr<std::unique_ptr<SessionCrypto>> Create(
+      const KryptonConfig& config);
+
   ~SessionCrypto() = default;
+
+  SessionCrypto(const SessionCrypto&) = delete;
+
+  SessionCrypto(SessionCrypto&&) = delete;
 
   struct KeyMaterial {
     std::string public_value;
@@ -90,6 +96,10 @@ class SessionCrypto {
   }
 
  private:
+  explicit SessionCrypto(const KryptonConfig& config);
+
+  absl::Status Init();
+
   absl::StatusOr<TransformParams> ComputeIpSecKeyMaterial();
   absl::StatusOr<TransformParams> ComputeBridgeKeyMaterial();
   // Shared key for the session. Returns failure if the |SetRemotePublicValue|

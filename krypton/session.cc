@@ -377,12 +377,13 @@ void Session::RekeyDatapath() {
   number_of_rekeys_.fetch_add(1);
 }
 
-absl::Status Session::Rekey() {
+void Session::Rekey() {
   if (state_ != State::kConnected) {
-    return absl::FailedPreconditionError(
-        "Session is not in connected state for rekey");
+    SetState(State::kSessionError,
+             absl::FailedPreconditionError(
+                 "Session is not in connected state for rekey"));
   }
-  return provision_->Rekey();
+  provision_->Rekey();
 }
 
 void Session::StartDatapath() {
@@ -474,12 +475,7 @@ void Session::FetchCounters() {
            ? absl::Seconds(config_.rekey_duration().seconds())
            : kDefaultRekeyDuration)) {
     LOG(INFO) << "Starting Rekey procedures";
-    auto status = Rekey();
-    if (!status.ok()) {
-      LOG(INFO) << "Rekey status " << status;
-      SetState(State::kSessionError, status);
-      return;
-    }
+    Rekey();
   }
   StartFetchCountersTimer();
 }
@@ -716,11 +712,7 @@ void Session::GetDebugInfo(SessionDebugInfo* debug_info) {
 
 void Session::DoRekey() {
   absl::MutexLock l(&mutex_);
-  auto status = Rekey();
-  if (!status.ok()) {
-    LOG(ERROR) << "Rekey procedure failed";
-    SetState(State::kSessionError, status);
-  }
+  Rekey();
 }
 
 void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
