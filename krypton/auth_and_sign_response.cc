@@ -38,10 +38,12 @@
 namespace privacy {
 namespace krypton {
 
-absl::Status AuthAndSignResponse::DecodeFromProto(const HttpResponse& response,
-                                                  const KryptonConfig& config) {
+absl::Status AuthAndSignResponse::DecodeFromProto(
+    const HttpResponse& response, const KryptonConfig& config,
+    const bool enforce_copper_suffix) {
   if (response.has_proto_body()) {
-    parsing_status_ = DecodeProtoBody(response.proto_body(), config);
+    parsing_status_ =
+        DecodeProtoBody(response.proto_body(), config, enforce_copper_suffix);
     if (!parsing_status_.ok()) {
       LOG(ERROR) << "Unable to parse proto body: " << parsing_status_;
       return parsing_status_;
@@ -60,7 +62,7 @@ absl::Status AuthAndSignResponse::DecodeFromProto(const HttpResponse& response,
     return parsing_status_;
   }
 
-  parsing_status_ = DecodeJsonBody(*body_root, config);
+  parsing_status_ = DecodeJsonBody(*body_root, config, enforce_copper_suffix);
   if (!parsing_status_.ok()) {
     LOG(ERROR) << parsing_status_;
     return parsing_status_;
@@ -69,8 +71,36 @@ absl::Status AuthAndSignResponse::DecodeFromProto(const HttpResponse& response,
   return parsing_status_ = absl::OkStatus();
 }
 
-absl::Status AuthAndSignResponse::DecodeProtoBody(absl::string_view bytes,
-                                                  const KryptonConfig& config) {
+absl::Status AuthAndSignResponse::SetCopperHostname(
+    const std::string& hostname, const KryptonConfig& config,
+    const bool enforce_copper_suffix) {
+  if (hostname.empty()) {
+    return absl::OkStatus();
+  }
+  if (enforce_copper_suffix) {
+    bool matched = false;
+    // If zinc provides a hostname,
+    // we check whether it fits any suffix in the copper_hostname_suffix list;
+    // there's no empty suffix in the copper_hostname_suffix list.
+    for (const auto& suffix : config.copper_hostname_suffix()) {
+      if (absl::EndsWith(hostname, suffix)) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "copper_controller_hostname doesn't have allowed suffix: ",
+          hostname));
+    }
+  }
+  copper_controller_hostname_ = hostname;
+  return absl::OkStatus();
+}
+
+absl::Status AuthAndSignResponse::DecodeProtoBody(
+    absl::string_view bytes, const KryptonConfig& config,
+    const bool enforce_copper_suffix) {
   ppn::AuthAndSignResponse response;
   if (!response.ParseFromString(bytes)) {
     return absl::InvalidArgumentError("Cannot parse response proto");
@@ -79,27 +109,6 @@ absl::Status AuthAndSignResponse::DecodeProtoBody(absl::string_view bytes,
   blinded_token_signatures_.clear();
   for (const auto& signature : response.blinded_token_signature()) {
     blinded_token_signatures_.push_back(signature);
-  }
-
-  const std::string hostname = response.copper_controller_hostname();
-  if (!hostname.empty()) {
-    bool matched = false;
-    // If zinc provides a hostname,
-    // we check whether it fits any suffix in the copper_hostname_suffix list;
-    // there's no empty suffix in the copper_hostname_suffix list.
-    for (const auto& suffix : config.copper_hostname_suffix()) {
-      if (absl::EndsWith(hostname, suffix)) {
-        copper_controller_hostname_ = hostname;
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) {
-      // TODO: investigate making AuthAndSignResponse reusable.
-      return absl::InvalidArgumentError(absl::StrCat(
-          "copper_controller_hostname doesn't have allowed suffix: ",
-          hostname));
-    }
   }
 
   region_token_and_signatures_ = response.region_token_and_signature();
@@ -111,11 +120,13 @@ absl::Status AuthAndSignResponse::DecodeProtoBody(absl::string_view bytes,
     }
   }
 
-  return absl::OkStatus();
+  const std::string& hostname = response.copper_controller_hostname();
+  return SetCopperHostname(hostname, config, enforce_copper_suffix);
 }
 
-absl::Status AuthAndSignResponse::DecodeJsonBody(nlohmann::json value,
-                                                 const KryptonConfig& config) {
+absl::Status AuthAndSignResponse::DecodeJsonBody(
+    nlohmann::json value, const KryptonConfig& config,
+    const bool enforce_copper_suffix) {
   if (!value.is_object()) {
     return absl::InvalidArgumentError("JSON body is not of type JSON object");
   }
@@ -144,34 +155,6 @@ absl::Status AuthAndSignResponse::DecodeJsonBody(nlohmann::json value,
     }
   }
 
-  if (value.contains(JsonKeys::kCopperControllerHostname)) {
-    auto hostname_string = value[JsonKeys::kCopperControllerHostname];
-    if (!hostname_string.is_string()) {
-      return absl::InvalidArgumentError(
-          "copper_controller_hostname is not a string");
-    }
-    const std::string hostname = hostname_string;
-    if (!hostname.empty()) {
-      bool matched = false;
-      // If zinc provides a hostname,
-      // we check whether it fits any suffix in the copper_hostname_suffix list;
-      // there's no empty suffix in the copper_hostname_suffix list.
-      for (const auto& suffix : config.copper_hostname_suffix()) {
-        if (absl::EndsWith(hostname, suffix)) {
-          copper_controller_hostname_ = hostname;
-          matched = true;
-          break;
-        }
-      }
-      if (!matched) {
-        // TODO: investigate making AuthAndSignResponse reusable.
-        return absl::InvalidArgumentError(absl::StrCat(
-            "copper_controller_hostname doesn't have allowed suffix: ",
-            hostname));
-      }
-    }
-  }
-
   if (value.contains(JsonKeys::kRegionTokenAndSignature)) {
     auto region_token_and_sig = value[JsonKeys::kRegionTokenAndSignature];
     if (!region_token_and_sig.is_string()) {
@@ -191,6 +174,18 @@ absl::Status AuthAndSignResponse::DecodeJsonBody(nlohmann::json value,
     }
     apn_type_ = type;
   }
+
+  if (value.contains(JsonKeys::kCopperControllerHostname)) {
+    auto hostname_string = value[JsonKeys::kCopperControllerHostname];
+    if (!hostname_string.is_string()) {
+      return absl::InvalidArgumentError(
+          "copper_controller_hostname is not a string");
+    }
+    const std::string hostname = hostname_string;
+    PPN_RETURN_IF_ERROR(
+        SetCopperHostname(hostname, config, enforce_copper_suffix));
+  }
+
   return absl::OkStatus();
 }
 

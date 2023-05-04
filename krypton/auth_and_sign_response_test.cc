@@ -165,7 +165,7 @@ TEST(AuthAndSignResponse, TestAuthParameter) {
   KryptonConfig config;
   config.add_copper_hostname_suffix("g-tun.com");
   ASSERT_OK_AND_ASSIGN(auto auth_response,
-                       AuthAndSignResponse::FromProto(proto, config));
+                       AuthAndSignResponse::FromProto(proto, config, true));
   EXPECT_THAT(auth_response.blinded_token_signatures(),
               testing::ElementsAre("foo"));
 }
@@ -179,7 +179,7 @@ TEST(AuthAndSignResponse, TestAllParametersFromGolden) {
   KryptonConfig config{};
   config.add_copper_hostname_suffix("g-tun.com");
   ASSERT_OK_AND_ASSIGN(auto auth_response,
-                       AuthAndSignResponse::FromProto(proto, config));
+                       AuthAndSignResponse::FromProto(proto, config, true));
   EXPECT_EQ(auth_response.copper_controller_hostname(), "test.b.g-tun.com");
   EXPECT_EQ(auth_response.region_token_and_signatures(), "US123.sig");
   EXPECT_EQ(auth_response.apn_type(), "ppn");
@@ -196,7 +196,7 @@ TEST(AuthAndSignResponse, TestEmptyHostname) {
   KryptonConfig config{};
   config.add_copper_hostname_suffix("g-tun.com");
   ASSERT_OK_AND_ASSIGN(auto auth_response,
-                       AuthAndSignResponse::FromProto(proto, config));
+                       AuthAndSignResponse::FromProto(proto, config, true));
   EXPECT_EQ(auth_response.copper_controller_hostname(), "");
 }
 
@@ -209,7 +209,7 @@ TEST(AuthAndSignResponse, TestWrongTypeHostname) {
 
   KryptonConfig config{};
   config.add_copper_hostname_suffix("g-tun.com");
-  EXPECT_THAT(AuthAndSignResponse::FromProto(proto, config),
+  EXPECT_THAT(AuthAndSignResponse::FromProto(proto, config, true),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        "copper_controller_hostname is not a string"));
 }
@@ -223,7 +223,7 @@ TEST(AuthAndSignResponse, TestWrongTypeRegionTokenAndSig) {
 
   KryptonConfig config{};
   config.add_copper_hostname_suffix("g-tun.com");
-  EXPECT_THAT(AuthAndSignResponse::FromProto(proto, config),
+  EXPECT_THAT(AuthAndSignResponse::FromProto(proto, config, true),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        "region_token_and_sig is not a string"));
 }
@@ -237,7 +237,7 @@ TEST(AuthAndSignResponse, TestWrongTypeAPNType) {
   KryptonConfig config{};
   config.add_copper_hostname_suffix("g-tun.com");
   EXPECT_THAT(
-      AuthAndSignResponse::FromProto(proto, config),
+      AuthAndSignResponse::FromProto(proto, config, true),
       StatusIs(absl::StatusCode::kInvalidArgument, "apn_type is not a string"));
 }
 
@@ -250,7 +250,7 @@ TEST(AuthAndSignResponse, TestWrongAPNType) {
   KryptonConfig config{};
   config.add_copper_hostname_suffix("g-tun.com");
   EXPECT_THAT(
-      AuthAndSignResponse::FromProto(proto, config),
+      AuthAndSignResponse::FromProto(proto, config, true),
       StatusIs(absl::StatusCode::kInvalidArgument, "unexpected apn_type"));
 }
 
@@ -263,7 +263,7 @@ TEST(AuthAndSignResponse, TestEmptyZincResponse) {
   KryptonConfig config{};
   config.add_copper_hostname_suffix("g-tun.com");
   ASSERT_OK_AND_ASSIGN(auto auth_response,
-                       AuthAndSignResponse::FromProto(proto, config));
+                       AuthAndSignResponse::FromProto(proto, config, true));
   EXPECT_EQ(auth_response.copper_controller_hostname(), "");
   EXPECT_EQ(auth_response.region_token_and_signatures(), "");
   EXPECT_EQ(auth_response.apn_type(), "");
@@ -278,8 +278,36 @@ TEST(AuthAndSignResponse, TestEmptySuffixList) {
 
   KryptonConfig config{};
   EXPECT_THAT(
-      AuthAndSignResponse::FromProto(proto, config),
+      AuthAndSignResponse::FromProto(proto, config, true),
       StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("suffix")));
+}
+
+TEST(AuthAndSignResponse, TestSuffixMismatch) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(
+      R"string({"copper_controller_hostname":"123.45.67.89"})string");
+
+  KryptonConfig config{};
+  config.add_copper_hostname_suffix("g-tun.com");
+  EXPECT_THAT(
+      AuthAndSignResponse::FromProto(proto, config, true),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("suffix")));
+}
+
+TEST(AuthAndSignResponse, TestSkipSuffixCheck) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(
+      R"string({"copper_controller_hostname":"123.45.67.89"})string");
+
+  KryptonConfig config{};
+  config.add_copper_hostname_suffix("g-tun.com");
+  ASSERT_OK_AND_ASSIGN(auto auth_response,
+                       AuthAndSignResponse::FromProto(proto, config, false));
+  EXPECT_EQ(auth_response.copper_controller_hostname(), "123.45.67.89");
 }
 
 TEST(AuthAndSignResponse, TestSuffixListMultipleElements) {
@@ -293,7 +321,7 @@ TEST(AuthAndSignResponse, TestSuffixListMultipleElements) {
   config.add_copper_hostname_suffix("g-tun.com");
   config.add_copper_hostname_suffix("ppn-test");
   ASSERT_OK_AND_ASSIGN(auto auth_response,
-                       AuthAndSignResponse::FromProto(proto, config));
+                       AuthAndSignResponse::FromProto(proto, config, true));
   EXPECT_EQ(auth_response.copper_controller_hostname(), "na.ppn-test");
 }
 
@@ -304,7 +332,7 @@ TEST(AuthAndSignResponse, TestMalformedJsonBody) {
   proto.set_json_body("{}}");
 
   KryptonConfig config{};
-  EXPECT_THAT(AuthAndSignResponse::FromProto(proto, config),
+  EXPECT_THAT(AuthAndSignResponse::FromProto(proto, config, true),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Error parsing json body")));
 }

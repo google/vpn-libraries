@@ -168,8 +168,12 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
     return;
   }
 
-  auto auth_and_sign_response =
-      AuthAndSignResponse::FromProto(http_response, config_);
+  bool enforce_copper_suffix = get_initial_data_response_.public_metadata_info()
+                                .public_metadata()
+                                .debug_mode() != ppn::PublicMetadata::DEBUG_ALL;
+
+  auto auth_and_sign_response = AuthAndSignResponse::FromProto(
+      http_response, config_, enforce_copper_suffix);
 
   if (!auth_and_sign_response.ok()) {
     SetState(State::kUnauthenticated);

@@ -409,7 +409,7 @@ TEST_F(ProvisionTest, TestAuthResponseCopperControllerHostname) {
   proto.set_json_body(
       R"string({"copper_controller_hostname":"eu.b.g-tun.com"})string");
   ASSERT_OK_AND_ASSIGN(auto fake_auth_and_sign_response,
-                       AuthAndSignResponse::FromProto(proto, config_));
+                       AuthAndSignResponse::FromProto(proto, config_, true));
   EXPECT_EQ(fake_auth_and_sign_response.copper_controller_hostname(),
             "eu.b.g-tun.com");
   absl::Notification auth_done;
@@ -434,7 +434,7 @@ TEST_F(ProvisionTest, TestEmptyAuthResponseCopperControllerHostname) {
   proto.mutable_status()->set_message("OK");
   proto.set_json_body(R"string({"copper_controller_hostname":""})string");
   ASSERT_OK_AND_ASSIGN(auto fake_auth_and_sign_response,
-                       AuthAndSignResponse::FromProto(proto, config_));
+                       AuthAndSignResponse::FromProto(proto, config_, true));
   EXPECT_EQ(fake_auth_and_sign_response.copper_controller_hostname(), "");
   absl::Notification auth_done;
   EXPECT_CALL(auth_, Start).WillOnce(::testing::Invoke([&]() {

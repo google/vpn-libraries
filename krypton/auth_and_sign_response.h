@@ -66,9 +66,11 @@ absl::StatusOr<ppn::GetInitialDataResponse> DecodeGetInitialDataResponse(
 class AuthAndSignResponse {
  public:
   static absl::StatusOr<AuthAndSignResponse> FromProto(
-      const HttpResponse& http_response, const KryptonConfig& config) {
+      const HttpResponse& http_response, const KryptonConfig& config,
+      const bool enforce_copper_suffix) {
     AuthAndSignResponse response;
-    PPN_RETURN_IF_ERROR(response.DecodeFromProto(http_response, config));
+    PPN_RETURN_IF_ERROR(
+        response.DecodeFromProto(http_response, config, enforce_copper_suffix));
     return response;
   }
 
@@ -89,15 +91,22 @@ class AuthAndSignResponse {
  private:
   // Decodes the proto to AuthAndSignResponse.
   absl::Status DecodeFromProto(const HttpResponse& response,
-                               const KryptonConfig& config);
+                               const KryptonConfig& config,
+                               bool enforce_copper_suffix);
 
   // Decode Auth specific parameters
-  absl::Status DecodeJsonBody(nlohmann::json value,
-                              const KryptonConfig& config);
+  absl::Status DecodeJsonBody(nlohmann::json value, const KryptonConfig& config,
+                              bool enforce_copper_suffix);
 
   // Decode from AuthAndSignResponse proto;
   absl::Status DecodeProtoBody(absl::string_view bytes,
-                               const KryptonConfig& config);
+                               const KryptonConfig& config,
+                               bool enforce_copper_suffix);
+
+  // Validates and sets the hostname.
+  absl::Status SetCopperHostname(const std::string& hostname,
+                                 const KryptonConfig& config,
+                                 bool enforce_copper_suffix);
 
   std::string copper_controller_hostname_;
   std::string region_token_and_signatures_;
