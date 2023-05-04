@@ -31,7 +31,6 @@ import android.net.VpnService;
 import android.os.Looper;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.work.testing.WorkManagerTestInitHelper;
-import com.google.android.flib.robolectric.shadows.ShadowGoogleAuthUtil;
 import com.google.android.gms.auth.GoogleAuthUtil;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
@@ -68,9 +67,7 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
-import org.robolectric.annotation.Config;
 
-@Config(shadows = {ShadowGoogleAuthUtil.class})
 @RunWith(RobolectricTestRunner.class)
 public class PpnImplTest {
   private static final String TEST_ACCOUNT_NAME = "test@example.com";
@@ -91,7 +88,6 @@ public class PpnImplTest {
   public void setUp() {
     account = new Account(TEST_ACCOUNT_NAME, GoogleAuthUtil.GOOGLE_ACCOUNT_TYPE);
     service = Robolectric.setupService(VpnService.class);
-    ShadowGoogleAuthUtil.setAvailableGoogleAccounts(TEST_ACCOUNT_NAME);
     PpnLibrary.clear();
 
     WorkManagerTestInitHelper.initializeTestWorkManager(
@@ -99,7 +95,7 @@ public class PpnImplTest {
   }
 
   private PpnImpl createPpn() {
-    return createPpn(new PpnOptions.Builder().build());
+    return createPpn(new PpnOptions.Builder().setAccountManager(mockAccountManager).build());
   }
 
   private PpnImpl createPpn(PpnOptions options) {
@@ -189,6 +185,9 @@ public class PpnImplTest {
 
   @Test
   public void onPpnStarted_looksUpAccountWhenNotCached() throws Exception {
+    Account accountCopy = new Account(TEST_ACCOUNT_NAME, GoogleAuthUtil.GOOGLE_ACCOUNT_TYPE);
+    doReturn(accountCopy).when(mockAccountManager).getAccount(any(), any());
+
     PpnImpl ppn = createPpn();
 
     // Enable PPN to set the account.
