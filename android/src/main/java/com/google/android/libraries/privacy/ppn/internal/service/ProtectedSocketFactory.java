@@ -16,6 +16,7 @@ package com.google.android.libraries.privacy.ppn.internal.service;
 
 import android.util.Log;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -64,6 +65,7 @@ public class ProtectedSocketFactory extends SocketFactory {
    * Convenience method to protect a socket (if the VPN is running), bind the socket (if a network
    * has been set), and return it.
    */
+  @CanIgnoreReturnValue
   private Socket protect(Socket socket) {
     vpnManager.protect(socket);
 

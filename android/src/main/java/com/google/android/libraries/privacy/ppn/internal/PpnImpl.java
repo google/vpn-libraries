@@ -402,7 +402,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   }
 
   @Override
-  public void start(Account account) throws PpnException {
+  public void start(Account account) {
     Log.w(TAG, "PPN status: " + getDebugJson());
     accountCache.setAccount(account);
     // Snapshot the disallowed applications, so that it only changes when PPN is restarted.
@@ -673,7 +673,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     notificationManager.setNotification(context, notificationId, notification);
   }
 
-  private void startVpn() throws PpnException {
+  private void startVpn() {
     Intent intent = new Intent(VpnService.SERVICE_INTERFACE);
     intent.setPackage(context.getApplicationContext().getPackageName());
 
@@ -958,7 +958,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
   private static void ensureBackgroundThread() {
     if (Looper.getMainLooper().isCurrentThread()) {
-      throw new RuntimeException("Must not be called on the main thread.");
+      throw new IllegalStateException("Must not be called on the main thread.");
     }
   }
 }

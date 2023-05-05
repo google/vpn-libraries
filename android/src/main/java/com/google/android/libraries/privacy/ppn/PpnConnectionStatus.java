@@ -14,16 +14,14 @@
 
 package com.google.android.libraries.privacy.ppn;
 
+import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toMap;
 
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
-import java.util.Arrays;
 import java.util.Map;
 
-/**
- * Status of a PpnConnection.
- */
+/** Status of a PpnConnection. */
 public final class PpnConnectionStatus {
   /*
    * Internally, we represent the connection status as a ConnectionStatus proto. This class wraps
@@ -48,7 +46,7 @@ public final class PpnConnectionStatus {
     }
 
     private static final Map<NetworkType, PpnNetworkType> protoToEnum =
-        Arrays.stream(values()).collect(toMap(PpnNetworkType::protoValue, e -> e));
+        stream(values()).collect(toMap(PpnNetworkType::protoValue, e -> e));
 
     static PpnNetworkType fromProtoValue(NetworkType value) throws PpnException {
       PpnNetworkType type = protoToEnum.get(value);
@@ -76,7 +74,7 @@ public final class PpnConnectionStatus {
     }
 
     private static final Map<ConnectionStatus.Security, Security> protoToEnum =
-        Arrays.stream(values()).collect(toMap(Security::protoValue, e -> e));
+        stream(values()).collect(toMap(Security::protoValue, e -> e));
 
     static Security fromProtoValue(ConnectionStatus.Security value) throws PpnException {
       Security security = protoToEnum.get(value);
@@ -110,7 +108,7 @@ public final class PpnConnectionStatus {
     }
 
     private static final Map<ConnectionStatus.ConnectionQuality, ConnectionQuality> protoToEnum =
-        Arrays.stream(values()).collect(toMap(ConnectionQuality::protoValue, e -> e));
+        stream(values()).collect(toMap(ConnectionQuality::protoValue, e -> e));
 
     static ConnectionQuality fromProtoValue(ConnectionStatus.ConnectionQuality value)
         throws PpnException {

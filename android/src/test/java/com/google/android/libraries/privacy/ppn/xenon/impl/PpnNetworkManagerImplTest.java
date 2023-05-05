@@ -109,7 +109,7 @@ public final class PpnNetworkManagerImplTest {
 
     wifiAndroidNetwork = ShadowNetwork.newInstance(/* netId= */ 1);
     cellAndroidNetwork = ShadowNetwork.newInstance(/* netId= */ 2);
- 
+
     context = ApplicationProvider.getApplicationContext();
     shadowConnectivityManager =
         shadowOf((ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE));

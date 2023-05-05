@@ -18,8 +18,8 @@ import androidx.annotation.IntDef;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.math.BigInteger;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 
@@ -84,7 +84,7 @@ public class IpRange {
   List<Cidr> toCidrs() {
     List<Cidr> res = new ArrayList<>();
     // Queue of CIDRs.
-    Queue<Cidr> q = new LinkedList<>();
+    Queue<Cidr> q = new ArrayDeque<>();
     q.add(new Cidr(BigInteger.ZERO, numBits, 0));
     while (!q.isEmpty()) {
       Cidr cidr = q.poll();

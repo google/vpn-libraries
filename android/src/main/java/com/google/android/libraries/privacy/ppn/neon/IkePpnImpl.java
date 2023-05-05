@@ -124,14 +124,7 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
           };
     }
 
-    // TODO: Either change the factory to throw or refactor this to not throw here.
-    Provision p = null;
-    try {
-      p = new Provision(options, httpFetcher, tokenProvider, this);
-    } catch (PpnException e) {
-      Log.e(TAG, "Unable to create provision.", e);
-    }
-    provision = p;
+    provision = new Provision(options, httpFetcher, tokenProvider, this);
   }
 
   private String getOAuthToken() throws PpnException {

@@ -14,6 +14,8 @@
 
 package com.google.android.libraries.privacy.ppn.internal;
 
+import static java.util.stream.Collectors.toList;
+
 import android.util.Log;
 import androidx.annotation.Nullable;
 import com.google.android.libraries.privacy.ppn.PpnTelemetry;
@@ -24,7 +26,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 /** Singleton responsible for tracking telemetry data about how well PPN is running. */
 class PpnTelemetryManager {
@@ -158,7 +159,7 @@ class PpnTelemetryManager {
   }
 
   private static List<Duration> convertDurationList(List<com.google.protobuf.Duration> list) {
-    return list.stream().map(PpnTelemetryManager::convertDuration).collect(Collectors.toList());
+    return list.stream().map(PpnTelemetryManager::convertDuration).collect(toList());
   }
 
   private static Duration convertDuration(com.google.protobuf.Duration duration) {

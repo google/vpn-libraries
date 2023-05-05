@@ -243,7 +243,7 @@ public class HttpFetcherTest {
     // Override the DNS provider with one that will hang forever.
     FutureTask<Void> future = new FutureTask<>(() -> null);
     Dns hangingDns =
-        ((hostname) -> {
+        (hostname) -> {
           try {
             future.get();
           } catch (InterruptedException e) {
@@ -252,7 +252,7 @@ public class HttpFetcherTest {
             throw new RuntimeException(e);
           }
           return Dns.SYSTEM.lookup(hostname);
-        });
+        };
     ExecutorService executorService = Executors.newSingleThreadExecutor();
     // Don't wait very long before using the cache, if available.
     Duration cacheTimeout = Duration.ofMillis(10);
@@ -278,7 +278,7 @@ public class HttpFetcherTest {
     // Override the DNS provider with one that will hang forever.
     FutureTask<Void> future = new FutureTask<>(() -> null);
     Dns hangingDns =
-        ((hostname) -> {
+        (hostname) -> {
           try {
             future.get();
           } catch (InterruptedException e) {
@@ -287,7 +287,7 @@ public class HttpFetcherTest {
             throw new RuntimeException(e);
           }
           return Dns.SYSTEM.lookup(hostname);
-        });
+        };
     ExecutorService executorService = Executors.newSingleThreadExecutor();
     // Don't wait very long before using the cache, if available.
     Duration cacheTimeout = Duration.ofMillis(10);

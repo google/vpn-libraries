@@ -27,7 +27,6 @@ import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkSelector;
 import com.google.common.collect.ImmutableList;
-import java.util.List;
 import org.joda.time.DateTimeUtils;
 import org.junit.Before;
 import org.junit.Rule;
@@ -68,7 +67,7 @@ public final class PpnNetworkSelectorImplTest {
 
   @Test
   public void testGetBestNetwork_defaultStrategy() throws Exception {
-    List<PpnNetwork> availableNetworks =
+    ImmutableList<PpnNetwork> availableNetworks =
         ImmutableList.of(
             new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 1), NetworkType.CELLULAR),
             new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 2), NetworkType.WIFI));
@@ -81,7 +80,7 @@ public final class PpnNetworkSelectorImplTest {
 
   @Test
   public void testGetBestNetwork_defaultStrategy_ties() throws Exception {
-    List<PpnNetwork> availableNetworks =
+    ImmutableList<PpnNetwork> availableNetworks =
         ImmutableList.of(
             new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 1), NetworkType.WIFI),
             new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 2), NetworkType.WIFI));
@@ -109,7 +108,7 @@ public final class PpnNetworkSelectorImplTest {
     PpnNetwork wifiNetwork5 =
         new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 5), NetworkType.WIFI);
 
-    List<PpnNetwork> availableNetworks =
+    ImmutableList<PpnNetwork> availableNetworks =
         ImmutableList.of(cellNetwork1, cellNetwork2, cellNetwork3, wifiNetwork4, wifiNetwork5);
 
     PpnNetwork bestNetwork = ppnNetworkSelector.getBestNetwork(availableNetworks);

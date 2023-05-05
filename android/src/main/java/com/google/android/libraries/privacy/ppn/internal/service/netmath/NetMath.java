@@ -132,7 +132,8 @@ public final class NetMath {
       throw new IllegalArgumentException(
           String.format(
               "Unable to create InetAddress from %s, which should never happen",
-              Arrays.toString(to)));
+              Arrays.toString(to)),
+          e);
     }
   }
 

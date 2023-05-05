@@ -14,8 +14,6 @@
 
 package com.google.android.libraries.privacy.ppn.xenon.impl;
 
-import static java.util.stream.Collectors.toList;
-
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
@@ -45,6 +43,7 @@ import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener.NetworkUnavailableReason;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkManager;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkSelector;
+import com.google.common.collect.ImmutableList;
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.Inet4Address;
@@ -145,7 +144,7 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
   @Override
   public List<PpnNetwork> getAllNetworks() {
     synchronized (lock) {
-      return availableNetworks.stream().collect(toList());
+      return ImmutableList.copyOf(availableNetworks);
     }
   }
 
@@ -421,6 +420,14 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
     }
   }
 
+  private static boolean isGlobalAddress(InetAddress address) {
+    return !(address.isLoopbackAddress()
+        || address.isMulticastAddress()
+        || address.isAnyLocalAddress()
+        || (address instanceof Inet6Address && address.isLinkLocalAddress())
+        || (address instanceof Inet6Address && address.isSiteLocalAddress()));
+  }
+
   /**
    * Checks if the provided PpnNetwork is a pending Network. If it is, verify if the network has
    * connectivity. If so, remove it from pending and add it to our available network map.
@@ -430,14 +437,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
   private Task<Boolean> evaluatePendingNetworkConnectivityAsync(PpnNetwork ppnNetwork) {
     return evaluatePendingNetworkConnectivityAsync(
         ppnNetwork, ppnOptions.getConnectivityCheckMaxRetries());
-  }
-
-  private static boolean isGlobalAddress(InetAddress address) {
-    return !(address.isLoopbackAddress()
-        || address.isMulticastAddress()
-        || address.isAnyLocalAddress()
-        || (address instanceof Inet6Address && address.isLinkLocalAddress())
-        || (address instanceof Inet6Address && address.isSiteLocalAddress()));
   }
 
   /**
@@ -927,7 +926,7 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
   @VisibleForTesting
   List<PpnNetwork> getPendingNetworks() {
     synchronized (lock) {
-      return pendingNetworks.stream().collect(toList());
+      return ImmutableList.copyOf(pendingNetworks);
     }
   }
 

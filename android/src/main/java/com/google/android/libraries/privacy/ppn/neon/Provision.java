@@ -63,8 +63,7 @@ class Provision {
       PpnOptions options,
       HttpFetcher httpFetcher,
       OAuthTokenProvider tokenProvider,
-      Listener listener)
-      throws PpnException {
+      Listener listener) {
     this.config = createKryptonConfig(options);
     this.httpFetcher = httpFetcher;
     this.tokenProvider = tokenProvider;

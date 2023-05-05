@@ -100,7 +100,8 @@ public class Cidr {
     try {
       ia = InetAddress.getByName(parsedCidr.first);
     } catch (UnknownHostException e) {
-      throw new IllegalArgumentException(String.format("Invalid IP address %s", parsedCidr.first));
+      throw new IllegalArgumentException(
+          String.format("Invalid IP address %s", parsedCidr.first), e);
     }
     return new Cidr(ia, parsedCidr.second);
   }

@@ -136,7 +136,7 @@ public class HttpFetcher {
   /**
    * Builds the GET request based on the parameters that is used for checkGet.
    *
-   * @throws JSONException if any JSON Strings are maltformed.
+   * @throws JSONException if any JSON Strings are malformed.
    */
   static Request buildCheckGetRequest(String url) throws JSONException {
     HttpRequest proto = HttpRequest.newBuilder().setUrl(url).build();
@@ -148,8 +148,7 @@ public class HttpFetcher {
     return reqBuilder.build();
   }
 
-  private static Request.Builder getGenericRequestBuilder(HttpRequest request)
-      throws JSONException {
+  private static Request.Builder getGenericRequestBuilder(HttpRequest request) {
     Request.Builder reqBuilder = new Request.Builder();
 
     reqBuilder.url(request.getUrl());
@@ -346,7 +345,9 @@ public class HttpFetcher {
               return;
             }
 
-            if (PROTO_CONTENT_TYPE.equals(response.header("Content-Type"))) {
+            // Response with missing Content-Type header will be treated as JSON
+            String header = response.header("Content-Type");
+            if (header != null && header.equals(PROTO_CONTENT_TYPE)) {
               try {
                 ByteString bytes = ByteString.readFrom(response.body().byteStream());
                 responseBuilder.setProtoBody(bytes);
