@@ -17,10 +17,8 @@
 
 #include <atomic>
 #include <cstdint>
-#include <memory>
 #include <optional>
 
-#include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
@@ -30,7 +28,6 @@
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/tunnel_manager_interface.h"
 #include "privacy/net/krypton/utils/looper.h"
-#include "third_party/absl/base/call_once.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/synchronization/mutex.h"
@@ -107,12 +104,6 @@ class Reconnector : public Session::NotificationInterface {
       ABSL_LOCKS_EXCLUDED(mutex_) override;
   void PermanentFailure(const absl::Status& disconnect_status)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
-  void StatusUpdated() ABSL_LOCKS_EXCLUDED(mutex_) override {
-    // TODO: Currently, this status is ignored, and we don't have the
-    // data available to fill it in properly, so just use an empty one.
-    ConnectionStatus status;
-    notification_->StatusUpdated(status);
-  }
 
   State state() const {
     absl::MutexLock l(&mutex_);

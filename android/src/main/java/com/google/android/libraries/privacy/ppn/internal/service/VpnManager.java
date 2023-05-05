@@ -199,7 +199,6 @@ public class VpnManager {
     }
 
     for (TunFdData.IpRange ipRange : tunFdData.getTunnelIpAddressesList()) {
-      // TODO: Don't enable IPv6 until it's working.
       if (ipRange.getIpFamily() == IpFamily.IPV6 && !ipv6Enabled) {
         Log.w(TAG, "Skipping IPv6 tunnel address: " + ipRange.getIpRange());
         continue;

@@ -81,8 +81,6 @@ class IpSecDatapath : public DatapathInterface,
   ~IpSecDatapath() override;
 
   // Initialize the Ipsec data path.
-  // TODO: Remove AddEgressResponse and Bridge specific stuff from
-  // Start method.
   absl::Status Start(const AddEgressResponse& egress_response,
                      const TransformParams& params) override
       ABSL_LOCKS_EXCLUDED(mutex_);

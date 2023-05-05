@@ -16,15 +16,10 @@
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_TEST_UTILS_H_
 
 #include <cstdint>
-#include <memory>
-#include <ostream>
 
-#include "base/integral_types.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/utils/looper.h"
-#include "testing/base/public/gunit.h"
-#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/notification.h"
 
 namespace privacy {
@@ -46,9 +41,6 @@ class LocalTcpSocket {
  public:
   // Bind to local loopback address.
   LocalTcpSocket(IPProtocol ip_version, unsigned int timeout_ms,
-                 SocketMode mode);
-  // Bind to the given endpoint.
-  LocalTcpSocket(const Endpoint& endpoint, unsigned int timeout_ms,
                  SocketMode mode);
   ~LocalTcpSocket();
 

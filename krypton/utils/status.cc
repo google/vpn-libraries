@@ -85,7 +85,6 @@ absl::Status GetStatusForHttpStatus(int http_status,
   return absl::UnknownError(message);
 }
 
-// TODO: Finalize all permanent status code values.
 bool IsPermanentError(absl::Status status) {
   if (status.code() == absl::StatusCode::kPermissionDenied) {
     return true;

@@ -18,7 +18,6 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/mock_notification_interface.h"
@@ -32,8 +31,6 @@
 #include "privacy/net/krypton/tunnel_manager_interface.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
-#include "testing/base/public/mock-log.h"
-#include "third_party/absl/base/log_severity.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/time/time.h"
@@ -54,7 +51,6 @@ using ::testing::status::StatusIs;
 class MockSessionNotification : public Session::NotificationInterface {
  public:
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
-  MOCK_METHOD(void, StatusUpdated, (), (override));
   MOCK_METHOD(void, ControlPlaneDisconnected, (const absl::Status&),
               (override));
   MOCK_METHOD(void, PermanentFailure, (const absl::Status&), (override));
@@ -156,7 +152,7 @@ TEST_F(ReconnectorTest,
 
   reconnector_->Start();
 
-  // Clear all timer expecations.
+  // Clear all timer expectations.
   ::testing::Mock::VerifyAndClearExpectations(&timer_interface_);
 
   // expect terminating a session and start a reconnect timer id.

@@ -49,7 +49,6 @@ import org.json.JSONObject;
  */
 public class KryptonImpl implements Krypton, TimerListener {
   private static final String TAG = "Krypton";
-  private static final String NATIVE_TAG = "KryptonNative";
 
   // In order to use JNI, somebody has to call System.loadLibrary.
   // We can't call it from multiple places, so this block is the one true place to load it.
@@ -223,11 +222,6 @@ public class KryptonImpl implements Krypton, TimerListener {
   // Android implementation for TimerIdManager.
   private TimerIdManager getTimerIdManager() {
     return timerIdManager;
-  }
-
-  // TODO: Pass the log level in here.
-  private static void log(String logEntry) {
-    Log.w(NATIVE_TAG, logEntry);
   }
 
   private void onConnected(byte[] statusBytes) {

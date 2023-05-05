@@ -480,11 +480,6 @@ void Session::FetchCounters() {
   StartFetchCountersTimer();
 }
 
-std::optional<NetworkInfo> Session::active_network_info() const {
-  absl::MutexLock l(&mutex_);
-  return active_network_info_;
-}
-
 void Session::DatapathEstablished() {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "Datapath is established";

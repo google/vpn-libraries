@@ -70,8 +70,6 @@ class Session : public DatapathInterface::NotificationInterface,
     // Control plane Zinc+Brass have successfully negotiated in setting up the
     // tunnel.  This event doesn't signify that the datapath is connected.
     virtual void ControlPlaneConnected() = 0;
-    // Status update on the connection.
-    virtual void StatusUpdated() = 0;
     // Control plane is broken and implicitly implies that there is no data
     // plane either.
     virtual void ControlPlaneDisconnected(const absl::Status& status) = 0;
@@ -134,17 +132,8 @@ class Session : public DatapathInterface::NotificationInterface,
   void ProvisioningFailure(absl::Status status, bool permanent) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  State state() const ABSL_LOCKS_EXCLUDED(mutex_) {
-    absl::MutexLock l(&mutex_);
-    return state_;
-  }
-
   // Switch network.
   absl::Status SetNetwork(std::optional<NetworkInfo> network_info)
-      ABSL_LOCKS_EXCLUDED(mutex_);
-
-  // returns nullopt on no networks.
-  std::optional<NetworkInfo> active_network_info() const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void CollectTelemetry(KryptonTelemetry* telemetry)
@@ -159,29 +148,40 @@ class Session : public DatapathInterface::NotificationInterface,
     return latest_status_;
   }
 
-  int DatapathReattemptCountTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+  int DatapathReattemptCountTestOnly() const ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return datapath_reattempt_count_.load();
   }
 
-  int DatapathReattemptTimerIdTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+  int DatapathReattemptTimerIdTestOnly() const ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return datapath_reattempt_timer_id_;
   }
 
-  int GetUplinkMtuTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+  int GetUplinkMtuTestOnly() const ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return uplink_mtu_;
   }
 
-  int GetDownlinkMtuTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+  int GetDownlinkMtuTestOnly() const ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return downlink_mtu_;
   }
 
-  int GetTunnelMtuTestOnly() ABSL_LOCKS_EXCLUDED(mutex_) {
+  int GetTunnelMtuTestOnly() const ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
     return tunnel_mtu_;
+  }
+
+  State GetStateTestOnly() const ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
+    return state_;
+  }
+
+  std::optional<NetworkInfo> GetActiveNetworkInfoTestOnly() const
+      ABSL_LOCKS_EXCLUDED(mutex_) {
+    absl::MutexLock l(&mutex_);
+    return active_network_info_;
   }
 
  private:

@@ -117,7 +117,6 @@ class MockEgressManager : public EgressManager {
 class MockSessionNotification : public Session::NotificationInterface {
  public:
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
-  MOCK_METHOD(void, StatusUpdated, (), (override));
   MOCK_METHOD(void, ControlPlaneDisconnected, (const absl::Status&),
               (override));
   MOCK_METHOD(void, PermanentFailure, (const absl::Status&), (override));
@@ -405,7 +404,7 @@ class SessionTest : public ::testing::Test {
     EXPECT_CALL(notification_, DatapathConnected());
 
     session_->DatapathEstablished();
-    EXPECT_THAT(session_->active_network_info(),
+    EXPECT_THAT(session_->GetActiveNetworkInfoTestOnly(),
                 NetworkInfoEquals(expected_network_info));
   }
 
@@ -418,7 +417,7 @@ class SessionTest : public ::testing::Test {
     WaitInitial();
     EXPECT_THAT(session_->LatestStatusTestOnly(), IsOk());
 
-    EXPECT_EQ(session_->state(), Session::State::kConnected);
+    EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kConnected);
 
     EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
         .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
@@ -526,7 +525,7 @@ TEST_F(SessionTest, DatapathInitFailure) {
   EXPECT_THAT(session_->LatestStatusTestOnly(),
               StatusIs(util::error::INVALID_ARGUMENT, "Initialization error"));
 
-  EXPECT_EQ(session_->state(), Session::State::kSessionError);
+  EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kSessionError);
 }
 
 TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
@@ -612,7 +611,7 @@ TEST_F(SessionTest, SwitchNetworkToSameNetworkType) {
 
   EXPECT_OK(session_->SetNetwork(new_network_info));
   // Check all the parameters are correct in the session.
-  EXPECT_THAT(session_->active_network_info(),
+  EXPECT_THAT(session_->GetActiveNetworkInfoTestOnly(),
               NetworkInfoEquals(new_network_info));
 }
 
@@ -686,7 +685,7 @@ TEST_F(SessionTest, SwitchNetworkToDifferentNetworkType) {
 
   EXPECT_OK(session_->SetNetwork(new_network_info));
   // Check all the parameters are correct in the session.
-  EXPECT_THAT(session_->active_network_info(),
+  EXPECT_THAT(session_->GetActiveNetworkInfoTestOnly(),
               NetworkInfoEquals(new_network_info));
 }
 

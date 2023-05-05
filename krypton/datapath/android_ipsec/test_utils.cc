@@ -23,9 +23,7 @@
 #include <unistd.h>
 
 #include <cstdint>
-#include <memory>
 #include <string>
-#include <utility>
 
 #include "base/logging.h"
 #include "privacy/net/krypton/datapath/android_ipsec/socket_util.h"
@@ -102,38 +100,6 @@ LocalTcpSocket::LocalTcpSocket(IPProtocol ip_version, unsigned int timeout_ms)
 LocalTcpSocket::LocalTcpSocket(IPProtocol ip_version, unsigned int timeout_ms,
                                SocketMode mode)
     : LocalTcpSocket(ip_version, timeout_ms) {
-  if (mode == SocketMode::kBlocking) {
-    CHECK_OK(SetSocketBlocking(fd_));
-  } else {
-    CHECK_OK(SetSocketNonBlocking(fd_));
-  }
-}
-
-LocalTcpSocket::LocalTcpSocket(const Endpoint& endpoint,
-                               unsigned int timeout_ms, SocketMode mode)
-    : endpoint_("", "", 0, IPProtocol::kUnknown) {
-  bool is_ipv6 = endpoint.ip_protocol() == IPProtocol::kIPv6;
-  fd_ = socket(is_ipv6 ? AF_INET6 : AF_INET, SOCK_STREAM, 0);
-  PCHECK(fd_ != -1) << "Unable to create socket";
-
-  sockaddr_storage addr{};
-  if (endpoint.ip_protocol() == IPProtocol::kIPv6) {
-    sockaddr_in6* ipv6_addr = reinterpret_cast<sockaddr_in6*>(&addr);
-    ipv6_addr->sin6_family = AF_INET6;
-    ipv6_addr->sin6_port = htons(endpoint.port());
-    inet_pton(AF_INET6, endpoint.address().c_str(), &ipv6_addr->sin6_addr);
-  } else {
-    sockaddr_in* ipv4_addr = reinterpret_cast<sockaddr_in*>(&addr);
-    ipv4_addr->sin_family = AF_INET;
-    ipv4_addr->sin_port = htons(endpoint.port());
-    inet_pton(AF_INET, endpoint.address().c_str(), &ipv4_addr->sin_addr);
-  }
-
-  PCHECK(bind(fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0)
-      << "bind failed";
-  endpoint_ = endpoint;
-  SetTimeout(fd_, timeout_ms);
-
   if (mode == SocketMode::kBlocking) {
     CHECK_OK(SetSocketBlocking(fd_));
   } else {
