@@ -65,27 +65,27 @@ message OAuthTokenRefreshRequest {
 message OAuthTokenResponse {
   // Access token returned as part of either initial token request or refresh
   // token request.
-  optional string access_token = 1 [json_name = "access_token"];
+  optional string access_token = 1;
 
   // Seconds until access_token expires.
-  optional int64 expires_in = 2 [json_name = "expires_in"];
+  optional int64 expires_in = 2;
 
   // Refresh token used to get new access_tokens. Only returned by initial
   // token request.
-  optional string refresh_token = 3 [json_name = "refresh_token"];
+  optional string refresh_token = 3;
 
   // Should be Bearer.
-  optional string token_type = 4 [json_name = "token_type"];
+  optional string token_type = 4;
 
   // Space-delimited list of scopes for this particular access_token.
-  optional string scope = 5 [json_name = "scope"];
+  optional string scope = 5;
 
   // Expiration timestamp. This is manually populated.
   optional google.protobuf.Timestamp expires_at = 6;
 
   // JSON Web Token (JWT) that contains digitally signed identity information
   // about the user.
-  optional string id_token = 7 [json_name = "id_token"];
+  optional string id_token = 7;
 }
 
 // Selected fields contained in UserInfo JSON that are of interest to us.
@@ -93,5 +93,5 @@ message OAuthTokenResponse {
 // Documentation:
 // https://cloud.google.com/identity-platform/docs/reference/rest/v1/UserInfo
 message UserInfo {
-  optional string email = 1 [json_name = "email"];
+  optional string email = 1;
 }

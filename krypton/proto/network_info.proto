@@ -41,7 +41,7 @@ message NetworkInfo {
   }
   // Address family of the network. The IP Addresses allocated on the interface
   // identify what type of IP can be used.
-  optional AddressFamily address_family = 4 [default = V4V6];
+  optional AddressFamily address_family = 4;
 
   // MTU of the network.
   optional uint32 mtu = 5;
@@ -67,7 +67,7 @@ message IpSecTransformParams {
   optional NetworkInfo.AddressFamily destination_address_family = 10;
   optional int32 destination_port = 11;
 
-  optional int32 keepalive_interval_seconds = 12 [default = 20];
+  optional int32 keepalive_interval_seconds = 12;
 }
 
 // Encryption key for uplink and downlink.
@@ -76,7 +76,7 @@ message BridgeTransformParams {
   optional bytes downlink_key = 2;
   optional uint32 session_id = 3;
   // Crypto suite length, should be either 128 or 256 bits.
-  optional uint32 cipher_suite_key_length = 8 [default = 256];
+  optional uint32 cipher_suite_key_length = 8;
 }
 
 // Transforms Params that could be either Bridge, IPSec or WG

@@ -31,14 +31,14 @@ message ReconnectorConfig {
 
   // Initial time between reconnects. Note that exponential factor is added
   // every time.
-  optional uint32 initial_time_to_reconnect_msec = 1 [default = 1000];
+  optional uint32 initial_time_to_reconnect_msec = 1;
 
   // Deadline for a session to be established.
-  optional uint32 session_connection_deadline_msec = 3 [default = 30000];
+  optional uint32 session_connection_deadline_msec = 3;
 
   // Deadline timer that reconnects wait before declaring the session has
   // failure and start reconnection (reconnection indicates failopen)
-  optional uint32 datapath_watchdog_timer_msec = 5 [default = 2000];  // 2 secs.
+  optional uint32 datapath_watchdog_timer_msec = 5;  // 2 secs.
 }
 
 message KryptonConfig {
@@ -65,14 +65,14 @@ message KryptonConfig {
 
   // AES128 to AES256 in bits.  128 or 16 bytes is for AES128. 256 or 32 bytes
   // is for AES256.
-  optional uint32 cipher_suite_key_length = 8 [default = 256];
+  optional uint32 cipher_suite_key_length = 8;
   // Duration between Rekeys. Defaulted to 1 day = 24 * 3600
   optional google.protobuf.Duration rekey_duration = 9;
 
-  optional bool enable_blind_signing = 12 [default = true];
+  optional bool enable_blind_signing = 12;
 
   // Whether Krypton should enable Safe Disconnect on startup.
-  optional bool safe_disconnect_enabled = 14 [default = false];
+  optional bool safe_disconnect_enabled = 14;
 
   enum DatapathProtocol {
     DEFAULT = 0;
@@ -80,7 +80,7 @@ message KryptonConfig {
     BRIDGE = 2;
     IKE = 3;
   }
-  optional DatapathProtocol datapath_protocol = 15 [default = IPSEC];
+  optional DatapathProtocol datapath_protocol = 15;
 
   // Whether or not periodic health check is enabled.
   optional bool periodic_health_check_enabled = 18;
@@ -89,26 +89,26 @@ message KryptonConfig {
 
   // Whether or not to allow PPN to use IPv6 to connect to copper. If this is
   // false, then PPN will always use IPv4.
-  optional bool ipv6_enabled = 20 [default = true];
+  optional bool ipv6_enabled = 20;
 
   // In iOS, whether to use the datapath implemented in Objective-C++, rather
   // than the cross-platform C++ datapath.
-  optional bool use_objc_datapath = 21 [default = true];
+  optional bool use_objc_datapath = 21;
   // In iOS, whether to run the uplink path in parallel, as opposed to serially.
-  optional bool ios_uplink_parallelism_enabled = 22 [default = true];
+  optional bool ios_uplink_parallelism_enabled = 22;
 
   // Whether or not to attest during auth and rekey step.
-  optional bool integrity_attestation_enabled = 23 [default = false];
+  optional bool integrity_attestation_enabled = 23;
 
   // Google Cloud API key used to differentiate client types
   optional string api_key = 25;
 
   // If true, attaches the OAuth token as the "Authorization" header.
   // If false, OAuth token is passed in the json body.
-  optional bool attach_oauth_token_as_header = 26 [default = false];
+  optional bool attach_oauth_token_as_header = 26;
 
   // Whether to enable dynamic mtu features.
-  optional bool dynamic_mtu_enabled = 27 [default = false];
+  optional bool dynamic_mtu_enabled = 27;
 
   // Duration of inactivity after which we will send a keepalive packet when
   // connected with IPsec on IPv4.
@@ -119,12 +119,12 @@ message KryptonConfig {
 
   // Enabling public metadata determines use of GetInitialData vs PublicKey RPC
   // in session auth, as well as which fields are populated in AddEgressRequest.
-  optional bool public_metadata_enabled = 30 [default = false];
+  optional bool public_metadata_enabled = 30;
 
-  optional privacy.ppn.IpGeoLevel ip_geo_level = 33 [default = COUNTRY];
+  optional privacy.ppn.IpGeoLevel ip_geo_level = 33;
 
   // This flag allows Phosphor to return Public Metadata with debug_mode = true.
   // If this flag is set to false, any Public Metadata with debug_mode = true
   // will be rejected.
-  optional bool debug_mode_allowed = 34 [default = false];
+  optional bool debug_mode_allowed = 34;
 }

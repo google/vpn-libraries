@@ -46,14 +46,14 @@ message TunFdData {
   repeated IpRange tunnel_dns_addresses = 3;
 
   // Maximum Transmission Unit (MTU)
-  optional int32 mtu = 5 [default = 1280];
+  optional int32 mtu = 5;
 
   // Whether to consider this VPN network as metered.
-  optional bool is_metered = 6 [default = false];
+  optional bool is_metered = 6;
 
   // Buffer size that should be set for network sockets (non tunnel sockets)
   // Defaulted to 4MB ~ 4*1024 KB ~ 4x1024*1024 bytes.
-  optional uint32 send_buffer_size = 7 [default = 4194304];
-  optional uint32 receive_buffer_size = 8 [default = 4194304];
+  optional uint32 send_buffer_size = 7;
+  optional uint32 receive_buffer_size = 8;
 }
 // LINT.ThenChange(//depot/google3/privacy/net/krypton/utils/proto_comparison.cc)
