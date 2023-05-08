@@ -49,7 +49,7 @@ HttpResponse CreateErrorResponse(absl::string_view description) {
 
 HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
   LOG(INFO) << "Calling HttpFetcher postJson Windows method";
-  bool json_request = request.has_json_body();
+  bool proto_request = request.has_proto_body();
 
   // From the server URL, we need a hostname, path.
   URL_COMPONENTS url_server_components;
@@ -114,13 +114,13 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
   // Add headers to the request
   const int kHeaderLength = 1024;
   WCHAR headers[kHeaderLength] = L"";
-  if (json_request) {
+  if (proto_request) {
+    StringCchCopyW(headers, kHeaderLength,
+                  L"Content-Type: application/x-protobuf\r\n");
+  } else {
     StringCchCopyW(headers, kHeaderLength,
                    L"Accept: application/json\r\n"
                    L"Content-Type: application/json; charset=utf-8\r\n");
-  } else {
-    StringCchCopyW(headers, kHeaderLength,
-                  L"Content-Type: application/x-protobuf\r\n");
   }
 
   for (auto const& header : request.headers()) {
@@ -140,7 +140,7 @@ HttpResponse HttpFetcher::PostJson(const HttpRequest& request) {
   }
 
   std::string post_data =
-      json_request ? request.json_body() : request.proto_body();
+      proto_request ? request.proto_body() : request.json_body();
 
   if (WinHttpSendRequest(request_handle, WINHTTP_NO_ADDITIONAL_HEADERS,
                          /* dwHeadersLength= */ 0, (LPVOID)post_data.data(),

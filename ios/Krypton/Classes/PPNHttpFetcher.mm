@@ -35,7 +35,7 @@ PPNHttpFetcher::PPNHttpFetcher()
       request_timeout_(kDefaultRequestTimeout) {}
 
 HttpResponse PPNHttpFetcher::PostJson(const HttpRequest &request) {
-  bool jsonRequest = request.has_json_body();
+  bool protoRequest = request.has_proto_body();
   NSString *URLString = [[NSString alloc] initWithUTF8String:request.url().c_str()];
   NSMutableDictionary<NSString *, NSString *> *headers = [[NSMutableDictionary alloc] init];
   for (auto const &[key, value] : request.headers()) {
@@ -48,17 +48,17 @@ HttpResponse PPNHttpFetcher::PostJson(const HttpRequest &request) {
     }
   }
 
-  std::string requestBody = jsonRequest ? request.json_body() : request.proto_body();
+  std::string requestBody = protoRequest ? request.proto_body() : request.json_body();
   NSData *bodyData = [NSData dataWithBytes:requestBody.data() length:requestBody.size()];
 
   // Create a Http fetcher with the URL string.
   GTMSessionFetcher *fetcher = [fetcher_service_ fetcherWithURLString:URLString];
   fetcher.callbackQueue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
   // Add request headers.
-  if (jsonRequest) {
-    [fetcher setRequestValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-  } else {
+  if (protoRequest) {
     [fetcher setRequestValue:@"application/x-protobuf" forHTTPHeaderField:@"Content-Type"];
+  } else {
+    [fetcher setRequestValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
   }
 
   [headers enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) {
