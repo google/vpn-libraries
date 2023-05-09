@@ -757,10 +757,6 @@ void Session::Provisioned(const AddEgressResponse& egress_response,
   if (ppn_dataplane.ok()) {
     uplink_spi_ = ppn_dataplane->uplink_spi();
   }
-  auto* egress_nodes = ppn_dataplane->mutable_egress_point_sock_addr();
-  egress_node_sock_addresses_.clear();
-  std::copy(egress_nodes->begin(), egress_nodes->end(),
-            std::back_inserter(egress_node_sock_addresses_));
 
   if (datapath_ == nullptr) {
     LOG(ERROR) << "No datapath found while rekeying";
@@ -770,6 +766,11 @@ void Session::Provisioned(const AddEgressResponse& egress_response,
 
   // Session start handling.
   if (!is_rekey) {
+    auto* egress_nodes = ppn_dataplane->mutable_egress_point_sock_addr();
+    egress_node_sock_addresses_.clear();
+    std::copy(egress_nodes->begin(), egress_nodes->end(),
+              std::back_inserter(egress_node_sock_addresses_));
+
     SetState(State::kEgressSessionCreated, absl::OkStatus());
     ResetAllDatapathReattempts();
     StartDatapath();

@@ -15,10 +15,7 @@
 #ifndef PRIVACY_NET_KRYPTON_ADD_EGRESS_RESPONSE_H_
 #define PRIVACY_NET_KRYPTON_ADD_EGRESS_RESPONSE_H_
 
-#include <memory>
 #include <optional>
-#include <string>
-#include <vector>
 
 #include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
@@ -61,7 +58,7 @@ class AddEgressResponse {
   }
 
  private:
-  // Decodes the proto to AuthAndSignResponse.
+  // Decodes the proto to AddEgressResponse.
   absl::Status DecodeFromProto(const HttpResponse& response);
 
   // Decode AddEgressResponse specific parameters
@@ -75,9 +72,6 @@ class AddEgressResponse {
 
   absl::Status parsing_status_ =
       absl::UnknownError("Initialized, no parsing status set");
-
-  // TODO: Store session parameters like User IP and egress node
-  // details as rekey response will not contain them.
 };
 
 }  // namespace krypton
