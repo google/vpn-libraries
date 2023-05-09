@@ -653,11 +653,15 @@ absl::Status Session::SwitchDatapath() {
     LOG(INFO) << "SwitchDatapath removing all networks";
   }
 
-  PPN_ASSIGN_OR_RETURN(const auto& ip,
-                       datapath_address_selector_.SelectDatapathAddress());
+  auto ip = datapath_address_selector_.SelectDatapathAddress();
+  if (!ip.ok()) {
+    LOG(ERROR) << "Failed to select a datapath address: " << ip.status();
+    SetState(State::kSessionError, ip.status());
+    return ip.status();
+  }
 
   auto switch_data_status = datapath_->SwitchNetwork(
-      uplink_spi_, ip, active_network_info_, current_restart_counter);
+      uplink_spi_, *ip, active_network_info_, current_restart_counter);
 
   if (!switch_data_status.ok()) {
     LOG(ERROR) << "Switching networks failed: " << switch_data_status;
