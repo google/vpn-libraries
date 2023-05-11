@@ -14,10 +14,7 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_tunnel.h"
 
-#include <functional>
 #include <memory>
-#include <string>
-#include <utility>
 #include <vector>
 
 #include "base/logging.h"
@@ -66,7 +63,10 @@ absl::Status IpSecTunnel::Close() {
   return absl::OkStatus();
 }
 
-absl::Status IpSecTunnel::CancelReadPackets() { return close_event_.Notify(1); }
+absl::Status IpSecTunnel::CancelReadPackets() {
+  LOG(INFO) << "CancelReadPackets called on tunnel FD=" << tunnel_fd_;
+  return close_event_.Notify(1);
+}
 
 absl::StatusOr<std::vector<Packet>> IpSecTunnel::ReadPackets() {
   if (tunnel_fd_ < 0) {
@@ -93,6 +93,7 @@ absl::StatusOr<std::vector<Packet>> IpSecTunnel::ReadPackets() {
   int notified_fd = datapath::android::EventsHelper::FileFromEvent(event);
   if (notified_fd == close_event_.fd()) {
     // An empty vector without an error status should be interpreted as a close
+    LOG(INFO) << "Close event received on tunnel FD=" << fd;
     return std::vector<Packet>();
   }
   if (datapath::android::EventsHelper::FileHasError(event)) {
