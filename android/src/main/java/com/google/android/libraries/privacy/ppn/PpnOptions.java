@@ -107,6 +107,8 @@ public class PpnOptions {
 
   private final Optional<Boolean> debugModeAllowed;
 
+  private final Optional<Duration> periodicHealthCheckDuration;
+
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
     this.zincPublicSigningKeyUrl = builder.zincPublicSigningKeyUrl;
@@ -159,6 +161,8 @@ public class PpnOptions {
     this.publicMetadataEnabled = builder.publicMetadataEnabled;
 
     this.debugModeAllowed = builder.debugModeAllowed;
+
+    this.periodicHealthCheckDuration = builder.periodicHealthCheckDuration;
   }
 
   public String getZincUrl() {
@@ -321,6 +325,10 @@ public class PpnOptions {
     return debugModeAllowed;
   }
 
+  public Optional<Duration> getPeriodicHealthCheckDuration() {
+    return periodicHealthCheckDuration;
+  }
+
   /** Creates a KryptonConfig.Builder using the current options. */
   public KryptonConfig.Builder createKryptonConfigBuilder() {
     ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
@@ -424,6 +432,15 @@ public class PpnOptions {
     if (isDebugModeAllowed().isPresent()) {
       builder.setDebugModeAllowed(isDebugModeAllowed().get());
     }
+
+    if (getPeriodicHealthCheckDuration().isPresent()) {
+      Duration periodicHealthCheckDuration = getPeriodicHealthCheckDuration().get();
+      builder.setPeriodicHealthCheckDuration(
+          com.google.protobuf.Duration.newBuilder()
+              .setSeconds(periodicHealthCheckDuration.getSeconds())
+              .setNanos(periodicHealthCheckDuration.getNano())
+              .build());
+    }
     return builder;
   }
 
@@ -476,6 +493,8 @@ public class PpnOptions {
     private Optional<Boolean> publicMetadataEnabled = Optional.empty();
 
     private Optional<Boolean> debugModeAllowed = Optional.empty();
+
+    private Optional<Duration> periodicHealthCheckDuration = Optional.empty();
 
     public Builder() {}
 
@@ -903,6 +922,15 @@ public class PpnOptions {
     @CanIgnoreReturnValue
     public Builder setDebugModeAllowed(boolean debugModeAllowed) {
       this.debugModeAllowed = Optional.of(debugModeAllowed);
+      return this;
+    }
+
+    /** Sets the duration for the interval for the periodic health check. */
+    @CanIgnoreReturnValue
+    public Builder setPeriodicHealthCheckDuration(Duration interval) {
+      if (interval != null) {
+        this.periodicHealthCheckDuration = Optional.of(interval);
+      }
       return this;
     }
 

@@ -604,6 +604,7 @@ public class PpnOptionsTest {
             .setInitialDataUrl("h")
             .setUpdatePathInfoUrl("i")
             .setDebugModeAllowed(true)
+            .setPeriodicHealthCheckDuration(Duration.ofSeconds(8))
             .build();
 
     KryptonConfig config = options.createKryptonConfigBuilder().build();
@@ -643,6 +644,9 @@ public class PpnOptionsTest {
     assertThat(config.getInitialDataUrl()).isEqualTo("h");
     assertThat(config.getUpdatePathInfoUrl()).isEqualTo("i");
     assertThat(config.getDebugModeAllowed()).isTrue();
+    assertThat(config.hasPeriodicHealthCheckDuration()).isTrue();
+    assertThat(config.getPeriodicHealthCheckDuration().getSeconds()).isEqualTo(8);
+    assertThat(config.getPeriodicHealthCheckDuration().getNanos()).isEqualTo(0);
   }
 
   @Test
@@ -678,6 +682,7 @@ public class PpnOptionsTest {
     assertThat(config.getInitialDataUrl()).isNotEmpty();
     assertThat(config.getUpdatePathInfoUrl()).isNotEmpty();
     assertThat(config.getDebugModeAllowed()).isFalse();
+    assertThat(config.hasPeriodicHealthCheckDuration()).isFalse();
   }
 
   @Test
@@ -724,5 +729,24 @@ public class PpnOptionsTest {
   public void setDebugModeAllowed_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setDebugModeAllowed(true).build();
     assertThat(options.isDebugModeAllowed().get()).isTrue();
+  }
+
+  @Test
+  public void setPeriodicHealthCheckDuration_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.getPeriodicHealthCheckDuration()).isEmpty();
+  }
+
+  @Test
+  public void setPeriodicHealthCheckDuration_setsValue() {
+    PpnOptions options =
+        new PpnOptions.Builder().setPeriodicHealthCheckDuration(Duration.ofSeconds(30)).build();
+    assertThat(options.getPeriodicHealthCheckDuration().get().toSeconds()).isEqualTo(30);
+  }
+
+  @Test
+  public void setPeriodicHealthCheckDuration_ignoresNull() {
+    PpnOptions options = new PpnOptions.Builder().setPeriodicHealthCheckDuration(null).build();
+    assertThat(options.getPeriodicHealthCheckDuration()).isEmpty();
   }
 }
