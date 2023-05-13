@@ -102,6 +102,8 @@ PPNOptionKey const PPNOptionIPGeoLevel = @"ipGeoLevel";
 
 PPNOptionKey const PPNDebugModeAllowed = @"debugModeAllowed";
 
+PPNOptionKey const PPNMacOSConnectionTimeout = @"macosConnectionTimeout";
+
 #pragma mark - Default Option Values
 
 static PPNOptionKey const PPNOptionDefaultZincURLString =

@@ -210,4 +210,9 @@ FOUNDATION_EXTERN PPNOptionKey const PPNOptionIPGeoLevel;
  */
 FOUNDATION_EXTERN PPNOptionKey const PPNDebugModeAllowed;
 
+/**
+ * Sets the macoS connection timeout in seconds.
+ */
+FOUNDATION_EXTERN PPNOptionKey const PPNMacOSConnectionTimeout;
+
 NS_ASSUME_NONNULL_END
