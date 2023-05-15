@@ -154,7 +154,8 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
 
   LOG(INFO) << "Got Authentication Response. Rekey: "
             << (is_rekey ? "True" : "False")
-            << ". Status: " << http_response.status().code();
+            << ". Status: " << http_response.status().code()
+            << "; Message: " << http_response.status().message();
 
   if (stopped_) {
     LOG(ERROR) << "Auth is already cancelled. Ignoring response.";
