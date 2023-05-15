@@ -26,8 +26,6 @@ import com.google.android.libraries.privacy.ppn.internal.NetworkType;
  * PpnNetworkCallback is PPN's version of the Android NetworkCallback. It is the object that stores
  * all relevant information associated with a Network session: mostly including additional PPN
  * Network specific information.
- *
- * <p>TODO: Consider moving all the handling logic to the background thread.
  */
 public final class PpnNetworkCallback extends NetworkCallback {
   private final PpnNetworkManager networkManager;

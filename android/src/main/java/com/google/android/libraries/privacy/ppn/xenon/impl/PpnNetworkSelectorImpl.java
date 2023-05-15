@@ -44,8 +44,6 @@ final class PpnNetworkSelectorImpl implements PpnNetworkSelector {
    * Default Comparator that sorts Wifi Networks ahead of Cellular ones. If both networks are of the
    * same type, we order the preference by latest creation timestamp -- we want the newest network
    * in the list.
-   *
-   * <p>TODO: Consider handling the case where PpnNetworkType is Unknown.
    */
   private final Comparator<PpnNetwork> defaultNetworkComparator =
       Comparator.<PpnNetwork>comparingInt((ppnNetwork) -> ppnNetwork.getNetworkType().getNumber())
@@ -97,7 +95,6 @@ final class PpnNetworkSelectorImpl implements PpnNetworkSelector {
     }
 
     // We currently do NOT support getting the cellular signal from the CellularManager
-    // TODO: Get the RSSI for the cellular signal.
     return ConnectionQuality.UNKNOWN_QUALITY;
   }
 

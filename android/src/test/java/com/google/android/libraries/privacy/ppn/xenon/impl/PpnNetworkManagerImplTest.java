@@ -820,12 +820,7 @@ public final class PpnNetworkManagerImplTest {
   @Test
   @Config(sdk = Build.VERSION_CODES.Q)
   public void testHandleNetworkCapabilitiesChanged_newConnectionQuality_postAndroidQ()
-      throws Exception {
-    // TODO: Devices that are Android Q and newer can get the signal strength from the
-    // NetworkCapabilities directly. Unfortunately, there is no easy way to test as the
-    // ShadowNetworkCapabilities does not allow for setting of the signalStrength value. And we are
-    // not able to Mock the NetworkCapabilities class.
-  }
+      throws Exception {}
 
   @Test
   public void testHandleNetworkLinkPropertiesChanged_addPendingNetwork() throws Exception {

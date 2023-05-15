@@ -266,9 +266,7 @@ public final class PpnNetworkSelectorImplTest {
             /** rssi= */
             0);
 
-    // We are returning UNKNOWN for Cellular Connections needing to lookup the RSSI -- this feature
-    // is not yet supported.
-    // TODO: Add support for getting the RSSI value for Cellular Networks.
+    // We are returning UNKNOWN for Cellular Connections needing to lookup the RSSI
     assertThat(connectionQuality).isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
   }
 

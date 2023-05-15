@@ -61,12 +61,6 @@ import org.json.JSONObject;
  * PpnNetworkManagerImpl is the impl of the core service responsible for keeping track of the
  * available networks. It includes the core logic for handling when a network is available, lost,
  * and changed.
- *
- * <p>TODO: Add checks to ensure running on main thread. Or background thread once we
- * switch over implementation to use it.
- *
- * <p>TODO: Re-structure this class so that blocks of `sync` code are better structured
- * and more readable, without use needing to blanket `sync` block everything.
  */
 final class PpnNetworkManagerImpl implements PpnNetworkManager {
   private static final String TAG = "PpnNetworkManagerImpl";
@@ -105,7 +99,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
   // The current known ConnectionQuality associated with the active network.
   private ConnectionQuality connectionQuality = ConnectionQuality.UNKNOWN_QUALITY;
 
-  // TODO: consider moving into a factory or make this configurable.
   public static final NetworkRequest WIFI_NETWORK_REQUEST =
       new NetworkRequest.Builder()
           // Must have Internet access
@@ -116,7 +109,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
           .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
           .build();
 
-  // TODO: consider moving into a factory or make this configurable.
   public static final NetworkRequest CELLULAR_NETWORK_REQUEST =
       new NetworkRequest.Builder()
           // Must have Internet access
@@ -180,14 +172,10 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
     }
   }
 
-  // TODO: Consider moving this logic to the Callbacks.
   @Override
   public Task<Boolean> handleNetworkAvailable(PpnNetwork ppnNetwork) {
     synchronized (lock) {
       Log.w(TAG, String.format("Network Available with network: %s", ppnNetwork));
-
-      // TODO: Do we need to handle case where there already exists a network with the
-      // same NetworkType?
 
       // We do not need to verify that the network has been lost. We're guaranteed a callback to
       // onCapabilitiesChanged.
@@ -271,13 +259,11 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
       }
 
       // Validate the current Network. If it fails away of these conditions, remove the network.
-      // TODO: Switching networks on device, new Network is not VALIDATED. Investigate.
       if (!networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
           || !networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)) {
         Log.w(
             TAG,
             String.format("onCapabilitiesChanged. Removing Network as Capability is not valid"));
-        // TODO: Should we also remove the network from the pending list?
         removeNetwork(ppnNetwork);
         return Tasks.forResult(false);
       }
@@ -332,8 +318,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
                       createConnectionStatus(ppnNetwork.getNetworkType(), connectionQuality)));
         }
       }
-
-      // TODO: Check Network Strength and make changes depending on it.
     }
   }
 
@@ -556,12 +540,9 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
                 promoteNetwork(ppnNetwork, addressFamily);
                 // We need to blindly call evaluateNetworkStrategy to handle cleaning up
                 // disconnected.
-                // TODO: Revisit this.
                 evaluateNetworkStrategy();
 
                 this.printAvailableNetworkMap();
-
-                // TODO: Address MTU in follow-up.
               }
 
               return Tasks.forResult(true);
@@ -679,9 +660,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
       isEvaluatingNetworks = true;
 
       try {
-        // We need to take a pass and clean up our Network maps as we potentially can have
-        // non-connected networks.
-        // TODO: Revisit this.
         cleanUpNetworkMaps();
 
         PpnNetwork bestNetwork = ppnNetworkSelector.getBestNetwork(getAllNetworks());
@@ -719,7 +697,7 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
                   activeNetwork, bestNetwork));
         }
       } finally {
-        // We need to make sure we ALWAYS reset the evaluting variable.
+        // We need to make sure we ALWAYS reset the evaluating variable.
         isEvaluatingNetworks = false;
       }
     }
@@ -727,7 +705,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
 
   // Goes through the pending and available network maps and checks whether networks are still
   // connected. If not, remove them from their respective maps.
-  // TODO: Figure out why we are not getting onLost callbacks for cell network lost.
   @VisibleForTesting
   void cleanUpNetworkMaps() {
     synchronized (lock) {
@@ -859,7 +836,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
         // no available networks.
         clearActiveNetwork();
 
-        // TODO: Get data on whether Network is unavailable due to Airplane mode.
         mainHandler.post(() -> listener.onNetworkUnavailable(NetworkUnavailableReason.UNKNOWN));
 
         // When there are no availableNetworks, we need to update the connection quality for the
@@ -931,7 +907,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
   }
 
   // Temporary print method to aid in further understanding of Xenon as we use it for a while.
-  // TODO: Remove later once we have better understanding of various edge cases.
   private void printAvailableNetworkMap() {
     // Printing active networks.
     String availableNetworksString = "[";
