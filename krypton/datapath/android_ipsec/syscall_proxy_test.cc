@@ -25,8 +25,8 @@ namespace {
 TEST(SyscallProxyTest, GetSockOpt) {
   SyscallProxy proxy;
   int fd = socket(AF_INET6, SOCK_STREAM, 0);
-  int optval;
-  socklen_t optlen;
+  int optval = 0;
+  socklen_t optlen = sizeof(optval);
   EXPECT_EQ(proxy.GetSockOpt(fd, SOL_SOCKET, SO_TYPE, &optval, &optlen), 0);
   EXPECT_EQ(optlen, sizeof(optval));
   EXPECT_EQ(optval, SOCK_STREAM);
@@ -35,8 +35,8 @@ TEST(SyscallProxyTest, GetSockOpt) {
 
 TEST(SyscallProxyTest, GetSockOptInvalidFd) {
   SyscallProxy proxy;
-  int optval;
-  socklen_t optlen;
+  int optval = 0;
+  socklen_t optlen = sizeof(optval);
   EXPECT_EQ(proxy.GetSockOpt(-1, SOL_SOCKET, SO_TYPE, &optval, &optlen), -1);
 }
 
