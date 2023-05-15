@@ -101,8 +101,6 @@ class IpSecPacketForwarder {
 
   std::atomic_int64_t uplink_packets_read_;
   std::atomic_int64_t downlink_packets_read_;
-  std::atomic_int64_t uplink_packets_dropped_;
-  std::atomic_int64_t downlink_packets_dropped_;
 
   utils::LooperThread downlink_thread_;
   utils::LooperThread uplink_thread_;

@@ -48,8 +48,6 @@ IpSecPacketForwarder::IpSecPacketForwarder(TunnelInterface* utun_interface,
       forwarder_id_(forwarder_id),
       uplink_packets_read_(0),
       downlink_packets_read_(0),
-      uplink_packets_dropped_(0),
-      downlink_packets_dropped_(0),
       downlink_thread_("IpSecPacketForwarder Downlink Thread"),
       uplink_thread_("IpSecPacketForwarder Uplink Thread") {
   connected_.clear();
@@ -121,8 +119,7 @@ void IpSecPacketForwarder::IpSecPacketForwarder::Stop() {
 void IpSecPacketForwarder::GetDebugInfo(DatapathDebugInfo* debug_info) {
   debug_info->set_uplink_packets_read(uplink_packets_read_.load());
   debug_info->set_downlink_packets_read(downlink_packets_read_.load());
-  debug_info->set_uplink_packets_dropped(uplink_packets_dropped_.load());
-  debug_info->set_downlink_packets_dropped(downlink_packets_dropped_.load());
+  network_socket_->GetDebugInfo(debug_info);
 }
 
 void IpSecPacketForwarder::HandleDownlink() {
