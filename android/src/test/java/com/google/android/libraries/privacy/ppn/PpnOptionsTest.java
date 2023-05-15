@@ -604,6 +604,7 @@ public class PpnOptionsTest {
             .setInitialDataUrl("h")
             .setUpdatePathInfoUrl("i")
             .setDebugModeAllowed(true)
+            .setPeriodicHealthCheckEnabled(true)
             .setPeriodicHealthCheckDuration(Duration.ofSeconds(8))
             .build();
 
@@ -644,6 +645,7 @@ public class PpnOptionsTest {
     assertThat(config.getInitialDataUrl()).isEqualTo("h");
     assertThat(config.getUpdatePathInfoUrl()).isEqualTo("i");
     assertThat(config.getDebugModeAllowed()).isTrue();
+    assertThat(config.getPeriodicHealthCheckEnabled()).isTrue();
     assertThat(config.hasPeriodicHealthCheckDuration()).isTrue();
     assertThat(config.getPeriodicHealthCheckDuration().getSeconds()).isEqualTo(8);
     assertThat(config.getPeriodicHealthCheckDuration().getNanos()).isEqualTo(0);
@@ -682,6 +684,7 @@ public class PpnOptionsTest {
     assertThat(config.getInitialDataUrl()).isNotEmpty();
     assertThat(config.getUpdatePathInfoUrl()).isNotEmpty();
     assertThat(config.getDebugModeAllowed()).isFalse();
+    assertThat(config.getPeriodicHealthCheckEnabled()).isFalse();
     assertThat(config.hasPeriodicHealthCheckDuration()).isFalse();
   }
 
@@ -729,6 +732,18 @@ public class PpnOptionsTest {
   public void setDebugModeAllowed_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setDebugModeAllowed(true).build();
     assertThat(options.isDebugModeAllowed().get()).isTrue();
+  }
+
+  @Test
+  public void setPeriodicHealthCheckEnabled_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.isPeriodicHealthCheckEnabled()).isFalse();
+  }
+
+  @Test
+  public void setPeriodicHealthCheckEnabled_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setPeriodicHealthCheckEnabled(true).build();
+    assertThat(options.isPeriodicHealthCheckEnabled()).isTrue();
   }
 
   @Test

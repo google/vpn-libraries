@@ -107,6 +107,7 @@ public class PpnOptions {
 
   private final Optional<Boolean> debugModeAllowed;
 
+  private final boolean periodicHealthCheckEnabled;
   private final Optional<Duration> periodicHealthCheckDuration;
 
   private PpnOptions(PpnOptions.Builder builder) {
@@ -162,6 +163,7 @@ public class PpnOptions {
 
     this.debugModeAllowed = builder.debugModeAllowed;
 
+    this.periodicHealthCheckEnabled = builder.periodicHealthCheckEnabled;
     this.periodicHealthCheckDuration = builder.periodicHealthCheckDuration;
   }
 
@@ -325,6 +327,10 @@ public class PpnOptions {
     return debugModeAllowed;
   }
 
+  public boolean isPeriodicHealthCheckEnabled() {
+    return periodicHealthCheckEnabled;
+  }
+
   public Optional<Duration> getPeriodicHealthCheckDuration() {
     return periodicHealthCheckDuration;
   }
@@ -433,6 +439,7 @@ public class PpnOptions {
       builder.setDebugModeAllowed(isDebugModeAllowed().get());
     }
 
+    builder.setPeriodicHealthCheckEnabled(isPeriodicHealthCheckEnabled());
     if (getPeriodicHealthCheckDuration().isPresent()) {
       Duration periodicHealthCheckDuration = getPeriodicHealthCheckDuration().get();
       builder.setPeriodicHealthCheckDuration(
@@ -494,6 +501,7 @@ public class PpnOptions {
 
     private Optional<Boolean> debugModeAllowed = Optional.empty();
 
+    private boolean periodicHealthCheckEnabled = false;
     private Optional<Duration> periodicHealthCheckDuration = Optional.empty();
 
     public Builder() {}
@@ -922,6 +930,13 @@ public class PpnOptions {
     @CanIgnoreReturnValue
     public Builder setDebugModeAllowed(boolean debugModeAllowed) {
       this.debugModeAllowed = Optional.of(debugModeAllowed);
+      return this;
+    }
+
+    /** Sets whether to use a periodic health check. */
+    @CanIgnoreReturnValue
+    public Builder setPeriodicHealthCheckEnabled(boolean periodicHealthCheckEnabled) {
+      this.periodicHealthCheckEnabled = periodicHealthCheckEnabled;
       return this;
     }
 
