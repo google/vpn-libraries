@@ -224,6 +224,10 @@ absl::Status Session::SendUpdatePathInfoRequest() {
   http_request.set_url(config_.update_path_info_url());
   http_request.set_json_body(request_json_str);
 
+  if (config_.has_api_key()) {
+    (*http_request.mutable_headers())["X-Goog-Api-Key"] = config_.api_key();
+  }
+
   http_fetcher_.PostJsonAsync(
       http_request,
       absl::bind_front(&Session::HandleUpdatePathInfoResponse, this));
