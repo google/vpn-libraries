@@ -15,7 +15,6 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_IPSEC_TUNNEL_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_IPSEC_TUNNEL_H_
 
-#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -40,9 +39,6 @@ class IpSecTunnel : public TunnelInterface {
   ~IpSecTunnel() override;
   IpSecTunnel(const IpSecTunnel&) = delete;
   IpSecTunnel(IpSecTunnel&&) = delete;
-
-  // Closes the tunnel interface fd.
-  absl::Status Close() override;
 
   // Stops all current reads on the tunnel, but does not close the fd.
   absl::Status CancelReadPackets() override;
@@ -69,7 +65,7 @@ class IpSecTunnel : public TunnelInterface {
   // Performs some one-time initialization.
   absl::Status Init();
 
-  std::atomic_int tunnel_fd_;
+  int tunnel_fd_;
 
   EventFd close_event_;
 

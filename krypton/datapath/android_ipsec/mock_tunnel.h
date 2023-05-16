@@ -27,7 +27,6 @@ namespace android {
 
 class MockTunnel : public TunnelInterface {
  public:
-  MOCK_METHOD(absl::Status, Close, (), (override));
   MOCK_METHOD(absl::Status, CancelReadPackets, (), (override));
   MOCK_METHOD(absl::StatusOr<std::vector<Packet>>, ReadPackets, (), (override));
   MOCK_METHOD(absl::Status, WritePackets, (std::vector<Packet>), (override));

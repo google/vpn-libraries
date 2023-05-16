@@ -49,6 +49,7 @@ class VpnService
  public:
   explicit VpnService(jobject krypton_instance)
       : krypton_instance_(std::make_unique<JavaObject>(krypton_instance)),
+        tunnel_(nullptr),
         tunnel_fd_(-1),
         keepalive_interval_ipv4_(absl::ZeroDuration()),
         keepalive_interval_ipv6_(absl::ZeroDuration()) {}

@@ -34,33 +34,23 @@ constexpr int kMaxPacketSize = 4096;
 
 absl::StatusOr<std::unique_ptr<IpSecTunnel>> IpSecTunnel::Create(
     int tunnel_fd) {
+  if (tunnel_fd < 0) {
+    return absl::InvalidArgumentError("Invalid fd");
+  }
   auto tunnel = std::unique_ptr<IpSecTunnel>(new IpSecTunnel(tunnel_fd));
   PPN_RETURN_IF_ERROR(tunnel->Init());
   return tunnel;
 }
 
 IpSecTunnel::IpSecTunnel(int tunnel_fd)
-    : tunnel_fd_(tunnel_fd), keepalive_interval_millis_(-1) {}
-
-IpSecTunnel::~IpSecTunnel() {
-  if (tunnel_fd_ >= 0) {
-    PPN_LOG_IF_ERROR(Close());
-  }
-
-  PPN_LOG_IF_ERROR(events_helper_.RemoveFile(close_event_.fd()));
+    : tunnel_fd_(tunnel_fd), keepalive_interval_millis_(-1) {
+  LOG(INFO) << "Creating IpSecTunnel[" << this << "] with FD=" << tunnel_fd_;
 }
 
-absl::Status IpSecTunnel::Close() {
-  int fd = tunnel_fd_.exchange(-1);
-  if (fd < 0) {
-    LOG(WARNING) << "Attempted to close tunnel that was already closed.";
-    return absl::OkStatus();
-  }
-  LOG(INFO) << "Closing tunnel FD=" << fd;
-  PPN_LOG_IF_ERROR(events_helper_.RemoveFile(fd));
-  close(fd);
-  PPN_LOG_IF_ERROR(close_event_.Notify(1));
-  return absl::OkStatus();
+IpSecTunnel::~IpSecTunnel() {
+  LOG(INFO) << "Destroying IpSecTunnel[" << this << "] with FD=" << tunnel_fd_;
+  PPN_LOG_IF_ERROR(events_helper_.RemoveFile(tunnel_fd_));
+  PPN_LOG_IF_ERROR(events_helper_.RemoveFile(close_event_.fd()));
 }
 
 absl::Status IpSecTunnel::CancelReadPackets() {
@@ -181,7 +171,6 @@ absl::Status IpSecTunnel::Init() {
   }
 
   if (!status.ok()) {
-    PPN_LOG_IF_ERROR(Close());
     return status;
   }
 

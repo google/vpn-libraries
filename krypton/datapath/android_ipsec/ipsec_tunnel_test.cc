@@ -36,10 +36,20 @@ namespace datapath {
 namespace android {
 namespace {
 
+using ::testing::IsEmpty;
+using ::testing::status::StatusIs;
+
 class IpSecTunnelTest : public ::testing::Test {
  public:
-  void SetUp() override {}
-  void TearDown() override {}
+  void SetUp() override {
+    ASSERT_OK_AND_ASSIGN(auto sock_fds, CreateSocketPair());
+    tun_fd_ = sock_fds.first;
+    sock_fd_ = sock_fds.second;
+  }
+  void TearDown() override {
+    CloseTunnel();
+    CloseSocket();
+  }
 
  protected:
   static absl::StatusOr<std::pair<int, int>> CreateSocketPair() {
@@ -49,34 +59,36 @@ class IpSecTunnelTest : public ::testing::Test {
     }
     return std::pair<int, int>(sock_fds[0], sock_fds[1]);
   }
+
+  void CloseTunnel() {
+    if (tun_fd_ != -1) {
+      close(tun_fd_);
+      tun_fd_ = -1;
+    }
+  }
+
+  void CloseSocket() {
+    if (sock_fd_ != -1) {
+      close(sock_fd_);
+      sock_fd_ = -1;
+    }
+  }
+
+  int tun_fd_;
+  int sock_fd_;
 };
 
-TEST_F(IpSecTunnelTest, CreateAndClose) {
-  ASSERT_OK_AND_ASSIGN(auto sock_fds, CreateSocketPair());
-
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(sock_fds.first));
-
-  ASSERT_OK(tunnel->Close());
-
-  close(sock_fds.second);
+TEST_F(IpSecTunnelTest, CreateTunnel) {
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
 }
 
-TEST_F(IpSecTunnelTest, CloseAfterClose) {
-  ASSERT_OK_AND_ASSIGN(auto sock_fds, CreateSocketPair());
-
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(sock_fds.first));
-
-  ASSERT_OK(tunnel->Close());
-
-  ASSERT_OK(tunnel->Close());
-
-  close(sock_fds.second);
+TEST_F(IpSecTunnelTest, CreateTunnelWithBadFd) {
+  ASSERT_THAT(IpSecTunnel::Create(-1),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(IpSecTunnelTest, CreateAndStop) {
-  ASSERT_OK_AND_ASSIGN(auto sock_fds, CreateSocketPair());
-
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(sock_fds.first));
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
 
   absl::Notification notification;
 
@@ -91,44 +103,30 @@ TEST_F(IpSecTunnelTest, CreateAndStop) {
 
   ASSERT_TRUE(
       notification.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
-
-  ASSERT_OK(tunnel->Close());
-
-  close(sock_fds.second);
 }
 
 TEST_F(IpSecTunnelTest, WriteAfterClose) {
-  ASSERT_OK_AND_ASSIGN(auto sock_fds, CreateSocketPair());
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
 
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(sock_fds.first));
-
-  ASSERT_OK(tunnel->Close());
+  CloseTunnel();
 
   std::vector<Packet> packets;
   packets.emplace_back("foo", 3, IPProtocol::kIPv6, []() {});
   ASSERT_THAT(tunnel->WritePackets(std::move(packets)),
               ::testing::status::StatusIs(absl::StatusCode::kInternal));
-
-  close(sock_fds.second);
 }
 
-TEST_F(IpSecTunnelTest, ReadAfterClose) {
-  ASSERT_OK_AND_ASSIGN(auto sock_fds, CreateSocketPair());
+TEST_F(IpSecTunnelTest, ReadAfterCancelReadPackets) {
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
 
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(sock_fds.first));
+  ASSERT_OK(tunnel->CancelReadPackets());
 
-  ASSERT_OK(tunnel->Close());
-
-  ASSERT_THAT(tunnel->ReadPackets(),
-              ::testing::status::StatusIs(absl::StatusCode::kInternal));
-
-  close(sock_fds.second);
+  ASSERT_OK_AND_ASSIGN(auto recv_packets, tunnel->ReadPackets());
+  ASSERT_THAT(recv_packets, IsEmpty());
 }
 
 TEST_F(IpSecTunnelTest, NormalWrite) {
-  ASSERT_OK_AND_ASSIGN(auto sock_fds, CreateSocketPair());
-
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(sock_fds.first));
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
 
   // Send a packet through.
   std::vector<Packet> send_packets;
@@ -137,51 +135,33 @@ TEST_F(IpSecTunnelTest, NormalWrite) {
 
   // Verify the other end received the packet.
   char msg[10];
-  int nread = read(sock_fds.second, msg, 10);
+  int nread = read(sock_fd_, msg, 10);
   EXPECT_EQ("foo", std::string(msg, nread));
-
-  ASSERT_OK(tunnel->Close());
-
-  close(sock_fds.second);
 }
 
 TEST_F(IpSecTunnelTest, NormalRead) {
-  ASSERT_OK_AND_ASSIGN(auto sock_fds, CreateSocketPair());
-
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(sock_fds.first));
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
 
   // Send a packet to the tunnel.
-  write(sock_fds.second, "foo", 3);
+  write(sock_fd_, "foo", 3);
 
   // Verify the packet was received
   ASSERT_OK_AND_ASSIGN(auto recv_packets, tunnel->ReadPackets());
   ASSERT_EQ(recv_packets.size(), 1);
   EXPECT_EQ(recv_packets[0].data(), "foo");
-
-  ASSERT_OK(tunnel->Close());
-
-  close(sock_fds.second);
 }
 
 TEST_F(IpSecTunnelTest, ReadAfterShutdown) {
-  ASSERT_OK_AND_ASSIGN(auto sock_fds, CreateSocketPair());
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
 
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(sock_fds.first));
-
-  shutdown(sock_fds.first, SHUT_RDWR);
+  shutdown(tun_fd_, SHUT_RDWR);
 
   ASSERT_THAT(tunnel->ReadPackets(),
               testing::status::StatusIs(absl::StatusCode::kAborted));
-
-  ASSERT_OK(tunnel->Close());
-
-  close(sock_fds.second);
 }
 
 TEST_F(IpSecTunnelTest, SetKeepalive) {
-  ASSERT_OK_AND_ASSIGN(auto sock_fds, CreateSocketPair());
-
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(sock_fds.first));
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
 
   EXPECT_FALSE(tunnel->IsKeepaliveEnabled());
 
@@ -194,26 +174,16 @@ TEST_F(IpSecTunnelTest, SetKeepalive) {
 
   EXPECT_FALSE(tunnel->IsKeepaliveEnabled());
   EXPECT_EQ(tunnel->GetKeepaliveInterval(), absl::ZeroDuration());
-
-  ASSERT_OK(tunnel->Close());
-
-  close(sock_fds.second);
 }
 
 TEST_F(IpSecTunnelTest, ReadKeepalive) {
-  ASSERT_OK_AND_ASSIGN(auto sock_fds, CreateSocketPair());
-
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(sock_fds.first));
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
 
   tunnel->SetKeepaliveInterval(absl::Milliseconds(1));
 
   ASSERT_OK_AND_ASSIGN(auto recv_packets, tunnel->ReadPackets());
   ASSERT_EQ(recv_packets.size(), 1);
   EXPECT_EQ(recv_packets[0].data(), "\xFF");
-
-  ASSERT_OK(tunnel->Close());
-
-  close(sock_fds.second);
 }
 
 }  // namespace

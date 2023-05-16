@@ -31,10 +31,6 @@ class TunnelInterface {
  public:
   virtual ~TunnelInterface() = default;
 
-  // Shuts down and closes the tunnel. The tunnel cannot be restarted after
-  // being closed.
-  virtual absl::Status Close() = 0;
-
   // Stops reading from the tunnel, but does not close the underlying fd.
   virtual absl::Status CancelReadPackets() = 0;
 

@@ -110,16 +110,21 @@ absl::Status VpnService::CreateTunnel(const TunFdData& tun_fd_data) {
   }
 
   absl::MutexLock l(&mutex_);
-  if (tunnel_ != nullptr) {
-    LOG(WARNING) << "Old tunnel was still open. Closing now.";
-    PPN_LOG_IF_ERROR(tunnel_->Close());
-    tunnel_.reset();
-    tunnel_fd_ = -1;
+  if (tunnel_fd_ != -1) {
+    LOG(WARNING) << "Old tunnel with fd=" << tunnel_fd_
+                 << " was still open. Closing now.";
+    CloseTunnel();
   }
 
-  PPN_ASSIGN_OR_RETURN(auto tunnel, datapath::android::IpSecTunnel::Create(fd));
-  tunnel_ = std::move(tunnel);
+  LOG(INFO) << "Creating new tunnel with fd=" << fd;
   tunnel_fd_ = fd;
+  auto tunnel = datapath::android::IpSecTunnel::Create(fd);
+  if (!tunnel.ok()) {
+    LOG(INFO) << "Failed to create tunnel: " << tunnel.status();
+    CloseTunnel();
+    return tunnel.status();
+  }
+  tunnel_ = *std::move(tunnel);
   return absl::OkStatus();
 }
 
@@ -138,11 +143,13 @@ absl::StatusOr<int> VpnService::GetTunnelFd() {
 
 void VpnService::CloseTunnel() {
   absl::MutexLock l(&mutex_);
-  if (tunnel_ == nullptr) {
+  tunnel_ = nullptr;
+  if (tunnel_fd_ == -1) {
+    LOG(WARNING) << "Tunnel already closed.";
     return;
   }
-  PPN_LOG_IF_ERROR(tunnel_->Close());
-  tunnel_.reset();
+  LOG(INFO) << "Closing tunnel fd=" << tunnel_fd_;
+  close(tunnel_fd_);
   tunnel_fd_ = -1;
 }
 
