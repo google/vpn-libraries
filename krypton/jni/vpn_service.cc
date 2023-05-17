@@ -113,7 +113,7 @@ absl::Status VpnService::CreateTunnel(const TunFdData& tun_fd_data) {
   if (tunnel_fd_ != -1) {
     LOG(WARNING) << "Old tunnel with fd=" << tunnel_fd_
                  << " was still open. Closing now.";
-    CloseTunnel();
+    CloseTunnelInternal();
   }
 
   LOG(INFO) << "Creating new tunnel with fd=" << fd;
@@ -121,7 +121,7 @@ absl::Status VpnService::CreateTunnel(const TunFdData& tun_fd_data) {
   auto tunnel = datapath::android::IpSecTunnel::Create(fd);
   if (!tunnel.ok()) {
     LOG(INFO) << "Failed to create tunnel: " << tunnel.status();
-    CloseTunnel();
+    CloseTunnelInternal();
     return tunnel.status();
   }
   tunnel_ = *std::move(tunnel);
@@ -143,14 +143,7 @@ absl::StatusOr<int> VpnService::GetTunnelFd() {
 
 void VpnService::CloseTunnel() {
   absl::MutexLock l(&mutex_);
-  tunnel_ = nullptr;
-  if (tunnel_fd_ == -1) {
-    LOG(WARNING) << "Tunnel already closed.";
-    return;
-  }
-  LOG(INFO) << "Closing tunnel fd=" << tunnel_fd_;
-  close(tunnel_fd_);
-  tunnel_fd_ = -1;
+  CloseTunnelInternal();
 }
 
 absl::StatusOr<int> VpnService::CreateProtectedNetworkSocket(
@@ -287,6 +280,17 @@ absl::Status VpnService::ConfigureNetworkSocket(
     return status;
   }
   return absl::OkStatus();
+}
+
+void VpnService::CloseTunnelInternal() {
+  tunnel_ = nullptr;
+  if (tunnel_fd_ == -1) {
+    LOG(WARNING) << "Tunnel already closed.";
+    return;
+  }
+  LOG(INFO) << "Closing tunnel fd=" << tunnel_fd_;
+  close(tunnel_fd_);
+  tunnel_fd_ = -1;
 }
 
 }  // namespace jni

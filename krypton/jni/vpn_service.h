@@ -59,10 +59,12 @@ class VpnService
                                    TimerManager* timer_manager) override;
 
   // TUN fd creation
-  absl::Status CreateTunnel(const TunFdData& tun_fd_data) override;
-  datapath::android::TunnelInterface* GetTunnel() override;
-  absl::StatusOr<int> GetTunnelFd() override;
-  void CloseTunnel() override;
+  absl::Status CreateTunnel(const TunFdData& tun_fd_data)
+      ABSL_LOCKS_EXCLUDED(mutex_) override;
+  datapath::android::TunnelInterface* GetTunnel()
+      ABSL_LOCKS_EXCLUDED(mutex_) override;
+  absl::StatusOr<int> GetTunnelFd() ABSL_LOCKS_EXCLUDED(mutex_) override;
+  void CloseTunnel() ABSL_LOCKS_EXCLUDED(mutex_) override;
 
   // Network fd creation
   absl::StatusOr<int> CreateProtectedNetworkSocket(
@@ -81,12 +83,14 @@ class VpnService
 
   absl::Status ConfigureIpSec(const IpSecTransformParams& params) override;
 
-  void DisableKeepalive() override;
+  void DisableKeepalive() ABSL_LOCKS_EXCLUDED(mutex_) override;
 
  private:
   absl::Status ConfigureNetworkSocket(
-      datapath::android::IpSecSocketInterface* socket,
-      const Endpoint& endpoint);
+      datapath::android::IpSecSocketInterface* socket, const Endpoint& endpoint)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void CloseTunnelInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   std::unique_ptr<JavaObject> krypton_instance_;
 
