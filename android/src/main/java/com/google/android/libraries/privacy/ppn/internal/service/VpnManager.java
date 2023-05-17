@@ -92,7 +92,9 @@ public class VpnManager {
     VpnServiceWrapper service = vpnService;
     if (service != null) {
       Log.w(TAG, "Setting underlying network to " + ppnNetwork);
-      service.setUnderlyingNetworks(new Network[] {ppnNetwork.getNetwork()});
+      if (!service.setUnderlyingNetworks(new Network[] {ppnNetwork.getNetwork()})) {
+        Log.w(TAG, "Failed to set underlying network.");
+      }
     } else {
       Log.w(TAG, "Failed to set underlying network because service is not running.");
     }
@@ -164,7 +166,9 @@ public class VpnManager {
     PpnNetwork currentNetwork = getNetwork();
     if (currentNetwork != null && !currentNetwork.equals(network)) {
       Log.w(TAG, "Updating underlying network to " + currentNetwork);
-      service.setUnderlyingNetworks(new Network[] {currentNetwork.getNetwork()});
+      if (!service.setUnderlyingNetworks(new Network[] {currentNetwork.getNetwork()})) {
+        Log.w(TAG, "Failed to set underlying network to " + currentNetwork);
+      }
     }
 
     return fd;
@@ -253,7 +257,9 @@ public class VpnManager {
       socket.setReceiveBufferSize(SOCKET_BUFFER_SIZE_BYTES);
       socket.setSendBufferSize(SOCKET_BUFFER_SIZE_BYTES);
 
-      service.protect(socket);
+      if (!service.protect(socket)) {
+        Log.w(TAG, "Failed to protect datagram socket.");
+      }
       network.bindSocket(socket);
 
       // Explicitly duplicate the socket for Android version 9 (P) and older.
@@ -309,7 +315,9 @@ public class VpnManager {
       socket.setReceiveBufferSize(SOCKET_BUFFER_SIZE_BYTES);
       socket.setSendBufferSize(SOCKET_BUFFER_SIZE_BYTES);
 
-      service.protect(socket);
+      if (!service.protect(socket)) {
+        Log.w(TAG, "Failed to protect stream socket.");
+      }
       network.bindSocket(socket);
 
       // Explicitly duplicate the socket for Android version 9 (P) and older.
@@ -322,7 +330,7 @@ public class VpnManager {
       socket = null;
       int fd = pfd.detachFd();
       if (fd <= 0) {
-        throw new PpnException("Invalid file descriptor from datagram socket: " + fd);
+        throw new PpnException("Invalid file descriptor from socket: " + fd);
       }
       return fd;
     } catch (IOException e) {
@@ -344,8 +352,13 @@ public class VpnManager {
    */
   void protect(Socket socket) {
     VpnServiceWrapper service = vpnService;
+    Log.w(TAG, "Protecting socket: " + socket);
     if (service != null) {
-      service.protect(socket);
+      if (!service.protect(socket)) {
+        Log.w(TAG, "Failed to protect socket.");
+      }
+    } else {
+      Log.w(TAG, "Cannot protect socket with no VpnService running.");
     }
   }
 }

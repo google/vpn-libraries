@@ -14,10 +14,6 @@
 
 #include "privacy/net/krypton/tunnel_manager.h"
 
-#include <cstddef>
-#include <memory>
-#include <utility>
-
 #include "base/logging.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
@@ -113,7 +109,7 @@ absl::Status TunnelManager::RecreateTunnelIfNeeded() {
 void TunnelManager::TerminateSession(bool forceFailOpen) {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "TunnelManager registered terminating session, Safe Disconnect: "
-            << safe_disconnect_enabled_;
+            << safe_disconnect_enabled_ << ", Tunnel Is Up: " << tunnel_is_up_;
   if (tunnel_is_up_ && (forceFailOpen || !safe_disconnect_enabled_)) {
     LOG(INFO) << "TunnelManager closing active tunnel";
     vpn_service_->CloseTunnel();

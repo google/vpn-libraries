@@ -80,6 +80,11 @@ public final class PpnNetworkCallback extends NetworkCallback {
   }
 
   @Override
+  public void onBlockedStatusChanged(Network network, boolean blocked) {
+    Log.w(TAG, String.format("%s Network callback: onBlockedStatusChanged (%b)", this, blocked));
+  }
+
+  @Override
   public String toString() {
     return String.format("PpnNetworkCallback<%s>", this.networkType.name());
   }

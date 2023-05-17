@@ -15,7 +15,6 @@
 #ifndef PRIVACY_NET_KRYPTON_TUNNEL_MANAGER_H_
 #define PRIVACY_NET_KRYPTON_TUNNEL_MANAGER_H_
 
-#include <memory>
 #include <optional>
 
 #include "privacy/net/krypton/pal/vpn_service_interface.h"

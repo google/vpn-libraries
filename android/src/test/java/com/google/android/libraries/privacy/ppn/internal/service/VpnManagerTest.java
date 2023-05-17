@@ -15,6 +15,7 @@
 package com.google.android.libraries.privacy.ppn.internal.service;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -41,6 +42,7 @@ import com.google.common.net.InetAddresses;
 import java.net.DatagramSocket;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
+import java.net.Socket;
 import java.util.Arrays;
 import java.util.HashSet;
 import org.junit.Before;
@@ -140,6 +142,7 @@ public class VpnManagerTest {
     PpnOptions options = new PpnOptions.Builder().build();
     VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
+    doReturn(true).when(mockService).setUnderlyingNetworks(any());
 
     PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
     verify(mockNetwork, atLeast(0)).getNetworkHandle();
@@ -348,6 +351,7 @@ public class VpnManagerTest {
     manager.setServiceWrapper(mockService);
     doReturn(0xfeed).when(mockFd).detachFd();
     doReturn(mockFd).when(mockService).parcelSocket(any(DatagramSocket.class));
+    doReturn(true).when(mockService).protect(any(DatagramSocket.class));
 
     PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
     verify(mockNetwork, atLeast(0)).getNetworkHandle();
@@ -356,6 +360,58 @@ public class VpnManagerTest {
     assertThat(fd).isEqualTo(0xfeed);
 
     ArgumentCaptor<DatagramSocket> socket = ArgumentCaptor.forClass(DatagramSocket.class);
+    verify(mockService).protect(socket.capture());
+    verify(mockNetwork).bindSocket(socket.getValue());
+    verify(mockService).parcelSocket(socket.getValue());
+    verify(mockFd).detachFd();
+
+    verifyNoMoreInteractions(mockService);
+    verifyNoMoreInteractions(mockBuilder);
+    verifyNoMoreInteractions(mockNetwork);
+    verifyNoMoreInteractions(mockFd);
+  }
+
+  @Test
+  public void createProtectedStreamSocket_protectsAndBindsSocket() throws Exception {
+    PpnOptions options = new PpnOptions.Builder().build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    manager.setServiceWrapper(mockService);
+    doReturn(0xfeed).when(mockFd).detachFd();
+    doReturn(mockFd).when(mockService).parcelSocket(any(Socket.class));
+    doReturn(true).when(mockService).protect(any(Socket.class));
+
+    PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
+    verify(mockNetwork, atLeast(0)).getNetworkHandle();
+    int fd = manager.createProtectedStreamSocket(ppnNetwork);
+
+    assertThat(fd).isEqualTo(0xfeed);
+
+    ArgumentCaptor<Socket> socket = ArgumentCaptor.forClass(Socket.class);
+    verify(mockService).protect(socket.capture());
+    verify(mockNetwork).bindSocket(socket.getValue());
+    verify(mockService).parcelSocket(socket.getValue());
+    verify(mockFd).detachFd();
+
+    verifyNoMoreInteractions(mockService);
+    verifyNoMoreInteractions(mockBuilder);
+    verifyNoMoreInteractions(mockNetwork);
+    verifyNoMoreInteractions(mockFd);
+  }
+
+  @Test
+  public void createProtectedStreamSocket_invalidFdFromSocket() throws Exception {
+    PpnOptions options = new PpnOptions.Builder().build();
+    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    manager.setServiceWrapper(mockService);
+    doReturn(-1).when(mockFd).detachFd();
+    doReturn(mockFd).when(mockService).parcelSocket(any(Socket.class));
+    doReturn(true).when(mockService).protect(any(Socket.class));
+
+    PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
+    verify(mockNetwork, atLeast(0)).getNetworkHandle();
+    assertThrows(Exception.class, () -> manager.createProtectedStreamSocket(ppnNetwork));
+
+    ArgumentCaptor<Socket> socket = ArgumentCaptor.forClass(Socket.class);
     verify(mockService).protect(socket.capture());
     verify(mockNetwork).bindSocket(socket.getValue());
     verify(mockService).parcelSocket(socket.getValue());
