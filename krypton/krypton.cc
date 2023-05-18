@@ -59,11 +59,11 @@ void Krypton::Start(const KryptonConfig& config) {
   config_ = config;
   notification_thread_ =
       std::make_unique<utils::LooperThread>("Krypton Looper");
-  session_manager_ = std::make_unique<SessionManager>(
-      config_, http_fetcher_, timer_manager_, vpn_service_, oauth_,
-      notification_thread_.get());
   tunnel_manager_ = std::make_unique<TunnelManager>(
       vpn_service_, config.safe_disconnect_enabled());
+  session_manager_ = std::make_unique<SessionManager>(
+      config_, http_fetcher_, timer_manager_, vpn_service_, oauth_,
+      tunnel_manager_.get(), notification_thread_.get());
   clock_ = std::make_unique<RealClock>();
   reconnector_ = std::make_unique<Reconnector>(
       timer_manager_, config, session_manager_.get(), tunnel_manager_.get(),

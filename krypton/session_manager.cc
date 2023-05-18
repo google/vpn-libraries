@@ -29,7 +29,6 @@
 #include "privacy/net/krypton/session.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
-#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
@@ -40,11 +39,13 @@ SessionManager::SessionManager(const KryptonConfig& config,
                                TimerManager* timer_manager,
                                VpnServiceInterface* vpn_service,
                                OAuthInterface* oauth,
+                               TunnelManagerInterface* tunnel_manager,
                                utils::LooperThread* krypton_notification_thread)
     : config_(config),
       ip_geo_level_(config_.ip_geo_level()),
       http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher)),
       timer_manager_(ABSL_DIE_IF_NULL(timer_manager)),
+      tunnel_manager_(ABSL_DIE_IF_NULL(tunnel_manager)),
       vpn_service_(ABSL_DIE_IF_NULL(vpn_service)),
       oauth_(ABSL_DIE_IF_NULL(oauth)),
       krypton_notification_thread_(krypton_notification_thread) {}
@@ -88,6 +89,7 @@ void SessionManager::TerminateSession(bool forceFailOpen) {
   absl::MutexLock l(&mutex_);
   if (!session_created_) {
     LOG(ERROR) << "Session is not created.. Not terminating";
+    tunnel_manager_->TerminateSession(forceFailOpen);
     return;
   }
   LOG(INFO) << "Terminating Session";

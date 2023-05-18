@@ -46,7 +46,7 @@ class SessionManager : public SessionManagerInterface {
   SessionManager(const KryptonConfig& config,
                  HttpFetcherInterface* http_fetcher,
                  TimerManager* timer_manager, VpnServiceInterface* vpn_service,
-                 OAuthInterface* oauth,
+                 OAuthInterface* oauth, TunnelManagerInterface* tunnel_manager,
                  utils::LooperThread* notification_thread);
 
   void RegisterNotificationInterface(Session::NotificationInterface*) override;
@@ -95,6 +95,7 @@ class SessionManager : public SessionManagerInterface {
   HttpFetcherInterface* http_fetcher_;                // Not owned.
   Session::NotificationInterface* notification_;      // Not owned.
   TimerManager* timer_manager_;                       // Not owned.
+  TunnelManagerInterface* tunnel_manager_;            // Not owned.
   VpnServiceInterface* vpn_service_;                  // Not owned.
   OAuthInterface* oauth_;                             // Not owned.
   utils::LooperThread* krypton_notification_thread_;  // Not owned.
