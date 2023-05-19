@@ -18,14 +18,11 @@
 
 #include <optional>
 #include <string>
-#include <type_traits>
 
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/status/statusor.h"
-#include "util/task/status_macros.h"
 
 namespace privacy {
 namespace krypton {
@@ -197,6 +194,11 @@ TEST(IPRange, TestFromProtoIPv6) {
   EXPECT_EQ(range.address(), "2604:fe::03");
   EXPECT_EQ(range.prefix(), 64);
   EXPECT_EQ(range.family(), AF_INET6);
+}
+
+TEST(IPRange, TestResolveIPAddress) {
+  ASSERT_OK_AND_ASSIGN(auto ip, ResolveIPAddress("localhost"));
+  EXPECT_EQ(ip.compare("::1"), 0);
 }
 
 }  // namespace
