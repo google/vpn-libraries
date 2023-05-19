@@ -62,6 +62,17 @@ class MockDatapath : public DatapathInterface {
   MOCK_METHOD(void, GetDebugInfo, (DatapathDebugInfo*), (override));
 };
 
+class MockSessionNotification : public Session::NotificationInterface {
+ public:
+  MOCK_METHOD(void, ControlPlaneConnected, (), (override));
+  MOCK_METHOD(void, ControlPlaneDisconnected, (const absl::Status&),
+              (override));
+  MOCK_METHOD(void, PermanentFailure, (const absl::Status&), (override));
+  MOCK_METHOD(void, DatapathConnected, (), (override));
+  MOCK_METHOD(void, DatapathDisconnected,
+              (const NetworkInfo&, const absl::Status&), (override));
+};
+
 class SessionManagerTest : public ::testing::Test {
  public:
   SessionManagerTest()
@@ -69,7 +80,9 @@ class SessionManagerTest : public ::testing::Test {
         notification_thread_("SessionManagerTest Looper"),
         session_manager_(config_, &mock_http_fetcher_, &timer_manager_,
                          &mock_vpn_service_, &mock_oauth_,
-                         &mock_tunnel_manager_, &notification_thread_) {}
+                         &mock_tunnel_manager_, &notification_thread_) {
+    session_manager_.RegisterNotificationInterface(&mock_session_notification_);
+  }
 
  protected:
   KryptonConfig config_;
@@ -80,6 +93,7 @@ class SessionManagerTest : public ::testing::Test {
   MockOAuth mock_oauth_;
   MockTunnelManager mock_tunnel_manager_;
   utils::LooperThread notification_thread_;
+  MockSessionNotification mock_session_notification_;
   SessionManager session_manager_;
 };
 
