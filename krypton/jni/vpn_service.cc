@@ -17,6 +17,8 @@
 #include <jni.h>
 #include <jni_md.h>
 
+#include <cerrno>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -288,9 +290,21 @@ void VpnService::CloseTunnelInternal() {
     LOG(WARNING) << "Tunnel already closed.";
     return;
   }
-  LOG(INFO) << "Closing tunnel fd=" << tunnel_fd_;
-  close(tunnel_fd_);
-  tunnel_fd_ = -1;
+  int tunnel_fd = std::exchange(tunnel_fd_, -1);
+  LOG(INFO) << "Closing tunnel fd=" << tunnel_fd;
+
+  // Retry close operation if it is interrupted.
+  int ret;
+  do {
+    ret = close(tunnel_fd);
+  } while (ret < 0 && errno == EINTR);
+
+  if (ret < 0) {
+    LOG(ERROR) << "Error occurred while closing tunnel fd=" << tunnel_fd << ": "
+               << strerror(errno);
+    return;
+  }
+  LOG(INFO) << "Successfully closed tunnel fd=" << tunnel_fd;
 }
 
 }  // namespace jni
