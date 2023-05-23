@@ -94,11 +94,6 @@ absl::Status IpSecDatapath::SwitchNetwork(
   }
   LOG(INFO) << "Switching Network";
 
-  // TODO: There may still be error notifications in the
-  // LooperThread that will be processed after the packet forwarder has been
-  // shut down, which could lead to shutting it down multiple times. We need to
-  // either have the forwarder have its own LooperThread or filter events from
-  // previous runs.
   ShutdownIpSecPacketForwarder(/*close_network_socket=*/true);
 
   if (!key_material_) {
