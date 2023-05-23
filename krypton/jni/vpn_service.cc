@@ -60,7 +60,7 @@ constexpr absl::Duration kDefaultIpv6KeepaliveInterval = absl::Hours(1);
 
 DatapathInterface* VpnService::BuildDatapath(const KryptonConfig& config,
                                              utils::LooperThread* looper,
-                                             TimerManager* /*timer_manager*/) {
+                                             TimerManager* timer_manager) {
   keepalive_interval_ipv4_ = kDefaultIpv4KeepaliveInterval;
   if (config.has_ipv4_keepalive_interval()) {
     auto keepalive = utils::DurationFromProto(config.ipv4_keepalive_interval());
@@ -84,7 +84,8 @@ DatapathInterface* VpnService::BuildDatapath(const KryptonConfig& config,
   }
 
   if (config.datapath_protocol() == KryptonConfig::IPSEC) {
-    return new datapath::android::IpSecDatapath(config, looper, this);
+    return new datapath::android::IpSecDatapath(config, looper, this,
+                                                timer_manager);
   }
 }
 

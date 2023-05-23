@@ -75,7 +75,7 @@ absl::Status IpSecDatapath::Start(const AddEgressResponse& egress_response,
 
 void IpSecDatapath::Stop() {
   absl::MutexLock l(&mutex_);
-  StopInternal();
+  ShutdownIpSecPacketForwarder(/*close_network_socket=*/true);
 }
 
 absl::Status IpSecDatapath::SwitchNetwork(
@@ -221,6 +221,7 @@ void IpSecDatapath::ShutdownIpSecPacketForwarder(bool close_network_socket) {
   if (close_network_socket) {
     CloseNetworkSocket();
   }
+  health_check_.Stop();
   LOG(INFO) << "The packet forwarder is shut down.";
 }
 
@@ -274,6 +275,7 @@ void IpSecDatapath::IpSecPacketForwarderConnected(int packet_forwarder_id) {
   absl::MutexLock l(&mutex_);
   if (!IsForwarderNotificationValid(packet_forwarder_id)) return;
   LOG(WARNING) << "IpSecDatapath packet forwarder connected.";
+  health_check_.Start();
   auto* notification = notification_;
   notification_thread_->Post(
       [notification]() { notification->DatapathEstablished(); });
@@ -285,12 +287,20 @@ void IpSecDatapath::UplinkMtuUpdated(int uplink_mtu, int tunnel_mtu) {
     notification->DoUplinkMtuUpdate(uplink_mtu, tunnel_mtu);
   });
 }
+
 void IpSecDatapath::DownlinkMtuUpdated(int downlink_mtu) {
   auto* notification = notification_;
   notification_thread_->Post([notification, downlink_mtu]() {
     notification->DoDownlinkMtuUpdate(downlink_mtu);
   });
 }
+
+void IpSecDatapath::HealthCheckFailed(const absl::Status& status) {
+  auto* notification = notification_;
+  notification_thread_->Post(
+      [notification, status]() { notification->DatapathFailed(status); });
+}
+
 void IpSecDatapath::GetDebugInfo(DatapathDebugInfo* debug_info) {
   absl::MutexLock l(&mutex_);
   if (forwarder_ != nullptr) {

@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mock_ipsec_socket.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mock_ipsec_vpn_service.h"
@@ -26,6 +27,7 @@
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/pal/mock_timer_interface.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
@@ -46,6 +48,7 @@ namespace android {
 namespace {
 
 using ::testing::_;
+using ::testing::Eq;
 using ::testing::Return;
 using ::testing::status::StatusIs;
 
@@ -64,9 +67,13 @@ class IpSecDatapathTest : public ::testing::Test {
  public:
   IpSecDatapathTest() {
     config_.set_dynamic_mtu_enabled(true);
+    config_.set_periodic_health_check_enabled(true);
+    config_.mutable_periodic_health_check_duration()->set_seconds(10);
+    config_.set_periodic_health_check_port(80);
+    config_.set_periodic_health_check_url("www.google.com");
 
-    datapath_ =
-        std::make_unique<IpSecDatapath>(config_, &looper_, &vpn_service_);
+    datapath_ = std::make_unique<IpSecDatapath>(config_, &looper_,
+                                                &vpn_service_, &timer_manager_);
     datapath_->RegisterNotificationHandler(&notification_);
   }
 
@@ -130,6 +137,8 @@ class IpSecDatapathTest : public ::testing::Test {
   MockTunnel tunnel_;
   TransformParams params_;
   Endpoint endpoint_{"192.0.2.0:8080", "192.0.2.0", 8080, IPProtocol::kIPv4};
+  MockTimerInterface mock_timer_interface_;
+  TimerManager timer_manager_{&mock_timer_interface_};
 };
 
 TEST_F(IpSecDatapathTest, SwitchNetworkFailureNoNetworkSocket) {
@@ -329,6 +338,108 @@ TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
   EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
   EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel_));
   EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+
+  datapath_->Stop();
+}
+
+TEST_F(IpSecDatapathTest, HealthCheckFailureHandled) {
+  auto socket_ptr = std::make_unique<MockIpSecSocket>();
+
+  Endpoint expected_endpoint("192.0.2.0:8080", "192.0.2.0", 8080,
+                             IPProtocol::kIPv4);
+  Endpoint expected_mss_mtu_endpoint("192.168.0.1:2153", "192.168.0.1", 2153,
+                                     IPProtocol::kIPv4);
+
+  // Need to keep a reference to the socket to simulate data being sent.
+  MockIpSecSocket *socket = socket_ptr.get();
+  EXPECT_CALL(vpn_service_,
+              CreateProtectedNetworkSocket(_, expected_endpoint,
+                                           expected_mss_mtu_endpoint, _))
+      .WillOnce(
+          [&socket_ptr](const NetworkInfo & /*network_info*/,
+                        const Endpoint & /*endpoint*/,
+                        const Endpoint & /*mss_mtu_detection_endpoint*/,
+                        std::unique_ptr<MtuTrackerInterface> mtu_tracker) {
+            mtu_tracker->UpdateUplinkMtu(1500);
+            return std::move(socket_ptr);
+          });
+  EXPECT_CALL(*socket, GetFd()).WillOnce(Return(1));
+
+  int health_check_timer_id = 0;
+  absl::Notification timer_started;
+  EXPECT_CALL(mock_timer_interface_, StartTimer(_, Eq(absl::Seconds(10))))
+      .WillOnce([&health_check_timer_id, &timer_started](
+                    int id, absl::Duration /*duration*/) {
+        health_check_timer_id = id;
+        timer_started.Notify();
+        return absl::OkStatus();
+      });
+
+  // DatapathFailed should be called when the health check fails.
+  absl::Notification failed;
+  EXPECT_CALL(notification_, DatapathFailed).WillOnce([&failed]() {
+    failed.Notify();
+  });
+  EXPECT_CALL(notification_, DatapathPermanentFailure).Times(0);
+
+  std::vector<Packet> packets;
+  packets.emplace_back("foo", 3, IPProtocol::kIPv6, [] {});
+
+  absl::Notification established;
+  absl::Notification socket_closed;
+  absl::Notification tunnel_closed;
+
+  // Health check should be started once this has been called.
+  EXPECT_CALL(notification_, DatapathEstablished).WillOnce([&established]() {
+    established.Notify();
+  });
+
+  // Simulate some network traffic so that the health check is started and then
+  // simulate a blocking read.
+  EXPECT_CALL(*socket, ReadPackets())
+      .WillOnce(Return(std::move(packets)))
+      .WillOnce([&socket_closed]() {
+        socket_closed.WaitForNotification();
+        return std::vector<Packet>();
+      });
+
+  // Unblock the ReadPackets call.
+  EXPECT_CALL(*socket, CancelReadPackets()).WillOnce([&socket_closed]() {
+    socket_closed.Notify();
+    return absl::OkStatus();
+  });
+
+  EXPECT_CALL(*socket, Close()).WillOnce(Return(absl::OkStatus()));
+
+  // Simulate a blocking read.
+  EXPECT_CALL(tunnel_, ReadPackets()).WillOnce([&tunnel_closed]() {
+    tunnel_closed.WaitForNotification();
+    return std::vector<Packet>();
+  });
+
+  // Unblock the ReadPackets call.
+  EXPECT_CALL(tunnel_, CancelReadPackets()).WillOnce([&tunnel_closed]() {
+    tunnel_closed.Notify();
+    return absl::OkStatus();
+  });
+
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
+  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel_));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+
+  // Wait for DatapathEstablished notification.
+  EXPECT_TRUE(
+      established.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
+
+  // Wait for the timer for the health check to be started.
+  EXPECT_TRUE(
+      timer_started.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
+
+  // Simulate the health check timer expiring.
+  mock_timer_interface_.TimerExpiry(health_check_timer_id);
+
+  // Wait for the DatapathFailed notification from the failed health check.
+  EXPECT_TRUE(failed.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
 
   datapath_->Stop();
 }

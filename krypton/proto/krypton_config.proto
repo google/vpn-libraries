@@ -41,6 +41,7 @@ message ReconnectorConfig {
   optional uint32 datapath_watchdog_timer_msec = 5;  // 2 secs.
 }
 
+// Next ID: 37
 message KryptonConfig {
   reserved 5, 7, 10, 13, 24;
 
@@ -86,6 +87,9 @@ message KryptonConfig {
   optional bool periodic_health_check_enabled = 18;
   // Duration between periodic health check. Defaulted to 1 hour.
   optional google.protobuf.Duration periodic_health_check_duration = 19;
+  // Where to connect to perform the health check
+  optional string periodic_health_check_url = 35;
+  optional uint32 periodic_health_check_port = 36;
 
   // Whether or not to allow PPN to use IPv6 to connect to copper. If this is
   // false, then PPN will always use IPv4.

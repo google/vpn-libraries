@@ -20,6 +20,7 @@
 #include <optional>
 
 #include "privacy/net/krypton/add_egress_response.h"
+#include "privacy/net/krypton/datapath/android_ipsec/health_check.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_packet_forwarder.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
@@ -46,7 +47,8 @@ namespace android {
 // Class is thread safe.
 class IpSecDatapath : public DatapathInterface,
                       public IpSecPacketForwarder::NotificationInterface,
-                      public MtuTrackerInterface::NotificationInterface {
+                      public MtuTrackerInterface::NotificationInterface,
+                      public HealthCheck::NotificationInterface {
  public:
   // Extension to VpnService with methods needed specifically for Android IpSec.
   class IpSecVpnServiceInterface : public virtual VpnServiceInterface {
@@ -70,14 +72,16 @@ class IpSecDatapath : public DatapathInterface,
 
   explicit IpSecDatapath(const KryptonConfig& config,
                          utils::LooperThread* looper,
-                         IpSecVpnServiceInterface* vpn_service)
+                         IpSecVpnServiceInterface* vpn_service,
+                         TimerManager* timer_manager)
       : config_(config),
         notification_thread_(looper),
         vpn_service_(vpn_service),
         ipv4_tcp_mss_endpoint_("", "", 0, IPProtocol::kUnknown),
         ipv6_tcp_mss_endpoint_("", "", 0, IPProtocol::kUnknown),
         looper_("IpSecDatapath Looper"),
-        curr_forwarder_id_(0) {}
+        curr_forwarder_id_(0),
+        health_check_(config, timer_manager, this, &looper_) {}
   ~IpSecDatapath() override;
 
   // Initialize the Ipsec data path.
@@ -122,6 +126,8 @@ class IpSecDatapath : public DatapathInterface,
 
   void DownlinkMtuUpdated(int downlink_mtu) override;
 
+  void HealthCheckFailed(const absl::Status& status) override;
+
  private:
   void StopInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -138,8 +144,8 @@ class IpSecDatapath : public DatapathInterface,
 
   KryptonConfig config_;
 
-  utils::LooperThread* notification_thread_;
-  IpSecVpnServiceInterface* vpn_service_;
+  utils::LooperThread* notification_thread_;  // Not owned.
+  IpSecVpnServiceInterface* vpn_service_;     // Not owned.
 
   Endpoint ipv4_tcp_mss_endpoint_;
   Endpoint ipv6_tcp_mss_endpoint_;
@@ -153,6 +159,7 @@ class IpSecDatapath : public DatapathInterface,
   int curr_forwarder_id_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<IpSecPacketForwarder> forwarder_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<IpSecSocketInterface> network_socket_ ABSL_GUARDED_BY(mutex_);
+  HealthCheck health_check_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace android
