@@ -93,6 +93,13 @@ void SessionManager::TerminateSession(bool forceFailOpen) {
     return;
   }
   LOG(INFO) << "Terminating Session";
+  LOG(INFO) << "Cancelling Session timers";
+  // Session timers need to be cancelled before destroying auth, egress_manager,
+  // or datapath. The timer callbacks could try to use them.
+  if (session_ != nullptr) {
+    session_->CancelAllTimers();
+  }
+  LOG(INFO) << "Session timers cancelled.";
   LOG(INFO) << "Stopping session looper thread ";
   if (looper_thread_ != nullptr) {
     looper_thread_->Stop();

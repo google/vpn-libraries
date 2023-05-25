@@ -291,6 +291,12 @@ void Session::Stop(bool forceFailOpen) {
   tunnel_manager_->TerminateSession(forceFailOpen);
 }
 
+void Session::CancelAllTimers() {
+  absl::MutexLock l(&mutex_);
+  CancelFetcherTimerIfRunning();
+  CancelDatapathReattemptTimerIfRunning();
+}
+
 absl::Status Session::BuildTunFdData(TunFdData* tun_fd_data) const {
   if (!add_egress_response_) {
     return absl::FailedPreconditionError(

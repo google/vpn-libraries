@@ -115,6 +115,9 @@ class Session : public DatapathInterface::NotificationInterface,
   // Stops a session.
   void Stop(bool forceFailOpen) ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Cancels all timers
+  void CancelAllTimers() ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Override methods from the interface.
   void DatapathEstablished() override ABSL_LOCKS_EXCLUDED(mutex_);
   void DatapathFailed(const absl::Status& status) override
