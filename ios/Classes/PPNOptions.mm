@@ -98,7 +98,7 @@ PPNOptionKey const PPNRespectAllNetworkSwitches = @"respectAllNetworkSwitches";
 
 PPNOptionKey const PPNAPIKey = @"apiKey";
 
-PPNOptionKey const PPNOptionIPGeoLevel = @"ipGeoLevel";
+PPNOptionKey const PPNOptionIPGeoLevel = @"IPGeoLevel";
 
 PPNOptionKey const PPNDebugModeAllowed = @"debugModeAllowed";
 
