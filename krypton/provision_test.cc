@@ -19,6 +19,7 @@
 
 #include "google/protobuf/timestamp.proto.h"
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
+#include "privacy/net/common/proto/auth_and_sign.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
@@ -45,9 +46,26 @@ namespace {
 using ::proto2::contrib::parse_proto::ParseTextProtoOrDie;
 using ::testing::_;
 using ::testing::EqualsProto;
-using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
+using ::testing::StrEq;
 using ::testing::status::StatusIs;
+
+MATCHER_P(PublicMetadataParamsEq, expected,
+          "Check fields of PublicMetadata params") {
+  ppn::PublicMetadata public_metadata =
+      expected.public_metadata_info().public_metadata();
+  ::google::protobuf::Timestamp expiration = public_metadata.expiration();
+
+  bool match = true;
+  match &= arg.service_type == public_metadata.service_type();
+  match &= arg.signing_key_version ==
+           expected.at_public_metadata_public_key().key_version();
+  match &= arg.country == public_metadata.exit_location().country();
+  match &= arg.city_geo_id == public_metadata.exit_location().city_geo_id();
+  match &= arg.debug_mode == public_metadata.debug_mode();
+  match &= arg.expiration == absl::FromUnixSeconds(expiration.seconds());
+  return match;
+}
 
 // Mock the Auth.
 class MockAuth : public Auth {
@@ -82,7 +100,39 @@ class ProvisionTest : public ::testing::Test {
                                              &http_fetcher_, &notification_,
                                              &notification_thread_);
 
-    EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
+    ON_CALL(http_fetcher_, LookupDns(_)).WillByDefault(Return("0.0.0.0"));
+
+    // Configure the default auth behavior to succeed with the default response
+    ON_CALL(auth_, initial_data_response)
+        .WillByDefault(Return(CreateGetInitialDataResponse()));
+
+    ON_CALL(auth_, Start(_)).WillByDefault([this](bool is_rekey) {
+      notification_thread_.Post(
+          [this, is_rekey] { provision_->AuthSuccessful(is_rekey); });
+    });
+
+    ASSERT_OK_AND_ASSIGN(auto default_auth_response,
+                         CreateAuthAndSignResponse());
+    ON_CALL(auth_, auth_response).WillByDefault([default_auth_response] {
+      return default_auth_response;
+    });
+
+    // Configure default egress_manager_ behavior to successfully egress
+    ON_CALL(egress_manager_, GetEgressNodeForPpnIpSec(PublicMetadataParamsEq(
+                                 CreateGetInitialDataResponse())))
+        .WillByDefault(
+            [this](const AddEgressRequest::PpnDataplaneRequestParams& params) {
+              EXPECT_EQ(params.dataplane_protocol, config_.datapath_protocol());
+              EXPECT_TRUE(params.dynamic_mtu_enabled);
+              notification_thread_.Post(
+                  [this] { provision_->EgressAvailable(/*is_rekey=*/false); });
+              return absl::OkStatus();
+            });
+
+    ASSERT_OK_AND_ASSIGN(default_add_egress_response_,
+                         CreateAddEgressResponse());
+    ON_CALL(egress_manager_, GetEgressSessionDetails)
+        .WillByDefault(Return(default_add_egress_response_));
   }
 
   void TearDown() override {
@@ -129,17 +179,7 @@ class ProvisionTest : public ::testing::Test {
     return response;
   }
 
-  absl::StatusOr<ppn::GetInitialDataResponse> GetInitialDataResponse() {
-    HttpResponse fake_initial_data_http_response;
-    fake_initial_data_http_response.mutable_status()->set_code(200);
-    fake_initial_data_http_response.mutable_status()->set_message("OK");
-    fake_initial_data_http_response.set_proto_body(
-        CreateGetInitialDataResponse().SerializeAsString());
-
-    return DecodeGetInitialDataResponse(fake_initial_data_http_response);
-  }
-
-  absl::StatusOr<AddEgressResponse> GetAddEgressResponse1() {
+  absl::StatusOr<AddEgressResponse> CreateAddEgressResponse() {
     HttpResponse fake_add_egress_http_response;
     fake_add_egress_http_response.mutable_status()->set_code(200);
     fake_add_egress_http_response.mutable_status()->set_message("OK");
@@ -160,7 +200,7 @@ class ProvisionTest : public ::testing::Test {
     return AddEgressResponse::FromProto(fake_add_egress_http_response);
   }
 
-  absl::StatusOr<AddEgressResponse> GetAddEgressResponse2() {
+  absl::StatusOr<AddEgressResponse> CreateRekeyResponse() {
     // Return a response with different uplink_spi, server_nonce, and
     // egress_point_public_value
     HttpResponse fake_add_egress_http_response;
@@ -183,24 +223,22 @@ class ProvisionTest : public ::testing::Test {
     return AddEgressResponse::FromProto(fake_add_egress_http_response);
   }
 
-  void CheckPublicMetadataParams(
-      const AddEgressRequest::PpnDataplaneRequestParams& params) {
-    auto expected = CreateGetInitialDataResponse();
-    auto public_metadata = expected.public_metadata_info().public_metadata();
+  absl::StatusOr<AuthAndSignResponse> CreateAuthAndSignResponse(
+      const std::string& copper_controller_hostname = "") {
+    ppn::AuthAndSignResponse auth_response_proto;
+    auth_response_proto.set_copper_controller_hostname(
+        copper_controller_hostname);
 
-    EXPECT_THAT(params.service_type,
-                testing::Eq(public_metadata.service_type()));
-    EXPECT_THAT(
-        params.signing_key_version,
-        testing::Eq(expected.at_public_metadata_public_key().key_version()));
-    EXPECT_THAT(params.country,
-                testing::Eq(public_metadata.exit_location().country()));
-    EXPECT_THAT(params.city_geo_id,
-                testing::Eq(public_metadata.exit_location().city_geo_id()));
-    EXPECT_THAT(params.expiration,
-                testing::Eq(absl::FromUnixSeconds(
-                    public_metadata.expiration().seconds())));
-    EXPECT_THAT(params.debug_mode, testing::Eq(public_metadata.debug_mode()));
+    // add to http response
+    privacy::krypton::HttpResponse response;
+    response.mutable_status()->set_code(200);
+    response.mutable_status()->set_message("OK");
+    response.set_proto_body(auth_response_proto.SerializeAsString());
+
+    // Construct AuthAndSignResponse.
+    AuthAndSignResponse auth_response;
+    return AuthAndSignResponse::FromProto(response, config_,
+                                          /*enforce_copper_suffix=*/true);
   }
 
   KryptonConfig config_{ParseTextProtoOrDie(
@@ -222,174 +260,127 @@ class ProvisionTest : public ::testing::Test {
   MockAuth auth_{config_, &http_fetcher_, &oauth_, &notification_thread_};
   MockEgressManager egress_manager_{config_, &http_fetcher_,
                                     &notification_thread_};
+
+  AddEgressResponse default_add_egress_response_;
 };
 
 TEST_F(ProvisionTest, AuthenticationFailure) {
-  absl::Notification done;
-
-  EXPECT_CALL(auth_, Start).WillOnce([&]() {
+  EXPECT_CALL(auth_, Start).WillOnce([this] {
     notification_thread_.Post(
         [this] { provision_->AuthFailure(absl::InternalError("Some error")); });
   });
 
+  absl::Notification done;
   EXPECT_CALL(notification_,
               ProvisioningFailure(StatusIs(absl::StatusCode::kInternal), false))
-      .WillOnce(InvokeWithoutArgs(&done, &absl::Notification::Notify));
+      .WillOnce([&done] { done.Notify(); });
 
   provision_->Start();
-  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
 TEST_F(ProvisionTest, AuthenticationFailurePermanent) {
-  absl::Notification done;
-
-  EXPECT_CALL(auth_, Start).WillOnce([&]() {
+  EXPECT_CALL(auth_, Start).WillOnce([this]() {
     notification_thread_.Post([this] {
       provision_->AuthFailure(absl::PermissionDeniedError("Some error"));
     });
   });
 
+  absl::Notification done;
   EXPECT_CALL(
       notification_,
       ProvisioningFailure(StatusIs(absl::StatusCode::kPermissionDenied), true))
-      .WillOnce(InvokeWithoutArgs(&done, &absl::Notification::Notify));
+      .WillOnce([&done] { done.Notify(); });
 
   provision_->Start();
-  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
 TEST_F(ProvisionTest, EgressUnavailable) {
-  absl::Notification done;
-
-  EXPECT_CALL(auth_, Start).WillOnce([&]() {
-    notification_thread_.Post([this] { provision_->AuthSuccessful(false); });
-  });
-
-  EXPECT_CALL(egress_manager_, GetEgressNodeForPpnIpSec(_)).WillOnce([&]() {
+  EXPECT_CALL(egress_manager_, GetEgressNodeForPpnIpSec(_)).WillOnce([this] {
     notification_thread_.Post([this] {
       provision_->EgressUnavailable(absl::InternalError("Some error"));
     });
     return absl::OkStatus();
   });
 
+  absl::Notification done;
   EXPECT_CALL(notification_,
               ProvisioningFailure(StatusIs(absl::StatusCode::kInternal), false))
-      .WillOnce(InvokeWithoutArgs(&done, &absl::Notification::Notify));
+      .WillOnce([&done] { done.Notify(); });
 
   provision_->Start();
-  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
 TEST_F(ProvisionTest, EgressAvailable) {
   absl::Notification done;
-
-  ASSERT_OK_AND_ASSIGN(auto fake_add_egress_response, GetAddEgressResponse1());
-
-  EXPECT_CALL(auth_, Start).WillOnce([&]() {
-    notification_thread_.Post([this] { provision_->AuthSuccessful(false); });
-  });
-
-  ASSERT_OK_AND_ASSIGN(auto fake_initial_data_response,
-                       GetInitialDataResponse());
-
-  EXPECT_CALL(auth_, initial_data_response)
-      .WillOnce(Return(fake_initial_data_response));
-
-  EXPECT_CALL(egress_manager_, GetEgressNodeForPpnIpSec(_))
-      .WillOnce([&](const AddEgressRequest::PpnDataplaneRequestParams& params) {
-        EXPECT_EQ(params.dataplane_protocol, config_.datapath_protocol());
-        EXPECT_TRUE(params.dynamic_mtu_enabled);
-        CheckPublicMetadataParams(params);
-        notification_thread_.Post(
-            [this] { provision_->EgressAvailable(false); });
-        return absl::OkStatus();
-      });
-
-  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
-      .WillOnce(Return(fake_add_egress_response));
-
+  AddEgressResponse provisioned_response;
   EXPECT_CALL(notification_, Provisioned(_, /*is_rekey=*/false))
-      .WillOnce([&](AddEgressResponse response, bool /*is_rekey*/) {
-        ASSERT_OK_AND_ASSIGN(auto ppn_dataplane_response,
-                             response.ppn_dataplane_response());
-        ASSERT_OK_AND_ASSIGN(auto expected_response,
-                             fake_add_egress_response.ppn_dataplane_response());
-        EXPECT_THAT(ppn_dataplane_response, EqualsProto(expected_response));
+      .WillOnce([&done, &provisioned_response](AddEgressResponse response,
+                                               bool /*is_rekey*/) {
+        provisioned_response = response;
         done.Notify();
       });
 
   provision_->Start();
-  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  ASSERT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(1)));
+
+  ASSERT_OK_AND_ASSIGN(auto ppn_dataplane_response,
+                       provisioned_response.ppn_dataplane_response());
+  ASSERT_OK_AND_ASSIGN(auto expected_response,
+                       default_add_egress_response_.ppn_dataplane_response());
+  EXPECT_THAT(ppn_dataplane_response, EqualsProto(expected_response));
 }
 
 TEST_F(ProvisionTest, Rekey) {
-  absl::Notification provising_done;
+  absl::Notification provisioning_done;
   absl::Notification rekey_done;
+  ASSERT_OK_AND_ASSIGN(auto fake_rekey_response, CreateRekeyResponse());
 
-  ASSERT_OK_AND_ASSIGN(auto fake_add_egress_response1, GetAddEgressResponse1());
-  ASSERT_OK_AND_ASSIGN(auto fake_add_egress_response2, GetAddEgressResponse2());
-
-  EXPECT_CALL(auth_, Start(/*is_rekey=*/false)).WillOnce([&]() {
-    notification_thread_.Post(
-        [this] { provision_->AuthSuccessful(/*is_rekey=*/false); });
-  });
-
-  EXPECT_CALL(auth_, Start(/*is_rekey=*/true)).WillOnce([&]() {
-    notification_thread_.Post(
-        [this] { provision_->AuthSuccessful(/*is_rekey=*/true); });
-  });
-
-  EXPECT_CALL(egress_manager_, GetEgressNodeForPpnIpSec(_))
-      .WillOnce([&]() {
-        notification_thread_.Post(
-            [this] { provision_->EgressAvailable(/*is_rekey=*/false); });
-        return absl::OkStatus();
-      })
-      .WillOnce([&]() {
-        notification_thread_.Post(
-            [this] { provision_->EgressAvailable(/*is_rekey=*/true); });
-        return absl::OkStatus();
-      });
-
-  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
-      .WillOnce(Return(fake_add_egress_response1))
-      .WillOnce(Return(fake_add_egress_response2));
-
-  EXPECT_CALL(notification_, Provisioned(_, /*is_rekey=*/false))
-      .WillOnce([&](AddEgressResponse response, bool /*is_rekey*/) {
-        ASSERT_OK_AND_ASSIGN(auto ppn_dataplane_response,
-                             response.ppn_dataplane_response());
-        ASSERT_OK_AND_ASSIGN(
-            auto expected_response,
-            fake_add_egress_response1.ppn_dataplane_response());
-        EXPECT_THAT(ppn_dataplane_response, EqualsProto(expected_response));
-        provising_done.Notify();
-      });
-
-  EXPECT_CALL(notification_, Provisioned(_, /*is_rekey=*/true))
-      .WillOnce([&](AddEgressResponse response, bool /*is_rekey*/) {
-        ASSERT_OK_AND_ASSIGN(auto ppn_dataplane_response,
-                             response.ppn_dataplane_response());
-        ASSERT_OK_AND_ASSIGN(
-            auto expected_response,
-            fake_add_egress_response2.ppn_dataplane_response());
-        EXPECT_THAT(ppn_dataplane_response, EqualsProto(expected_response));
-        rekey_done.Notify();
-      });
-
-  EXPECT_CALL(notification_, ProvisioningFailure(_, _)).Times(0);
+  EXPECT_CALL(notification_, Provisioned(_, _))
+      .WillOnce([&provisioning_done]() { provisioning_done.Notify(); });
 
   provision_->Start();
 
-  EXPECT_TRUE(provising_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  ASSERT_TRUE(
+      provisioning_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 
   ASSERT_OK_AND_ASSIGN(auto original_transform_params,
                        provision_->GetTransformParams());
   auto original_ipsec_params = original_transform_params.bridge();
 
+  EXPECT_CALL(egress_manager_, GetEgressNodeForPpnIpSec(PublicMetadataParamsEq(
+                                   CreateGetInitialDataResponse())))
+      .WillOnce(
+          [this](const AddEgressRequest::PpnDataplaneRequestParams& params) {
+            EXPECT_EQ(params.dataplane_protocol, config_.datapath_protocol());
+            EXPECT_TRUE(params.dynamic_mtu_enabled);
+            notification_thread_.Post(
+                [this] { provision_->EgressAvailable(/*is_rekey=*/true); });
+            return absl::OkStatus();
+          });
+
+  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+      .WillOnce(Return(fake_rekey_response));
+
+  AddEgressResponse provisioned_response;
+  EXPECT_CALL(notification_, Provisioned(_, /*is_rekey=*/true))
+      .WillOnce([&rekey_done, &provisioned_response](AddEgressResponse response,
+                                                     bool /*is_rekey*/) {
+        provisioned_response = response;
+        rekey_done.Notify();
+      });
+
   provision_->Rekey();
 
-  EXPECT_TRUE(rekey_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  ASSERT_TRUE(rekey_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
+
+  ASSERT_OK_AND_ASSIGN(auto ppn_dataplane_response,
+                       provisioned_response.ppn_dataplane_response());
+  ASSERT_OK_AND_ASSIGN(auto expected_response,
+                       fake_rekey_response.ppn_dataplane_response());
+  EXPECT_THAT(ppn_dataplane_response, EqualsProto(expected_response));
 
   ASSERT_OK_AND_ASSIGN(auto rekeyed_transform_params,
                        provision_->GetTransformParams());
@@ -405,54 +396,34 @@ TEST_F(ProvisionTest, Rekey) {
             original_ipsec_params.cipher_suite_key_length());
 }
 
-TEST_F(ProvisionTest, TestAuthResponseCopperControllerHostname) {
-  HttpResponse proto;
-  proto.mutable_status()->set_code(200);
-  proto.mutable_status()->set_message("OK");
-  proto.set_json_body(
-      R"string({"copper_controller_hostname":"eu.b.g-tun.com"})string");
-  ASSERT_OK_AND_ASSIGN(auto fake_auth_and_sign_response,
-                       AuthAndSignResponse::FromProto(proto, config_, true));
-  EXPECT_EQ(fake_auth_and_sign_response.copper_controller_hostname(),
-            "eu.b.g-tun.com");
-  absl::Notification auth_done;
-  EXPECT_CALL(auth_, Start).WillOnce(::testing::Invoke([&]() {
-    notification_thread_.Post([this, &auth_done] {
-      provision_->AuthSuccessful(false);
-      auth_done.Notify();
-    });
-  }));
-  EXPECT_CALL(auth_, auth_response)
-      .WillRepeatedly(Return(fake_auth_and_sign_response));
+TEST_F(ProvisionTest, TestAuthResponseSetCopperControllerHostname) {
+  absl::Notification done;
+  ASSERT_OK_AND_ASSIGN(auto auth_and_sign_response,
+                       CreateAuthAndSignResponse("eu.b.g-tun.com"));
 
-  EXPECT_CALL(http_fetcher_, LookupDns("eu.b.g-tun.com"));
+  EXPECT_CALL(auth_, auth_response).WillOnce(Return(auth_and_sign_response));
+
+  EXPECT_CALL(http_fetcher_, LookupDns(StrEq("eu.b.g-tun.com")));
+
+  EXPECT_CALL(notification_, Provisioned(_, _)).WillOnce([&done]() {
+    done.Notify();
+  });
+
   provision_->Start();
-
-  auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
+  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
-TEST_F(ProvisionTest, TestEmptyAuthResponseCopperControllerHostname) {
-  HttpResponse proto;
-  proto.mutable_status()->set_code(200);
-  proto.mutable_status()->set_message("OK");
-  proto.set_json_body(R"string({"copper_controller_hostname":""})string");
-  ASSERT_OK_AND_ASSIGN(auto fake_auth_and_sign_response,
-                       AuthAndSignResponse::FromProto(proto, config_, true));
-  EXPECT_EQ(fake_auth_and_sign_response.copper_controller_hostname(), "");
-  absl::Notification auth_done;
-  EXPECT_CALL(auth_, Start).WillOnce(::testing::Invoke([&]() {
-    notification_thread_.Post([this, &auth_done] {
-      provision_->AuthSuccessful(false);
-      auth_done.Notify();
-    });
-  }));
-  EXPECT_CALL(auth_, auth_response)
-      .WillRepeatedly(Return(fake_auth_and_sign_response));
+TEST_F(ProvisionTest, TestAuthResponseDefaultCopperControllerHostname) {
+  absl::Notification done;
 
-  EXPECT_CALL(http_fetcher_, LookupDns("na.b.g-tun.com"));
+  EXPECT_CALL(http_fetcher_, LookupDns(StrEq("na.b.g-tun.com")));
+
+  EXPECT_CALL(notification_, Provisioned(_, _)).WillOnce([&done]() {
+    done.Notify();
+  });
+
   provision_->Start();
-
-  auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
+  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
 TEST_F(ProvisionTest, RekeyBeforeStartFails) {
