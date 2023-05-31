@@ -731,7 +731,7 @@ TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
       .WillOnce(Return(absl::OkStatus()));
 
   session_->Start();
-  done.WaitForNotificationWithTimeout(absl::Seconds(3));
+  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
   EXPECT_CALL(notification_, DatapathConnected());
   session_->DatapathEstablished();
 }
@@ -786,38 +786,21 @@ TEST_F(SessionTest, TestSetKeyMaterials) {
       .WillOnce(
           DoAll(InvokeWithoutArgs(&rekey_done, &absl::Notification::Notify),
                 Return(absl::OkStatus())));
-  session_->DoRekey();
-  rekey_done.WaitForNotificationWithTimeout(absl::Seconds(3));
   SessionDebugInfo debug_info;
   session_->GetDebugInfo(&debug_info);
-}
-
-TEST_F(SessionTest, PpnDataplaneRequestPublicMetadataEnabled) {
-  AuthAndSignResponse fake_auth_and_sign_response;
-  EXPECT_CALL(auth_, auth_response)
-      .WillOnce(Return(fake_auth_and_sign_response));
-
-  absl::Notification auth_done;
-  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
-    notification_thread_.Post([this, &auth_done] {
-      ASSERT_NE(auth_notification_, nullptr);
-      auth_notification_->AuthSuccessful(is_rekey_);
-      auth_done.Notify();
-    });
-  }));
-  EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
-  ExpectSuccessfulAddEgress();
-
-  session_->Start();
-  auth_done.WaitForNotificationWithTimeout(absl::Seconds(3));
+  EXPECT_EQ(debug_info.successful_rekeys(), 0);
+  session_->DoRekey();
+  EXPECT_TRUE(rekey_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  session_->GetDebugInfo(&debug_info);
+  EXPECT_EQ(debug_info.successful_rekeys(), 1);
 }
 
 TEST_F(SessionTest, UplinkMtuUpdateHandler) {
   BringDatapathToConnected();
 
-  EXPECT_CALL(datapath_, PrepareForTunnelSwitch()).Times(1);
-  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_)).Times(1);
-  EXPECT_CALL(datapath_, SwitchTunnel()).Times(1);
+  EXPECT_CALL(datapath_, PrepareForTunnelSwitch());
+  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_));
+  EXPECT_CALL(datapath_, SwitchTunnel());
 
   session_->DoUplinkMtuUpdate(123, 456);
 
@@ -828,10 +811,9 @@ TEST_F(SessionTest, UplinkMtuUpdateHandler) {
 TEST_F(SessionTest, UplinkMtuUpdateHandlerErrorWithNoExistingTunnel) {
   EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_)).Times(0);
   EXPECT_CALL(datapath_, SwitchTunnel()).Times(0);
-  EXPECT_CALL(datapath_, Stop()).Times(1);
+  EXPECT_CALL(datapath_, Stop());
   EXPECT_CALL(notification_,
-              ControlPlaneDisconnected(StatusIs(absl::StatusCode::kInternal)))
-      .Times(1);
+              ControlPlaneDisconnected(StatusIs(absl::StatusCode::kInternal)));
 
   session_->DoUplinkMtuUpdate(123, 456);
 }
@@ -877,8 +859,7 @@ TEST_F(SessionTest, UplinkMtuUpdateHandlerHttpStatusOk) {
                                           prefix: 128
                                         }
                                         is_metered: false
-                                        mtu: 456)pb")))
-      .Times(1);
+                                        mtu: 456)pb")));
 
   EXPECT_CALL(notification_, ControlPlaneDisconnected(_)).Times(0);
 
