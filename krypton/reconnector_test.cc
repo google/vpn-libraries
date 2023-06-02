@@ -76,10 +76,10 @@ class MockTunnelManager : public TunnelManagerInterface {
   MOCK_METHOD(void, Stop, (), (override));
   MOCK_METHOD(void, SetSafeDisconnectEnabled, (bool), (override));
   MOCK_METHOD(bool, IsSafeDisconnectEnabled, (), (override));
-  MOCK_METHOD(void, StartSession, (), (override));
+  MOCK_METHOD(void, DatapathStarted, (), (override));
   MOCK_METHOD(absl::Status, EnsureTunnelIsUp, (TunFdData), (override));
   MOCK_METHOD(absl::Status, RecreateTunnelIfNeeded, (), (override));
-  MOCK_METHOD(void, TerminateSession, (bool), (override));
+  MOCK_METHOD(void, DatapathStopped, (bool), (override));
   MOCK_METHOD(bool, IsTunnelActive, (), (override));
 };
 

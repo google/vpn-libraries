@@ -42,12 +42,10 @@ class TunnelManager : public TunnelManagerInterface {
     return safe_disconnect_enabled_;
   };
 
-  void StartSession() override ABSL_LOCKS_EXCLUDED(mutex_);
+  void DatapathStarted() override ABSL_LOCKS_EXCLUDED(mutex_);
   absl::Status EnsureTunnelIsUp(TunFdData) override ABSL_LOCKS_EXCLUDED(mutex_);
   absl::Status RecreateTunnelIfNeeded() override ABSL_LOCKS_EXCLUDED(mutex_);
-
-  void TerminateSession(bool forceFailOpen) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
+  void DatapathStopped(bool forceFailOpen) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool IsTunnelActive() override ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -58,7 +56,7 @@ class TunnelManager : public TunnelManagerInterface {
   bool tunnel_is_up_ ABSL_GUARDED_BY(mutex_);
   std::optional<TunFdData> active_tunnel_data_ ABSL_GUARDED_BY(mutex_);
   bool safe_disconnect_enabled_ ABSL_GUARDED_BY(mutex_);
-  bool session_active_ ABSL_GUARDED_BY(mutex_);
+  bool datapath_active_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace krypton

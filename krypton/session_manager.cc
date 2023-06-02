@@ -17,6 +17,7 @@
 #include <atomic>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "base/logging.h"
 #include "privacy/net/krypton/auth.h"
@@ -73,10 +74,11 @@ void SessionManager::EstablishSession(int restart_count,
                                  looper_thread_.get());
   egress_manager_ = std::make_unique<EgressManager>(local_config, http_fetcher_,
                                                     looper_thread_.get());
-  datapath_ = std::unique_ptr<DatapathInterface>(vpn_service_->BuildDatapath(
-      local_config, looper_thread_.get(), timer_manager_));
+  auto datapath =
+      std::unique_ptr<DatapathInterface>(vpn_service_->BuildDatapath(
+          local_config, looper_thread_.get(), timer_manager_));
   session_ = std::make_unique<Session>(
-      local_config, auth_.get(), egress_manager_.get(), datapath_.get(),
+      local_config, auth_.get(), egress_manager_.get(), std::move(datapath),
       vpn_service_, timer_manager_, http_fetcher_, tunnel_manager, network_info,
       krypton_notification_thread_);
   session_->RegisterNotificationHandler(notification_);
@@ -89,7 +91,7 @@ void SessionManager::TerminateSession(bool forceFailOpen) {
   absl::MutexLock l(&mutex_);
   if (!session_created_) {
     LOG(ERROR) << "Session is not created.. Not terminating";
-    tunnel_manager_->TerminateSession(forceFailOpen);
+    tunnel_manager_->DatapathStopped(forceFailOpen);
     return;
   }
   LOG(INFO) << "Terminating Session";
@@ -116,12 +118,6 @@ void SessionManager::TerminateSession(bool forceFailOpen) {
     egress_manager_.reset();
   }
   LOG(INFO) << "Egress stopped";
-
-  LOG(INFO) << "Stopping datapath ";
-  if (datapath_ != nullptr) {
-    datapath_->Stop();
-    datapath_.reset();
-  }
 
   LOG(INFO) << "Stopping session";
   if (session_ != nullptr) {

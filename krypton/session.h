@@ -55,7 +55,7 @@ std::string ProtoToJsonString(
     const ppn::UpdatePathInfoRequest& update_path_info_request);
 
 // Session or Krypton session that represents a session to the copper
-// server. This also is the statemachine for establishing the Copper |
+// server. This also is the state machine for establishing the Copper |
 // Egress server. Thread safe implementation.
 class Session : public DatapathInterface::NotificationInterface,
                 public Provision::NotificationInterface {
@@ -87,7 +87,8 @@ class Session : public DatapathInterface::NotificationInterface,
   };
 
   Session(const KryptonConfig& config, Auth* auth,
-          EgressManager* egress_manager, DatapathInterface* datapath,
+          EgressManager* egress_manager,
+          std::unique_ptr<DatapathInterface> datapath,
           VpnServiceInterface* vpn_service, TimerManager* timer_manager,
           HttpFetcherInterface* http_fetcher,
           TunnelManagerInterface* tunnel_manager,
@@ -225,12 +226,16 @@ class Session : public DatapathInterface::NotificationInterface,
   void HandleUpdatePathInfoResponse(const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  void NotifyDatapathDisconnected(const NetworkInfo& network_info,
+                                  const absl::Status& status);
+
   mutable absl::Mutex mutex_;
 
   KryptonConfig config_;
 
+  std::unique_ptr<DatapathInterface> datapath_;
+
   NotificationInterface* notification_;  // Not owned.
-  DatapathInterface* datapath_;          // Not owned.
   VpnServiceInterface* vpn_service_;     // Not owned.
   TimerManager* timer_manager_;          // Not owned.
   HttpFetcher http_fetcher_;

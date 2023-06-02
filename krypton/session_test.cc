@@ -18,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "google/protobuf/timestamp.proto.h"
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
@@ -150,10 +151,10 @@ class MockTunnelManager : public TunnelManagerInterface {
   MOCK_METHOD(void, Stop, (), (override));
   MOCK_METHOD(void, SetSafeDisconnectEnabled, (bool), (override));
   MOCK_METHOD(bool, IsSafeDisconnectEnabled, (), (override));
-  MOCK_METHOD(void, StartSession, (), (override));
+  MOCK_METHOD(void, DatapathStarted, (), (override));
   MOCK_METHOD(absl::Status, EnsureTunnelIsUp, (TunFdData), (override));
   MOCK_METHOD(absl::Status, RecreateTunnelIfNeeded, (), (override));
-  MOCK_METHOD(void, TerminateSession, (bool), (override));
+  MOCK_METHOD(void, DatapathStopped, (bool), (override));
   MOCK_METHOD(bool, IsTunnelActive, (), (override));
 };
 
@@ -161,7 +162,10 @@ class MockTunnelManager : public TunnelManagerInterface {
 class SessionTest : public ::testing::Test {
  public:
   void SetUp() override {
-    EXPECT_CALL(datapath_, RegisterNotificationHandler)
+    auto datapath = std::make_unique<MockDatapath>();
+    datapath_ = datapath.get();
+
+    EXPECT_CALL(*datapath_, RegisterNotificationHandler)
         .WillOnce(
             Invoke([&](DatapathInterface::NotificationInterface* notification) {
               datapath_notification_ = notification;
@@ -200,7 +204,7 @@ class SessionTest : public ::testing::Test {
         });
 
     session_ = std::make_unique<Session>(
-        config_, &auth_, &egress_manager_, &datapath_, &vpn_service_,
+        config_, &auth_, &egress_manager_, std::move(datapath), &vpn_service_,
         &timer_manager_, &http_fetcher_, &tunnel_manager_, std::nullopt,
         &notification_thread_);
     session_->RegisterNotificationHandler(&notification_);
@@ -340,7 +344,7 @@ class SessionTest : public ::testing::Test {
 
     EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
 
-    EXPECT_CALL(datapath_, Start(_, _))
+    EXPECT_CALL(*datapath_, Start(_, _))
         .WillOnce(DoAll(InvokeWithoutArgs(&done_, &absl::Notification::Notify),
                         Return(absl::OkStatus())));
   }
@@ -392,7 +396,7 @@ class SessionTest : public ::testing::Test {
     expected_network_info.set_network_id(123);
     expected_network_info.set_network_type(NetworkType::CELLULAR);
     EXPECT_CALL(
-        datapath_,
+        *datapath_,
         SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info), _))
         .WillOnce(Return(absl::OkStatus()));
 
@@ -459,7 +463,7 @@ class SessionTest : public ::testing::Test {
     NetworkInfo expected_network_info;
     expected_network_info.set_network_type(NetworkType::CELLULAR);
     EXPECT_CALL(
-        datapath_,
+        *datapath_,
         SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info), _))
         .WillOnce(Return(absl::OkStatus()));
 
@@ -489,7 +493,7 @@ class SessionTest : public ::testing::Test {
   MockEgressManager egress_manager_{config_, &http_fetcher_,
                                     &notification_thread_};
 
-  MockDatapath datapath_;
+  MockDatapath* datapath_;
   MockTimerInterface timer_interface_;
   TimerManager timer_manager_{&timer_interface_};
 
@@ -515,7 +519,7 @@ TEST_F(SessionTest, DatapathInitFailure) {
       .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
 
   EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
-  EXPECT_CALL(datapath_, Start(_, _))
+  EXPECT_CALL(*datapath_, Start(_, _))
       .WillOnce(
           DoAll(InvokeWithoutArgs(&done, &absl::Notification::Notify),
                 Return(absl::InvalidArgumentError("Initialization error"))));
@@ -579,7 +583,7 @@ TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
   NetworkInfo expected_network_info;
   expected_network_info.set_network_type(NetworkType::CELLULAR);
   EXPECT_CALL(
-      datapath_,
+      *datapath_,
       SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info), _))
       .WillOnce(Return(absl::OkStatus()));
 
@@ -592,7 +596,7 @@ TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
   session_->DatapathEstablished();
 
   // No Network available.
-  EXPECT_CALL(datapath_, SwitchNetwork(123, _, Eq(std::nullopt), _))
+  EXPECT_CALL(*datapath_, SwitchNetwork(123, _, Eq(std::nullopt), _))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_OK(session_->SetNetwork(std::nullopt));
 }
@@ -605,7 +609,7 @@ TEST_F(SessionTest, SwitchNetworkToSameNetworkType) {
   new_network_info.set_network_type(NetworkType::CELLULAR);
 
   // Expect no tunnel fd change.
-  EXPECT_CALL(datapath_,
+  EXPECT_CALL(*datapath_,
               SwitchNetwork(123, _, NetworkInfoEquals(new_network_info), _))
       .WillOnce(Return(absl::OkStatus()));
 
@@ -632,7 +636,7 @@ TEST_F(SessionTest, DatapathReattemptFailure) {
     // 2 Attempts on V6, 2 attempts on V4, interlaced.
     // We use modulo because we alternate between the two.
     if (i % 2 == 0) {
-      EXPECT_CALL(datapath_,
+      EXPECT_CALL(*datapath_,
                   SwitchNetwork(
                       123,
                       Endpoint("[2604:ca00:f001:4::5]:2153",
@@ -640,7 +644,7 @@ TEST_F(SessionTest, DatapathReattemptFailure) {
                       NetworkInfoEquals(expected_network_info), _))
           .WillOnce(Return(absl::OkStatus()));
     } else {
-      EXPECT_CALL(datapath_,
+      EXPECT_CALL(*datapath_,
                   SwitchNetwork(123,
                                 Endpoint("64.9.240.165:2153", "64.9.240.165",
                                          2153, IPProtocol::kIPv4),
@@ -679,7 +683,7 @@ TEST_F(SessionTest, SwitchNetworkToDifferentNetworkType) {
   NetworkInfo new_network_info;
   new_network_info.set_network_type(NetworkType::WIFI);
 
-  EXPECT_CALL(datapath_,
+  EXPECT_CALL(*datapath_,
               SwitchNetwork(123, _, NetworkInfoEquals(new_network_info), _))
       .WillOnce(Return(absl::OkStatus()));
 
@@ -718,7 +722,7 @@ TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
   EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
       .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
 
-  EXPECT_CALL(datapath_, Start(_, _))
+  EXPECT_CALL(*datapath_, Start(_, _))
       .WillOnce(::testing::DoAll(
           InvokeWithoutArgs(&done, &absl::Notification::Notify),
           Return(absl::OkStatus())));
@@ -726,7 +730,7 @@ TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
   NetworkInfo expected_network_info;
   expected_network_info.set_network_type(NetworkType::CELLULAR);
   EXPECT_CALL(
-      datapath_,
+      *datapath_,
       SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info), _))
       .WillOnce(Return(absl::OkStatus()));
 
@@ -744,7 +748,7 @@ TEST_F(SessionTest, PopulatesDebugInfo) {
   datapath_debug_info.set_downlink_packets_read(2);
   datapath_debug_info.set_decryption_errors(3);
 
-  EXPECT_CALL(datapath_, GetDebugInfo(_))
+  EXPECT_CALL(*datapath_, GetDebugInfo(_))
       .WillRepeatedly(SetArgPointee<0>(datapath_debug_info));
 
   SessionDebugInfo debug_info;
@@ -782,7 +786,7 @@ TEST_F(SessionTest, TestSetKeyMaterials) {
   is_rekey_ = true;
   absl::Notification rekey_done;
   ExpectSuccessfulProvision();
-  EXPECT_CALL(datapath_, SetKeyMaterials(_))
+  EXPECT_CALL(*datapath_, SetKeyMaterials(_))
       .WillOnce(
           DoAll(InvokeWithoutArgs(&rekey_done, &absl::Notification::Notify),
                 Return(absl::OkStatus())));
@@ -798,9 +802,9 @@ TEST_F(SessionTest, TestSetKeyMaterials) {
 TEST_F(SessionTest, UplinkMtuUpdateHandler) {
   BringDatapathToConnected();
 
-  EXPECT_CALL(datapath_, PrepareForTunnelSwitch());
-  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_));
-  EXPECT_CALL(datapath_, SwitchTunnel());
+  EXPECT_CALL(*datapath_, PrepareForTunnelSwitch()).Times(1);
+  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_)).Times(1);
+  EXPECT_CALL(*datapath_, SwitchTunnel()).Times(1);
 
   session_->DoUplinkMtuUpdate(123, 456);
 
@@ -810,8 +814,8 @@ TEST_F(SessionTest, UplinkMtuUpdateHandler) {
 
 TEST_F(SessionTest, UplinkMtuUpdateHandlerErrorWithNoExistingTunnel) {
   EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_)).Times(0);
-  EXPECT_CALL(datapath_, SwitchTunnel()).Times(0);
-  EXPECT_CALL(datapath_, Stop());
+  EXPECT_CALL(*datapath_, SwitchTunnel()).Times(0);
+  EXPECT_CALL(*datapath_, Stop()).Times(1);
   EXPECT_CALL(notification_,
               ControlPlaneDisconnected(StatusIs(absl::StatusCode::kInternal)));
 

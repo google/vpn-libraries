@@ -31,7 +31,7 @@ TunnelManager::TunnelManager(VpnServiceInterface* vpn_service,
     : vpn_service_(ABSL_DIE_IF_NULL(vpn_service)),
       tunnel_is_up_(false),
       safe_disconnect_enabled_(safe_disconnect_enabled),
-      session_active_(false) {}
+      datapath_active_(false) {}
 
 TunnelManager::~TunnelManager() {
   if (tunnel_is_up_) {
@@ -52,24 +52,24 @@ void TunnelManager::Stop() {
   LOG(INFO) << "TunnelManager stopping";
   vpn_service_->CloseTunnel();
   tunnel_is_up_ = false;
-  session_active_ = false;
+  datapath_active_ = false;
 }
 
 void TunnelManager::SetSafeDisconnectEnabled(bool enable) {
   absl::MutexLock l(&mutex_);
   safe_disconnect_enabled_ = enable;
   LOG(INFO) << "TunnelManager set Safe Disconnect to " << enable;
-  if (!session_active_ && tunnel_is_up_) {
+  if (!datapath_active_ && tunnel_is_up_) {
     LOG(INFO) << "TunnelManager closing active tunnel";
     vpn_service_->CloseTunnel();
     tunnel_is_up_ = false;
   }
 }
 
-void TunnelManager::StartSession() {
+void TunnelManager::DatapathStarted() {
   absl::MutexLock l(&mutex_);
-  session_active_ = true;
-  LOG(INFO) << "TunnelManager registered an active session";
+  datapath_active_ = true;
+  LOG(INFO) << "TunnelManager registered an active datapath";
 }
 
 absl::Status TunnelManager::EnsureTunnelIsUp(TunFdData tunnel_data) {
@@ -106,7 +106,7 @@ absl::Status TunnelManager::RecreateTunnelIfNeeded() {
   return absl::OkStatus();
 }
 
-void TunnelManager::TerminateSession(bool forceFailOpen) {
+void TunnelManager::DatapathStopped(bool forceFailOpen) {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "TunnelManager registered terminating session, Safe Disconnect: "
             << safe_disconnect_enabled_ << ", Tunnel Is Up: " << tunnel_is_up_;
@@ -115,7 +115,7 @@ void TunnelManager::TerminateSession(bool forceFailOpen) {
     vpn_service_->CloseTunnel();
     tunnel_is_up_ = false;
   }
-  session_active_ = false;
+  datapath_active_ = false;
 }
 
 bool TunnelManager::IsTunnelActive() {

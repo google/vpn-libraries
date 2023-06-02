@@ -15,7 +15,6 @@
 #ifndef PRIVACY_NET_KRYPTON_TUNNEL_MANAGER_INTERFACE_H_
 #define PRIVACY_NET_KRYPTON_TUNNEL_MANAGER_INTERFACE_H_
 
-#include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "third_party/absl/status/status.h"
 
@@ -30,10 +29,10 @@ class TunnelManagerInterface {
   virtual void SetSafeDisconnectEnabled(bool) = 0;
   virtual bool IsSafeDisconnectEnabled() = 0;
 
-  virtual void StartSession() = 0;
+  virtual void DatapathStarted() = 0;
   virtual absl::Status EnsureTunnelIsUp(TunFdData) = 0;
   virtual absl::Status RecreateTunnelIfNeeded() = 0;
-  virtual void TerminateSession(bool forceFailOpen) = 0;
+  virtual void DatapathStopped(bool forceFailOpen) = 0;
 
   virtual bool IsTunnelActive() = 0;
 };

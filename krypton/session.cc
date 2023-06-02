@@ -21,6 +21,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/brass/rpc/brass.proto.h"
@@ -130,14 +131,15 @@ void AddDns(absl::string_view dns_ip, TunFdData::IpRange::IpFamily family,
 }  // namespace
 
 Session::Session(const KryptonConfig& config, Auth* auth,
-                 EgressManager* egress_manager, DatapathInterface* datapath,
+                 EgressManager* egress_manager,
+                 std::unique_ptr<DatapathInterface> datapath,
                  VpnServiceInterface* vpn_service, TimerManager* timer_manager,
                  HttpFetcherInterface* http_fetcher,
                  TunnelManagerInterface* tunnel_manager,
                  std::optional<NetworkInfo> network_info,
                  utils::LooperThread* notification_thread)
     : config_(config),
-      datapath_(ABSL_DIE_IF_NULL(datapath)),
+      datapath_(std::move(ABSL_DIE_IF_NULL(datapath))),
       vpn_service_(ABSL_DIE_IF_NULL(vpn_service)),
       timer_manager_(ABSL_DIE_IF_NULL(timer_manager)),
       http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
@@ -148,7 +150,7 @@ Session::Session(const KryptonConfig& config, Auth* auth,
       uplink_spi_(-1),
       provision_notification_thread_("Provision Notification Thread") {
   // Register all state machine events to be sent to Session.
-  datapath->RegisterNotificationHandler(this);
+  datapath_->RegisterNotificationHandler(this);
   active_network_info_ = network_info;
   tunnel_manager_ = tunnel_manager;
 
@@ -280,15 +282,16 @@ void Session::Start() {
   absl::MutexLock l(&mutex_);
   DCHECK(notification_);
   LOG(INFO) << "Starting session";
-  tunnel_manager_->StartSession();
   provision_->Start();
 }
 
 void Session::Stop(bool forceFailOpen) {
   absl::MutexLock l(&mutex_);
+  datapath_->Stop();
+  datapath_ = nullptr;
+  tunnel_manager_->DatapathStopped(forceFailOpen);
   CancelFetcherTimerIfRunning();
   CancelDatapathReattemptTimerIfRunning();
-  tunnel_manager_->TerminateSession(forceFailOpen);
 }
 
 void Session::CancelAllTimers() {
@@ -417,13 +420,16 @@ void Session::StartDatapath() {
     return;
   }
 
+  tunnel_manager_->DatapathStarted();
   auto datapath_status =
       datapath_->Start(*add_egress_response_, *transform_params);
   if (!datapath_status.ok()) {
     LOG(ERROR) << "Datapath initialization failed with status:"
                << datapath_status;
+    tunnel_manager_->DatapathStopped(false);
     if (utils::IsPermanentError(datapath_status)) {
       SetState(State::kPermanentError, datapath_status);
+      return;
     }
     SetState(State::kSessionError, datapath_status);
     return;
@@ -534,11 +540,7 @@ void Session::AttemptDatapathReconnect() {
 
   // Check if there is an active network.
   if (!active_network_info_) {
-    auto status = latest_datapath_status_;
-    auto* notification = notification_;
-    notification_thread_->Post([notification, status] {
-      notification->DatapathDisconnected(NetworkInfo(), status);
-    });
+    NotifyDatapathDisconnected(NetworkInfo(), latest_datapath_status_);
     return;
   }
 
@@ -575,14 +577,9 @@ void Session::DatapathFailed(const absl::Status& status) {
 
   // Datapath failure is not treated as session failure. These are
   // notifications to the upper layers to fix the network.
-  auto active_network_info_opt = active_network_info_;
-  auto* notification = notification_;
-  notification_thread_->Post([notification, status, active_network_info_opt] {
-    notification->DatapathDisconnected(active_network_info_opt
-                                           ? active_network_info_opt.value()
-                                           : NetworkInfo(),
-                                       status);
-  });
+  auto network_info =
+      active_network_info_ ? active_network_info_.value() : NetworkInfo();
+  NotifyDatapathDisconnected(network_info, status);
 }
 
 void Session::DatapathPermanentFailure(const absl::Status& status) {
@@ -590,10 +587,7 @@ void Session::DatapathPermanentFailure(const absl::Status& status) {
   // Send notification to the reconnector that will automatically reconnect the
   // session. Permanent failures have to be terminated and a new session needs
   // to be created.
-  auto* notification = notification_;
-  notification_thread_->Post([notification, status] {
-    notification->DatapathDisconnected(NetworkInfo(), status);
-  });
+  NotifyDatapathDisconnected(NetworkInfo(), status);
 }
 
 void Session::UpdateActiveNetworkInfo(std::optional<NetworkInfo> network_info) {
@@ -675,15 +669,9 @@ absl::Status Session::SwitchDatapath() {
 
   if (!switch_data_status.ok()) {
     LOG(ERROR) << "Switching networks failed: " << switch_data_status;
-    auto active_network_info_opt = active_network_info_;
-    auto* notification = notification_;
-    const auto& status = switch_data_status;
-    auto network_info = active_network_info_opt
-                            ? active_network_info_opt.value()
-                            : NetworkInfo();
-    notification_thread_->Post([notification, status, network_info] {
-      notification->DatapathDisconnected(network_info, status);
-    });
+    auto network_info =
+        active_network_info_ ? active_network_info_.value() : NetworkInfo();
+    NotifyDatapathDisconnected(network_info, switch_data_status);
   }
 
   return switch_data_status;
@@ -801,6 +789,15 @@ void Session::ProvisioningFailure(absl::Status status, bool permanent) {
   } else {
     SetState(State::kSessionError, status);
   }
+}
+
+void Session::NotifyDatapathDisconnected(const NetworkInfo& network_info,
+                                         const absl::Status& status) {
+  tunnel_manager_->DatapathStopped(/*forceFailOpen=*/false);
+  auto* notification = notification_;
+  notification_thread_->Post([notification, status, network_info] {
+    notification->DatapathDisconnected(network_info, status);
+  });
 }
 
 }  // namespace krypton

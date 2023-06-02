@@ -14,20 +14,11 @@
 
 #include "privacy/net/krypton/tunnel_manager.h"
 
-#include <memory>
-
-#include "privacy/net/brass/rpc/brass.proto.h"
-#include "privacy/net/krypton/add_egress_request.h"
-#include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/pal/mock_vpn_service_interface.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
-#include "privacy/net/krypton/test_packet_pipe.h"
-#include "privacy/net/krypton/utils/ip_range.h"
-#include "privacy/net/krypton/utils/status.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/types/optional.h"
 
 namespace privacy {
 namespace krypton {
@@ -77,7 +68,7 @@ TEST_F(TunnelManagerTest,
       .WillOnce(Return(absl::OkStatus()));
 
   ASSERT_OK(tunnel_manager.Start());
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 }
@@ -90,11 +81,11 @@ TEST_F(TunnelManagerTest, TunnelOutlivesSessionWhenSafeDisconnectEnabled) {
       .WillOnce(Return(absl::OkStatus()));
 
   ASSERT_OK(tunnel_manager.Start());
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
 
   tunnel_manager.SetSafeDisconnectEnabled(true);
-  tunnel_manager.TerminateSession(/*forceFailOpen=*/false);
+  tunnel_manager.DatapathStopped(/*forceFailOpen=*/false);
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 }
 
@@ -106,10 +97,10 @@ TEST_F(TunnelManagerTest, TunnelAndSessionDieWhenSafeDisconnectDisabled) {
       .WillOnce(Return(absl::OkStatus()));
 
   ASSERT_OK(tunnel_manager.Start());
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
 
-  tunnel_manager.TerminateSession(/*forceFailOpen=*/false);
+  tunnel_manager.DatapathStopped(/*forceFailOpen=*/false);
   EXPECT_FALSE(tunnel_manager.IsTunnelActive());
 }
 
@@ -121,7 +112,7 @@ TEST_F(TunnelManagerTest, TunnelUnchangedWhenTogglingSafeDisconnect) {
       .WillOnce(Return(absl::OkStatus()));
 
   ASSERT_OK(tunnel_manager.Start());
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 
@@ -140,15 +131,15 @@ TEST_F(TunnelManagerTest, GetTunnelReturnsOldTunnelAfterSafeDisconnect) {
       .WillOnce(Return(absl::OkStatus()));
 
   ASSERT_OK(tunnel_manager.Start());
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 
   tunnel_manager.SetSafeDisconnectEnabled(true);
-  tunnel_manager.TerminateSession(/*forceFailOpen=*/false);
+  tunnel_manager.DatapathStopped(/*forceFailOpen=*/false);
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 }
@@ -161,7 +152,7 @@ TEST_F(TunnelManagerTest,
   ASSERT_OK(tunnel_manager.Start());
   EXPECT_FALSE(tunnel_manager.IsTunnelActive());
 
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 }
@@ -175,12 +166,12 @@ TEST_F(TunnelManagerTest, SessionStartAndStopWithSafeDisconnectOff) {
   ASSERT_OK(tunnel_manager.Start());
   EXPECT_FALSE(tunnel_manager.IsTunnelActive());
 
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 
-  tunnel_manager.TerminateSession(/*forceFailOpen=*/false);
+  tunnel_manager.DatapathStopped(/*forceFailOpen=*/false);
   EXPECT_FALSE(tunnel_manager.IsTunnelActive());
 }
 
@@ -193,7 +184,7 @@ TEST_F(TunnelManagerTest, StopClosesActiveTunnel) {
   ASSERT_OK(tunnel_manager.Start());
   EXPECT_FALSE(tunnel_manager.IsTunnelActive());
 
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 
@@ -210,11 +201,11 @@ TEST_F(TunnelManagerTest,
   ASSERT_OK(tunnel_manager.Start());
   EXPECT_FALSE(tunnel_manager.IsTunnelActive());
 
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 
-  tunnel_manager.TerminateSession(/*forceFailOpen=*/false);
+  tunnel_manager.DatapathStopped(/*forceFailOpen=*/false);
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 
   tunnel_manager.SetSafeDisconnectEnabled(false);
@@ -229,12 +220,12 @@ TEST_F(TunnelManagerTest, TunnelAndSessionDieWhenSafeDisconnectOverridden) {
       .WillOnce(Return(absl::OkStatus()));
 
   ASSERT_OK(tunnel_manager.Start());
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 
   tunnel_manager.SetSafeDisconnectEnabled(true);
-  tunnel_manager.TerminateSession(/*forceFailOpen=*/true);
+  tunnel_manager.DatapathStopped(/*forceFailOpen=*/true);
   EXPECT_FALSE(tunnel_manager.IsTunnelActive());
 }
 
@@ -245,7 +236,7 @@ TEST_F(TunnelManagerTest,
   ASSERT_OK(tunnel_manager.Start());
 
   tunnel_manager.SetSafeDisconnectEnabled(true);
-  tunnel_manager.TerminateSession(/*forceFailOpen=*/true);
+  tunnel_manager.DatapathStopped(/*forceFailOpen=*/true);
   EXPECT_FALSE(tunnel_manager.IsTunnelActive());
 }
 
@@ -257,19 +248,19 @@ TEST_F(TunnelManagerTest, RecreateTunnelReturnsOldTunnel) {
       .WillOnce(Return(absl::OkStatus()));
 
   ASSERT_OK(tunnel_manager.Start());
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 
   tunnel_manager.SetSafeDisconnectEnabled(/*enable=*/true);
   // Snooze will bypass safe disconnect, meaning that the active_tunnel_ is
   // closed. This simulates snooze.
-  tunnel_manager.TerminateSession(/*forceFailOpen=*/true);
+  tunnel_manager.DatapathStopped(/*forceFailOpen=*/true);
 
   EXPECT_CALL(vpn_service_,
               CreateTunnel(testing::EqualsProto(tunnel_data_string)))
       .WillOnce(Return(absl::OkStatus()));
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.RecreateTunnelIfNeeded());
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 }
@@ -282,17 +273,17 @@ TEST_F(TunnelManagerTest, DoNotRecreateTunnelIfOneAlreadyPresent) {
       .WillOnce(Return(absl::OkStatus()));
 
   ASSERT_OK(tunnel_manager.Start());
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 
   tunnel_manager.SetSafeDisconnectEnabled(/*enable=*/true);
-  tunnel_manager.TerminateSession(/*forceFailOpen=*/false);
+  tunnel_manager.DatapathStopped(/*forceFailOpen=*/false);
 
   EXPECT_CALL(vpn_service_,
               CreateTunnel(testing::EqualsProto(tunnel_data_string)))
       .Times(0);
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.RecreateTunnelIfNeeded());
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 }
@@ -305,17 +296,17 @@ TEST_F(TunnelManagerTest, DoNotRecreateTunnelIfSafeDisconnectNotEnabled) {
       .WillOnce(Return(absl::OkStatus()));
 
   ASSERT_OK(tunnel_manager.Start());
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.EnsureTunnelIsUp(buildTunFdData()));
   EXPECT_TRUE(tunnel_manager.IsTunnelActive());
 
   tunnel_manager.SetSafeDisconnectEnabled(/*enable=*/false);
-  tunnel_manager.TerminateSession(/*forceFailOpen=*/false);
+  tunnel_manager.DatapathStopped(/*forceFailOpen=*/false);
 
   EXPECT_CALL(vpn_service_,
               CreateTunnel(testing::EqualsProto(tunnel_data_string)))
       .Times(0);
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.RecreateTunnelIfNeeded());
   EXPECT_FALSE(tunnel_manager.IsTunnelActive());
 }
@@ -326,7 +317,7 @@ TEST_F(TunnelManagerTest, DoNotRecreateTunnelIfNoActiveTunnelDataAvailable) {
   EXPECT_CALL(vpn_service_,
               CreateTunnel(testing::EqualsProto(tunnel_data_string)))
       .Times(0);
-  tunnel_manager.StartSession();
+  tunnel_manager.DatapathStarted();
   ASSERT_OK(tunnel_manager.RecreateTunnelIfNeeded());
   EXPECT_FALSE(tunnel_manager.IsTunnelActive());
 }
