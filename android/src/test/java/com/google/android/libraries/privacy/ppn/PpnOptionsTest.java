@@ -606,6 +606,8 @@ public class PpnOptionsTest {
             .setDebugModeAllowed(true)
             .setPeriodicHealthCheckEnabled(true)
             .setPeriodicHealthCheckDuration(Duration.ofSeconds(8))
+            .setPeriodicHealthCheckUrl("healthCheckUrl")
+            .setPeriodicHealthCheckPort(80)
             .build();
 
     KryptonConfig config = options.createKryptonConfigBuilder().build();
@@ -649,6 +651,10 @@ public class PpnOptionsTest {
     assertThat(config.hasPeriodicHealthCheckDuration()).isTrue();
     assertThat(config.getPeriodicHealthCheckDuration().getSeconds()).isEqualTo(8);
     assertThat(config.getPeriodicHealthCheckDuration().getNanos()).isEqualTo(0);
+    assertThat(config.hasPeriodicHealthCheckUrl()).isTrue();
+    assertThat(config.getPeriodicHealthCheckUrl()).isEqualTo("healthCheckUrl");
+    assertThat(config.hasPeriodicHealthCheckPort()).isTrue();
+    assertThat(config.getPeriodicHealthCheckPort()).isEqualTo(80);
   }
 
   @Test
@@ -686,6 +692,8 @@ public class PpnOptionsTest {
     assertThat(config.getDebugModeAllowed()).isFalse();
     assertThat(config.getPeriodicHealthCheckEnabled()).isFalse();
     assertThat(config.hasPeriodicHealthCheckDuration()).isFalse();
+    assertThat(config.hasPeriodicHealthCheckUrl()).isFalse();
+    assertThat(config.hasPeriodicHealthCheckPort()).isFalse();
   }
 
   @Test
@@ -763,5 +771,36 @@ public class PpnOptionsTest {
   public void setPeriodicHealthCheckDuration_ignoresNull() {
     PpnOptions options = new PpnOptions.Builder().setPeriodicHealthCheckDuration(null).build();
     assertThat(options.getPeriodicHealthCheckDuration()).isEmpty();
+  }
+
+  @Test
+  public void setPeriodicHealthCheckUrl_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.getPeriodicHealthCheckUrl()).isEmpty();
+  }
+
+  @Test
+  public void setPeriodicHealthCheckUrl_setsValue() {
+    PpnOptions options =
+        new PpnOptions.Builder().setPeriodicHealthCheckUrl("healthCheckUrl").build();
+    assertThat(options.getPeriodicHealthCheckUrl()).hasValue("healthCheckUrl");
+  }
+
+  @Test
+  public void setPeriodicHealthCheckUrl_ignoresNull() {
+    PpnOptions options = new PpnOptions.Builder().setPeriodicHealthCheckUrl(null).build();
+    assertThat(options.getPeriodicHealthCheckUrl()).isEmpty();
+  }
+
+  @Test
+  public void setPeriodicHealthCheckPort_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.getPeriodicHealthCheckPort()).isEmpty();
+  }
+
+  @Test
+  public void setPeriodicHealthCheckPort_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setPeriodicHealthCheckPort(80).build();
+    assertThat(options.getPeriodicHealthCheckPort()).hasValue(80);
   }
 }

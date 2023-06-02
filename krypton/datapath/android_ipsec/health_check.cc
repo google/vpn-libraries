@@ -75,10 +75,6 @@ void HealthCheck::ConfigureHealthCheck(const KryptonConfig& config) {
       LOG(ERROR) << "Unable to enable health check without a url.";
       return;
     }
-    if (!config.has_periodic_health_check_port()) {
-      LOG(ERROR) << "Unable to enable health check without a port.";
-      return;
-    }
 
     auto periodic_health_check_duration =
         utils::DurationFromProto(config.periodic_health_check_duration());

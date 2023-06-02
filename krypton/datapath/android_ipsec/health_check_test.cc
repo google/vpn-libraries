@@ -56,8 +56,6 @@ TEST_F(HealthCheckTest, HealthCheckDisabled) {
   KryptonConfig config;
   config.set_periodic_health_check_enabled(false);
   config.mutable_periodic_health_check_duration()->set_seconds(1);
-  config.set_periodic_health_check_url("www.google.com");
-  config.set_periodic_health_check_port(80);
   HealthCheck health_check(config, &timer_manager_, &mock_notification_,
                            &looper_);
 
@@ -69,8 +67,6 @@ TEST_F(HealthCheckTest, HealthCheckDisabled) {
 TEST_F(HealthCheckTest, HealthCheckEnabledWithoutDuration) {
   KryptonConfig config;
   config.set_periodic_health_check_enabled(true);
-  config.set_periodic_health_check_url("www.google.com");
-  config.set_periodic_health_check_port(80);
   HealthCheck health_check(config, &timer_manager_, &mock_notification_,
                            &looper_);
 
@@ -83,21 +79,6 @@ TEST_F(HealthCheckTest, HealthCheckEnabledWithInvalidDuration) {
   KryptonConfig config;
   config.set_periodic_health_check_enabled(true);
   config.mutable_periodic_health_check_duration()->set_seconds(315576000001);
-  config.set_periodic_health_check_url("www.google.com");
-  config.set_periodic_health_check_port(80);
-  HealthCheck health_check(config, &timer_manager_, &mock_notification_,
-                           &looper_);
-
-  EXPECT_CALL(mock_timer_interface_, StartTimer(_, _)).Times(0);
-
-  health_check.Start();
-}
-
-TEST_F(HealthCheckTest, HealthCheckEnabledWithMissingUrl) {
-  KryptonConfig config;
-  config.set_periodic_health_check_enabled(true);
-  config.mutable_periodic_health_check_duration()->set_seconds(1);
-  config.set_periodic_health_check_port(80);
   HealthCheck health_check(config, &timer_manager_, &mock_notification_,
                            &looper_);
 
@@ -111,20 +92,6 @@ TEST_F(HealthCheckTest, HealthCheckEnabledWithEmptyUrl) {
   config.set_periodic_health_check_enabled(true);
   config.mutable_periodic_health_check_duration()->set_seconds(1);
   config.set_periodic_health_check_url("");
-  config.set_periodic_health_check_port(80);
-  HealthCheck health_check(config, &timer_manager_, &mock_notification_,
-                           &looper_);
-
-  EXPECT_CALL(mock_timer_interface_, StartTimer(_, _)).Times(0);
-
-  health_check.Start();
-}
-
-TEST_F(HealthCheckTest, HealthCheckEnabledWithMissingPort) {
-  KryptonConfig config;
-  config.set_periodic_health_check_enabled(true);
-  config.mutable_periodic_health_check_duration()->set_seconds(1);
-  config.set_periodic_health_check_url("www.google.com");
   HealthCheck health_check(config, &timer_manager_, &mock_notification_,
                            &looper_);
 
@@ -137,8 +104,6 @@ TEST_F(HealthCheckTest, HealthCheckEnabledWithValidConfig) {
   KryptonConfig config;
   config.set_periodic_health_check_enabled(true);
   config.mutable_periodic_health_check_duration()->set_seconds(1);
-  config.set_periodic_health_check_url("www.google.com");
-  config.set_periodic_health_check_port(80);
   HealthCheck health_check(config, &timer_manager_, &mock_notification_,
                            &looper_);
 
@@ -161,8 +126,6 @@ TEST_F(HealthCheckTest, HealthCheckFailsToStartTimer) {
   KryptonConfig config;
   config.set_periodic_health_check_enabled(true);
   config.mutable_periodic_health_check_duration()->set_seconds(1);
-  config.set_periodic_health_check_url("www.google.com");
-  config.set_periodic_health_check_port(80);
   HealthCheck health_check(config, &timer_manager_, &mock_notification_,
                            &looper_);
 
@@ -186,8 +149,6 @@ TEST_F(HealthCheckTest, HealthCheckStartedTwice) {
   KryptonConfig config;
   config.set_periodic_health_check_enabled(true);
   config.mutable_periodic_health_check_duration()->set_seconds(1);
-  config.set_periodic_health_check_url("www.google.com");
-  config.set_periodic_health_check_port(80);
   HealthCheck health_check(config, &timer_manager_, &mock_notification_,
                            &looper_);
 
@@ -281,8 +242,6 @@ TEST_F(HealthCheckTest, HealthCheckFail) {
   KryptonConfig config;
   config.set_periodic_health_check_enabled(true);
   config.mutable_periodic_health_check_duration()->set_seconds(1);
-  config.set_periodic_health_check_url("www.google.com");
-  config.set_periodic_health_check_port(80);
 
   HealthCheck health_check(config, &timer_manager_, &mock_notification_,
                            &looper_);

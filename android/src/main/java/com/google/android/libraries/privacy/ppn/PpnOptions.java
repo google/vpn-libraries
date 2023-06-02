@@ -109,6 +109,8 @@ public class PpnOptions {
 
   private final boolean periodicHealthCheckEnabled;
   private final Optional<Duration> periodicHealthCheckDuration;
+  private final Optional<String> periodicHealthCheckUrl;
+  private final Optional<Integer> periodicHealthCheckPort;
 
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
@@ -165,6 +167,8 @@ public class PpnOptions {
 
     this.periodicHealthCheckEnabled = builder.periodicHealthCheckEnabled;
     this.periodicHealthCheckDuration = builder.periodicHealthCheckDuration;
+    this.periodicHealthCheckUrl = builder.periodicHealthCheckUrl;
+    this.periodicHealthCheckPort = builder.periodicHealthCheckPort;
   }
 
   public String getZincUrl() {
@@ -335,6 +339,14 @@ public class PpnOptions {
     return periodicHealthCheckDuration;
   }
 
+  public Optional<String> getPeriodicHealthCheckUrl() {
+    return periodicHealthCheckUrl;
+  }
+
+  public Optional<Integer> getPeriodicHealthCheckPort() {
+    return periodicHealthCheckPort;
+  }
+
   /** Creates a KryptonConfig.Builder using the current options. */
   public KryptonConfig.Builder createKryptonConfigBuilder() {
     ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
@@ -448,6 +460,15 @@ public class PpnOptions {
               .setNanos(periodicHealthCheckDuration.getNano())
               .build());
     }
+
+    if (getPeriodicHealthCheckUrl().isPresent()) {
+      builder.setPeriodicHealthCheckUrl(getPeriodicHealthCheckUrl().get());
+    }
+
+    if (getPeriodicHealthCheckPort().isPresent()) {
+      builder.setPeriodicHealthCheckPort(getPeriodicHealthCheckPort().get());
+    }
+
     return builder;
   }
 
@@ -503,6 +524,8 @@ public class PpnOptions {
 
     private boolean periodicHealthCheckEnabled = false;
     private Optional<Duration> periodicHealthCheckDuration = Optional.empty();
+    private Optional<String> periodicHealthCheckUrl = Optional.empty();
+    private Optional<Integer> periodicHealthCheckPort = Optional.empty();
 
     public Builder() {}
 
@@ -946,6 +969,22 @@ public class PpnOptions {
       if (interval != null) {
         this.periodicHealthCheckDuration = Optional.of(interval);
       }
+      return this;
+    }
+
+    /** Sets the URL for the periodic health check. */
+    @CanIgnoreReturnValue
+    public Builder setPeriodicHealthCheckUrl(String url) {
+      if (url != null) {
+        this.periodicHealthCheckUrl = Optional.of(url);
+      }
+      return this;
+    }
+
+    /** Sets the port for the periodic health check. */
+    @CanIgnoreReturnValue
+    public Builder setPeriodicHealthCheckPort(int port) {
+      this.periodicHealthCheckPort = Optional.of(port);
       return this;
     }
 
