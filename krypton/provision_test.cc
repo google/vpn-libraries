@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
+#include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/common/proto/auth_and_sign.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
@@ -111,8 +112,7 @@ class ProvisionTest : public ::testing::Test {
           debug_mode: 0,
         },
         validation_version: 1
-      },
-      attestation: { attestation_nonce: "some_nonce" }
+      }
     )pb");
 
     *response.mutable_at_public_metadata_public_key() = key_pair_.second;

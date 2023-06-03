@@ -532,6 +532,9 @@ void Auth::AuthenticatePublicMetadata(bool is_rekey,
     sign_request.add_blinded_token(absl::Base64Escape(
         at_sign_request_.blinded_tokens().at(i).serialized_token()));
   }
+  if (attestation_data.has_value()) {
+    *sign_request.mutable_attestation() = *attestation_data;
+  }
 
   HttpRequest auth_http_request;
   auth_http_request.set_proto_body(sign_request.SerializeAsString());
@@ -556,7 +559,6 @@ Auth::UnblindATToken() {
     return absl::InternalError(
         "AT token unblinding only possible when public metadata is enabled");
   }
-  // Create vector of unblinded anonymous tokens.
   AnonymousTokensSignResponse at_sign_response;
 
   if (auth_and_sign_response_.blinded_token_signatures().size() !=

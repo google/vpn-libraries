@@ -257,9 +257,14 @@ class AuthTest : public ::testing::Test {
     return response;
   }
 
-  HttpResponse buildInitialDataHttpResponse() {
+  HttpResponse buildInitialDataHttpResponse(bool with_attestation) {
     HttpResponse response;
-    response.set_proto_body(createGetInitialDataResponse().SerializeAsString());
+    auto initial_data_response = createGetInitialDataResponse();
+    if (with_attestation) {
+      initial_data_response.mutable_attestation()
+       ->set_attestation_nonce("some_nonce");
+    }
+    response.set_proto_body(initial_data_response.SerializeAsString());
     response.mutable_status()->set_code(200);
     return response;
   }
@@ -635,7 +640,8 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabled) {
   EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
   EXPECT_CALL(http_fetcher_,
               PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
-      .WillOnce(::testing::Return(buildInitialDataHttpResponse()));
+      .WillOnce(::testing::Return(
+          buildInitialDataHttpResponse(/*with_attestation=*/false)));
 
   // Step 1: AuthAndSign
   EXPECT_CALL(http_fetcher_, PostJson(Partially(EqualsProto(
@@ -660,6 +666,61 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabled) {
   // Step 3: Inspect values returned by auth::initial_data_response()
   auto initial_data_response = auth_->initial_data_response();
   inspectInitialDataResponse(initial_data_response);
+}
+
+TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabledAndAttestation) {
+  // TODO Update this test, when AT client accounts for public
+  // metadata.
+  auto config =
+      CreateKryptonConfig(/*blind_signing=*/true, /*enable_attestation=*/true);
+  config.set_api_key("testApiKey");
+  config.set_public_metadata_enabled(true);
+  config.set_initial_data_url("http://www.example.com/initial_data");
+  ConfigureAuth(config);
+
+  // Setup attestation data.
+  privacy::ppn::AndroidAttestationData android_attestation_data;
+  android_attestation_data.set_attestation_token("some-attestation-token");
+  android_attestation_data.add_hardware_backed_certs("cert1");
+  android_attestation_data.add_hardware_backed_certs("cert2");
+
+  privacy::ppn::AttestationData attestation_data;
+  attestation_data.mutable_attestation_data()->set_type_url(
+      "type.googleapis.com/testing.AndroidAttestationData");
+  attestation_data.mutable_attestation_data()->set_value(
+      android_attestation_data.SerializeAsString());
+
+  absl::Notification http_fetcher_done;
+  // Step 0: RequestInitialData
+  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+  EXPECT_CALL(http_fetcher_,
+              PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
+      .WillOnce(::testing::Return(
+          buildInitialDataHttpResponse(/*with_attestation=*/true)));
+
+  // Step 1: AuthAndSign
+  EXPECT_CALL(oauth_, GetAttestationData).WillOnce(Return(attestation_data));
+  EXPECT_CALL(http_fetcher_, PostJson(Partially(EqualsProto(
+                                 R"pb(url: "http://www.example.com/auth")pb"))))
+      .WillOnce(Invoke([this](HttpRequest request) {
+        // Verify request has attestation.
+        EXPECT_TRUE(request.has_proto_body());
+        privacy::ppn::AuthAndSignRequest sign_request;
+        sign_request.ParseFromString(request.proto_body());
+        EXPECT_TRUE(sign_request.attestation().has_attestation_data());
+        // Build response.
+        auto response = buildATSignResponse(request);
+        return response;
+      }));
+
+  EXPECT_CALL(auth_notification_, AuthSuccessful(GetParam()))
+      .WillOnce(
+          InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
+
+  // Step 2: Hit it
+  auth_->Start(/*is_rekey=*/GetParam());
+  EXPECT_TRUE(
+      http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
 }
 
 TEST_P(AuthParamsTest, InitialDataRequestNonEmptyCityGeoId) {
