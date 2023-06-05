@@ -63,11 +63,11 @@ int main(int argc, char* argv[]) {
   auto timer_manager =
       std::make_unique<privacy::krypton::TimerManager>(Timer::Get());
 
-  auto timer_status =
-      timer_manager->StartTimer(absl::Seconds(10), RegisteredCallback);
+  auto timer_status = timer_manager->StartTimer(
+      absl::Seconds(10), RegisteredCallback, "TestTimer1");
 
-  timer_status =
-      timer_manager->StartTimer(absl::Seconds(5), RegisteredCallback);
+  timer_status = timer_manager->StartTimer(absl::Seconds(5), RegisteredCallback,
+                                           "TestTimer2");
 
   timer_manager->CancelTimer(1);
 

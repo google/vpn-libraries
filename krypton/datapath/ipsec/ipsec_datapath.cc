@@ -20,13 +20,11 @@
 #include <optional>
 
 #include "privacy/net/krypton/add_egress_response.h"
-#include "privacy/net/krypton/datapath/cryptor_interface.h"
 #include "privacy/net/krypton/datapath/ipsec/ipsec_decryptor.h"
 #include "privacy/net/krypton/datapath/ipsec/ipsec_encryptor.h"
 #include "privacy/net/krypton/datapath/packet_forwarder.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
-#include "privacy/net/krypton/pal/packet_pipe.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
@@ -164,7 +162,8 @@ void IpSecDatapath::StartDatapathConnectingTimer() {
   LOG(INFO) << "Starting DatapathConnecting timer.";
   auto timer_id = timer_manager_->StartTimer(
       kDatapathConnectingDuration,
-      absl::bind_front(&IpSecDatapath::HandleDatapathConnectingTimeout, this));
+      absl::bind_front(&IpSecDatapath::HandleDatapathConnectingTimeout, this),
+      "DatapathConnecting");
   if (!timer_id.ok()) {
     LOG(ERROR) << "Cannot StartTimer for connecting datapath";
     return;
@@ -273,7 +272,8 @@ void IpSecDatapath::StartHealthCheckTimer() {
   LOG(INFO) << "Starting HealthCheck timer.";
   auto timer_id = timer_manager_->StartTimer(
       periodic_health_check_duration_,
-      absl::bind_front(&IpSecDatapath::HandleHealthCheckTimeout, this));
+      absl::bind_front(&IpSecDatapath::HandleHealthCheckTimeout, this),
+      "HealthCheck");
   if (!timer_id.ok()) {
     LOG(ERROR) << "Cannot StartTimer for HealthCheck";
     return;

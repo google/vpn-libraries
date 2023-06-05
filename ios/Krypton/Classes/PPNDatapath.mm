@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "privacy/net/krypton/datapath/ipsec/ipsec_decryptor.h"
@@ -72,7 +73,7 @@ void PPNDatapath::Stop() {
 }
 
 absl::Status PPNDatapath::SwitchNetwork(uint32_t session_id, const Endpoint& endpoint,
-                                        absl::optional<NetworkInfo> network_info, int /*counter*/) {
+                                        std::optional<NetworkInfo> network_info, int /*counter*/) {
   LOG(INFO) << "Switching network";
   if (!network_info) {
     LOG(ERROR) << "network_info is unset";
@@ -141,7 +142,7 @@ void PPNDatapath::StartDatapathConnectingTimer() {
   LOG(INFO) << "Starting DatapathConnecting timer.";
   auto timer_id = timer_manager_->StartTimer(
       kDatapathConnectingDuration,
-      absl::bind_front(&PPNDatapath::HandleDatapathConnectingTimeout, this));
+      absl::bind_front(&PPNDatapath::HandleDatapathConnectingTimeout, this), "DatapathConnecting");
   if (!timer_id.ok()) {
     LOG(ERROR) << "Cannot StartTimer for connecting datapath";
     return;
@@ -210,8 +211,8 @@ void PPNDatapath::HandleDatapathConnectingTimeout() {
   mutex_.Lock();
   if (datapath_connecting_count_ > kMaxRetries) {
     mutex_.Unlock();
-    PacketForwarderFailed(absl::DeadlineExceededError(
-        "Timeout waiting for datapath to be connected."));
+    PacketForwarderFailed(
+        absl::DeadlineExceededError("Timeout waiting for datapath to be connected."));
     return;
   }
   PPN_LOG_IF_ERROR(CreateNetworkPipeAndStartPacketForwarder());
@@ -229,9 +230,8 @@ void PPNDatapath::PacketForwarderPermanentFailure(const absl::Status& status) {
   ShutdownPacketForwarder();
   connected_.clear();
   auto* notification = notification_;
-  notification_thread_->Post([notification, status]() {
-    notification->DatapathPermanentFailure(status);
-  });
+  notification_thread_->Post(
+      [notification, status]() { notification->DatapathPermanentFailure(status); });
 }
 
 void PPNDatapath::PacketForwarderConnected() {
@@ -260,9 +260,9 @@ void PPNDatapath::StartHealthCheckTimer() {
   health_check_cancelled_ = std::make_shared<std::atomic_bool>(false);
   CancelHealthCheckTimer();
   LOG(INFO) << "Starting HealthCheck timer.";
-  auto timer_id =
-      timer_manager_->StartTimer(periodic_health_check_duration_,
-                                 absl::bind_front(&PPNDatapath::HandleHealthCheckTimeout, this));
+  auto timer_id = timer_manager_->StartTimer(
+      periodic_health_check_duration_,
+      absl::bind_front(&PPNDatapath::HandleHealthCheckTimeout, this), "HealthCheck");
   if (!timer_id.ok()) {
     LOG(ERROR) << "Cannot StartTimer for HealthCheck";
     return;

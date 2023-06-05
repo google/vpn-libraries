@@ -21,7 +21,6 @@
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/functional/bind_front.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
 
@@ -39,8 +38,9 @@ class TimerManagerTest : public ::testing::Test {
     EXPECT_CALL(timer_interface_,
                 StartTimer(expected_timer_id, absl::Milliseconds(5)))
         .WillOnce(Return(absl::OkStatus()));
-    EXPECT_THAT(timer_manager_.StartTimer(absl::Milliseconds(5), callback),
-                IsOkAndHolds(expected_timer_id));
+    EXPECT_THAT(
+        timer_manager_.StartTimer(absl::Milliseconds(5), callback, "Test"),
+        IsOkAndHolds(expected_timer_id));
     return expected_timer_id;
   }
 

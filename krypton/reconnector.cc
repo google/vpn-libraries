@@ -17,13 +17,10 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 
 #include "base/logging.h"
-#include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/proto/connection_status.proto.h"
@@ -36,9 +33,7 @@
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/functional/bind_front.h"
-#include "third_party/absl/memory/memory.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
@@ -322,8 +317,8 @@ absl::Status Reconnector::StartReconnectorTimer() {
   PPN_ASSIGN_OR_RETURN(
       reconnector_timer_id_,
       timer_manager_->StartTimer(
-          duration,
-          absl::bind_front(&Reconnector::ReconnectTimerExpired, this)));
+          duration, absl::bind_front(&Reconnector::ReconnectTimerExpired, this),
+          "Reconnect"));
 
   // Create and put a Reconnecting notification on the Looper.
   ReconnectionStatus status;
@@ -356,7 +351,8 @@ absl::Status Reconnector::StartSnoozeTimer(absl::Duration duration) {
   PPN_ASSIGN_OR_RETURN(
       snooze_timer_id_,
       timer_manager_->StartTimer(
-          duration, absl::bind_front(&Reconnector::SnoozeTimerExpired, this)));
+          duration, absl::bind_front(&Reconnector::SnoozeTimerExpired, this),
+          "Snooze"));
 
   return absl::OkStatus();
 }
@@ -389,7 +385,8 @@ absl::Status Reconnector::StartConnectionDeadlineTimer() {
       connection_deadline_timer_id_,
       timer_manager_->StartTimer(
           duration,
-          absl::bind_front(&Reconnector::SessionConnectionTimerExpired, this)));
+          absl::bind_front(&Reconnector::SessionConnectionTimerExpired, this),
+          "SessionConnection"));
 
   return absl::OkStatus();
 }
@@ -427,7 +424,8 @@ absl::Status Reconnector::StartDatapathWatchdogTimer() {
       datapath_watchdog_timer_id_,
       timer_manager_->StartTimer(
           duration,
-          absl::bind_front(&Reconnector::DatapathWatchdogTimerExpired, this)));
+          absl::bind_front(&Reconnector::DatapathWatchdogTimerExpired, this),
+          "DatapathWatchdog"));
 
   return absl::OkStatus();
 }

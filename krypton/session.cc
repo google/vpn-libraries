@@ -454,7 +454,8 @@ void Session::StartFetchCountersTimer() {
   CancelFetcherTimerIfRunning();
   LOG(INFO) << "Starting FetchCounters timer.";
   auto timer_id = timer_manager_->StartTimer(
-      kFetchTimerDuration, absl::bind_front(&Session::FetchCounters, this));
+      kFetchTimerDuration, absl::bind_front(&Session::FetchCounters, this),
+      "FetchCounters");
   if (!timer_id.ok()) {
     LOG(ERROR) << "Cannot StartTimer for fetch counters";
     return;
@@ -467,7 +468,8 @@ void Session::StartDatapathReattemptTimer() {
   LOG(INFO) << "Starting Datapath reattempt timer.";
   auto timer_id = timer_manager_->StartTimer(
       kDatapathReattemptDuration,
-      absl::bind_front(&Session::AttemptDatapathReconnect, this));
+      absl::bind_front(&Session::AttemptDatapathReconnect, this),
+      "DatapathReattempt");
   if (!timer_id.ok()) {
     LOG(ERROR) << "Cannot StartTimer for DatapathReattempt";
     return;

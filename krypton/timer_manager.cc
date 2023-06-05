@@ -17,6 +17,7 @@
 #include <atomic>
 #include <functional>
 #include <map>
+#include <string>
 #include <utility>
 
 #include "base/logging.h"
@@ -47,7 +48,8 @@ TimerManager::~TimerManager() {
 }
 
 absl::StatusOr<int> TimerManager::StartTimer(absl::Duration duration,
-                                             TimerCb callback) {
+                                             TimerCb callback,
+                                             absl::string_view label) {
   absl::MutexLock l(&mutex_);
   auto timer_id = timer_id_counter_.fetch_add(kTimerIncrementValue);
 
@@ -55,9 +57,12 @@ absl::StatusOr<int> TimerManager::StartTimer(absl::Duration duration,
   if (!timer_start_status.ok()) {
     return timer_start_status;
   }
-  LOG(INFO) << "Starting timer of " << duration
-            << " for timer id: " << timer_id;
-  timer_map_.emplace(timer_id, std::move(callback));
+  LOG(INFO) << "Starting timer " << label << " of " << duration
+            << " with id: " << timer_id;
+  TimerDetails timer_details;
+  timer_details.timer_cb = std::move(callback);
+  timer_details.label.assign(label.data(), label.size());
+  timer_map_.emplace(timer_id, std::move(timer_details));
   return timer_id;
 }
 
@@ -65,16 +70,25 @@ void TimerManager::CancelTimer(int timer_id) {
   LOG(INFO) << "Cancelling timer with id: " << timer_id;
   absl::MutexLock l(&mutex_);
   timer_interface_->CancelTimer(timer_id);
-  timer_map_.erase(timer_id);
+  auto result = timer_map_.find(timer_id);
+  if (result != timer_map_.end()) {
+    LOG(INFO) << "Cancelled timer " << result->second.label
+              << " with id: " << timer_id;
+    timer_map_.erase(result);
+  } else {
+    LOG(WARNING) << "Cancelled unknown timer with id: " << timer_id;
+  }
 }
 
 void TimerManager::TimerExpiry(int timer_id) {
   TimerCb timer_cb = nullptr;
+  std::string label;
   {
     absl::MutexLock l(&mutex_);
     auto result = timer_map_.find(timer_id);
     if (result != timer_map_.end()) {
-      timer_cb = result->second;
+      timer_cb = result->second.timer_cb;
+      label = result->second.label;
       timer_map_.erase(result);
     } else {
       LOG(ERROR) << "Timer expiry for timer_id: " << timer_id
@@ -83,7 +97,8 @@ void TimerManager::TimerExpiry(int timer_id) {
     }
   }
   if (timer_cb != nullptr) {
-    LOG(INFO) << "Calling callback for timer id << " << timer_id;
+    LOG(INFO) << "Calling callback for timer " << label
+              << " with id: " << timer_id;
     timer_cb();
   }
 }

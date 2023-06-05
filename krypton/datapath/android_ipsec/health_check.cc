@@ -130,7 +130,8 @@ void HealthCheck::StartHealthCheckTimer(bool prev_timer_expired) {
   auto timer_id = timer_manager_->StartTimer(
       periodic_health_check_duration_,
       absl::bind_front(&HealthCheck::HandleHealthCheckTimeout, this,
-                       health_check_cancelled_));
+                       health_check_cancelled_),
+      "HealthCheck");
   if (!timer_id.ok()) {
     LOG(ERROR) << "Cannot StartTimer for HealthCheck";
     return;
