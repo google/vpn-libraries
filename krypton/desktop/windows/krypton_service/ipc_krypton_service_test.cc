@@ -20,6 +20,7 @@
 
 #include "google/rpc/code.proto.h"
 #include "google/rpc/status.proto.h"
+#include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/desktop/proto/krypton_control_message.proto.h"
 #include "privacy/net/krypton/desktop/windows/ipc/named_pipe_interface.h"
 #include "privacy/net/krypton/desktop/windows/krypton_service/windows_api_interface.h"
@@ -151,6 +152,23 @@ TEST_F(IpcKryptonServiceTest, TestProcessAppToServiceMessage_ValidStopMessage) {
 }
 
 TEST_F(IpcKryptonServiceTest,
+       TestProcessAppToServiceMessage_ValidSetIpGeoLevelMessage) {
+  desktop::KryptonControlMessage request;
+  request.set_type(desktop::KryptonControlMessage::SET_IP_GEO_LEVEL);
+  request.mutable_request()->mutable_set_ip_geo_level_request()->set_level(
+      ppn::IpGeoLevel::CITY);
+  EXPECT_CALL(mock_ppn_service, SetIpGeoLevel(testing::_)).Times(1);
+  desktop::KryptonControlMessage response =
+      ipc_krypton_service->ProcessKryptonControlMessage(request);
+  desktop::KryptonControlMessage expected_response;
+  expected_response.set_type(desktop::KryptonControlMessage::SET_IP_GEO_LEVEL);
+  google::rpc::Status* status = new google::rpc::Status();
+  status->set_code(google::rpc::Code::OK);
+  expected_response.mutable_response()->set_allocated_status(status);
+  EXPECT_THAT(response, testing::EqualsProto(expected_response));
+}
+
+TEST_F(IpcKryptonServiceTest,
        TestProcessAppToServiceMessage_InvalidStartMessage) {
   desktop::KryptonControlMessage request;
   request.set_type(desktop::KryptonControlMessage::START_KRYPTON);
@@ -165,6 +183,16 @@ TEST_F(IpcKryptonServiceTest,
   desktop::KryptonControlMessage request;
   request.set_type(desktop::KryptonControlMessage::STOP_KRYPTON);
   EXPECT_CALL(mock_ppn_service, Stop(testing::_)).Times(0);
+  desktop::KryptonControlMessage response =
+      ipc_krypton_service->ProcessKryptonControlMessage(request);
+  EXPECT_EQ(response.response().status().code(), google::rpc::Code::INTERNAL);
+}
+
+TEST_F(IpcKryptonServiceTest,
+       TestProcessAppToServiceMessage_InvalidSetIpGeoLevelMessage) {
+  desktop::KryptonControlMessage request;
+  request.set_type(desktop::KryptonControlMessage::SET_IP_GEO_LEVEL);
+  EXPECT_CALL(mock_ppn_service, SetIpGeoLevel(testing::_)).Times(0);
   desktop::KryptonControlMessage response =
       ipc_krypton_service->ProcessKryptonControlMessage(request);
   EXPECT_EQ(response.response().status().code(), google::rpc::Code::INTERNAL);

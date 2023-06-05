@@ -122,6 +122,16 @@ absl::Status IpcKryptonService::ValidateRequest(
       return absl::OkStatus();
     case desktop::KryptonControlMessage::COLLECT_TELEMETRY:
       return absl::OkStatus();
+    case desktop::KryptonControlMessage::SET_IP_GEO_LEVEL:
+      request = message.request();
+      if (!request.has_set_ip_geo_level_request())
+        return absl::InternalError(
+            "Krypton Message Type doesn't match with the contents of message.");
+      if (!request.set_ip_geo_level_request().has_level()) {
+        return absl::InternalError(
+            "No ip geo level passed to Krypton SetIpGeoLevel Message.");
+      }
+      return absl::OkStatus();
     default:
       return absl::UnimplementedError("This message type is not supported yet");
   }
