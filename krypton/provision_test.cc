@@ -33,6 +33,7 @@
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/anonymous_tokens/cpp/testing/utils.h"
@@ -173,7 +174,7 @@ class ProvisionTest : public ::testing::Test {
 
   HttpResponse CreateAuthHttpResponse(
       HttpRequest auth_and_sign_request,
-      const std::string& copper_controller_hostname = "") {
+      absl::string_view copper_controller_hostname = "") {
     privacy::ppn::AuthAndSignRequest request;
     EXPECT_TRUE(request.ParseFromString(auth_and_sign_request.proto_body()));
 
