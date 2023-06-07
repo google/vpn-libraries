@@ -63,7 +63,7 @@ class IpSecDatapath : public DatapathInterface,
         const Endpoint& mss_mtu_detection_endpoint,
         std::unique_ptr<MtuTrackerInterface> mtu_tracker) = 0;
 
-    virtual TunnelInterface* GetTunnel() = 0;
+    virtual absl::StatusOr<TunnelInterface*> GetTunnel() = 0;
 
     virtual absl::Status ConfigureIpSec(const IpSecTransformParams& params) = 0;
 
@@ -139,6 +139,10 @@ class IpSecDatapath : public DatapathInterface,
   // Verify the provided forwarder ID matches the ID of the current forwarder
   bool IsForwarderNotificationValid(int forwarder_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void NotifyDatapathFailed(const absl::Status& status);
+
+  void NotifyDatapathPermanentFailure(const absl::Status& status);
 
   absl::Mutex mutex_;
 

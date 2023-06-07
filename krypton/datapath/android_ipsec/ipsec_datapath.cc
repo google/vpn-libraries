@@ -88,9 +88,13 @@ absl::Status IpSecDatapath::SwitchNetwork(
     return absl::InvalidArgumentError("network_info is unset");
   }
   auto tunnel = vpn_service_->GetTunnel();
-  if (tunnel == nullptr) {
-    LOG(ERROR) << "tunnel is null";
-    return absl::InvalidArgumentError("tunnel is null");
+  if (!tunnel.ok()) {
+    NotifyDatapathPermanentFailure(tunnel.status());
+    return absl::OkStatus();
+  }
+  if (*tunnel == nullptr) {
+    NotifyDatapathPermanentFailure(absl::InternalError("tunnel is null"));
+    return absl::OkStatus();
   }
   LOG(INFO) << "Switching Network";
 
@@ -124,10 +128,8 @@ absl::Status IpSecDatapath::SwitchNetwork(
 
   if (!network_socket.ok()) {
     auto status = network_socket.status();
-    auto* notification = notification_;
     LOG(ERROR) << "Unable to create network socket: " << status;
-    notification_thread_->Post(
-        [notification, status]() { notification->DatapathFailed(status); });
+    NotifyDatapathFailed(status);
     // Returning OK since failure is handled by preceding notification call
     return absl::OkStatus();
   }
@@ -169,7 +171,7 @@ absl::Status IpSecDatapath::SwitchNetwork(
   network_socket_ = *std::move(network_socket);
 
   forwarder_ = std::make_unique<IpSecPacketForwarder>(
-      tunnel, network_socket_.get(), &looper_, this, ++curr_forwarder_id_);
+      *tunnel, network_socket_.get(), &looper_, this, ++curr_forwarder_id_);
   LOG(INFO) << "Starting packet forwarder with ID=" << curr_forwarder_id_;
   forwarder_->Start();
 
@@ -186,8 +188,16 @@ void IpSecDatapath::PrepareForTunnelSwitch() {
 void IpSecDatapath::SwitchTunnel() {
   absl::MutexLock l(&mutex_);
   auto tunnel = vpn_service_->GetTunnel();
+  if (!tunnel.ok()) {
+    NotifyDatapathPermanentFailure(tunnel.status());
+    return;
+  }
+  if (*tunnel == nullptr) {
+    NotifyDatapathPermanentFailure(absl::InternalError("tunnel is null"));
+    return;
+  }
   forwarder_ = std::make_unique<IpSecPacketForwarder>(
-      tunnel, network_socket_.get(), &looper_, this, ++curr_forwarder_id_);
+      *tunnel, network_socket_.get(), &looper_, this, ++curr_forwarder_id_);
   LOG(INFO) << "Starting packet forwarder with ID=" << curr_forwarder_id_;
   forwarder_->Start();
 }
@@ -247,15 +257,26 @@ bool IpSecDatapath::IsForwarderNotificationValid(int forwarder_id) {
   return true;
 }
 
+void IpSecDatapath::NotifyDatapathFailed(const absl::Status& status) {
+  auto* notification = notification_;
+  notification_thread_->Post(
+      [notification, status]() { notification->DatapathFailed(status); });
+}
+
+void IpSecDatapath::NotifyDatapathPermanentFailure(const absl::Status& status) {
+  auto* notification = notification_;
+  notification_thread_->Post([notification, status]() {
+    notification->DatapathPermanentFailure(status);
+  });
+}
+
 void IpSecDatapath::IpSecPacketForwarderFailed(const absl::Status& status,
                                                int packet_forwarder_id) {
   absl::MutexLock l(&mutex_);
   if (!IsForwarderNotificationValid(packet_forwarder_id)) return;
   LOG(WARNING) << "IpSecDatapath packet forwarder failed: " << status;
   StopInternal();
-  auto* notification = notification_;
-  notification_thread_->Post(
-      [notification, status]() { notification->DatapathFailed(status); });
+  NotifyDatapathFailed(status);
 }
 
 void IpSecDatapath::IpSecPacketForwarderPermanentFailure(
@@ -296,9 +317,7 @@ void IpSecDatapath::DownlinkMtuUpdated(int downlink_mtu) {
 }
 
 void IpSecDatapath::HealthCheckFailed(const absl::Status& status) {
-  auto* notification = notification_;
-  notification_thread_->Post(
-      [notification, status]() { notification->DatapathFailed(status); });
+  NotifyDatapathFailed(status);
 }
 
 void IpSecDatapath::GetDebugInfo(DatapathDebugInfo* debug_info) {

@@ -60,7 +60,7 @@ class MockIpSecVpnService : public IpSecDatapath::IpSecVpnServiceInterface {
                std::unique_ptr<MtuTrackerInterface>),
               (override));
 
-  MOCK_METHOD(TunnelInterface *, GetTunnel, (), (override));
+  MOCK_METHOD(absl::StatusOr<TunnelInterface *>, GetTunnel, (), (override));
 
   MOCK_METHOD(absl::Status, ConfigureIpSec, (const IpSecTransformParams &),
               (override));

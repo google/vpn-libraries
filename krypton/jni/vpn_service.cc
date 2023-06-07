@@ -131,8 +131,14 @@ absl::Status VpnService::CreateTunnel(const TunFdData& tun_fd_data) {
   return absl::OkStatus();
 }
 
-datapath::android::TunnelInterface* VpnService::GetTunnel() {
+absl::StatusOr<datapath::android::TunnelInterface*> VpnService::GetTunnel() {
   absl::MutexLock l(&mutex_);
+  // Create a new wrapper for the tunnel to use with a new packet forwarder.
+  // This will prevent any old events from being processed.
+  PPN_ASSIGN_OR_RETURN(auto tunnel,
+                       datapath::android::IpSecTunnel::Create(tunnel_fd_));
+  tunnel->SetKeepaliveInterval(tunnel_->GetKeepaliveInterval());
+  tunnel_ = std::move(tunnel);
   return tunnel_.get();
 }
 

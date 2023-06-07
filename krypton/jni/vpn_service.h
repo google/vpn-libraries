@@ -61,7 +61,7 @@ class VpnService
   // TUN fd creation
   absl::Status CreateTunnel(const TunFdData& tun_fd_data)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
-  datapath::android::TunnelInterface* GetTunnel()
+  absl::StatusOr<datapath::android::TunnelInterface*> GetTunnel()
       ABSL_LOCKS_EXCLUDED(mutex_) override;
   absl::StatusOr<int> GetTunnelFd() ABSL_LOCKS_EXCLUDED(mutex_) override;
   void CloseTunnel() ABSL_LOCKS_EXCLUDED(mutex_) override;

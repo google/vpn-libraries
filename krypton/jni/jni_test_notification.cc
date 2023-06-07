@@ -240,7 +240,12 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
     JniCache::Get()->ThrowKryptonException(status.ToString());
     return -1;
   }
-  if (service.GetTunnel() == nullptr) {
+  auto tunnel = service.GetTunnel();
+  if (!tunnel.ok()) {
+    JniCache::Get()->ThrowKryptonException(tunnel.status().ToString());
+    return -1;
+  }
+  if (*tunnel == nullptr) {
     JniCache::Get()->ThrowKryptonException("Tunnel pointer is null");
     return -1;
   }

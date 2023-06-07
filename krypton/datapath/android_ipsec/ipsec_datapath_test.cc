@@ -49,7 +49,9 @@ namespace {
 
 using ::testing::_;
 using ::testing::Eq;
+using ::testing::HasSubstr;
 using ::testing::Return;
+using ::testing::StrEq;
 using ::testing::status::StatusIs;
 
 class MockNotification : public DatapathInterface::NotificationInterface {
@@ -149,9 +151,13 @@ TEST_F(IpSecDatapathTest, SwitchNetworkFailureNoNetworkSocket) {
 
 TEST_F(IpSecDatapathTest, SwitchNetworkFailureNoTunnelSocket) {
   EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(nullptr));
-  EXPECT_THAT(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1),
-              StatusIs(util::error::INVALID_ARGUMENT,
-                       testing::HasSubstr("tunnel is null")));
+  absl::Notification failed;
+  EXPECT_CALL(notification_,
+              DatapathPermanentFailure(
+                  StatusIs(absl::StatusCode::kInternal, HasSubstr("null"))))
+      .WillOnce([&failed]() { failed.Notify(); });
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+  EXPECT_TRUE(failed.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
 TEST_F(IpSecDatapathTest, SwitchNetworkAndNoKeyMaterial) {
@@ -644,13 +650,34 @@ TEST_F(IpSecDatapathTest, IgnoreOldForwarderNotifications) {
   EXPECT_LE(failure_count, 1);
 }
 
+TEST_F(IpSecDatapathTest, SwitchTunnelError) {
+  EXPECT_CALL(vpn_service_, GetTunnel())
+      .WillOnce(Return(absl::InternalError("Failure")));
+  absl::Notification failed;
+  EXPECT_CALL(notification_,
+              DatapathPermanentFailure(
+                  StatusIs(absl::StatusCode::kInternal, StrEq("Failure"))))
+      .WillOnce([&failed]() { failed.Notify(); });
+  datapath_->SwitchTunnel();
+  EXPECT_TRUE(failed.WaitForNotificationWithTimeout(absl::Seconds(1)));
+}
+
+TEST_F(IpSecDatapathTest, SwitchTunnelNullTunnel) {
+  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(nullptr));
+  absl::Notification failed;
+  EXPECT_CALL(notification_,
+              DatapathPermanentFailure(
+                  StatusIs(absl::StatusCode::kInternal, HasSubstr("null"))))
+      .WillOnce([&failed]() { failed.Notify(); });
+  datapath_->SwitchTunnel();
+  EXPECT_TRUE(failed.WaitForNotificationWithTimeout(absl::Seconds(1)));
+}
+
 TEST_F(IpSecDatapathTest, UplinkMtuUpdateHandler) {
   absl::Notification mtu_update_done;
   EXPECT_CALL(notification_, DoUplinkMtuUpdate(1, 2))
       .WillOnce([&mtu_update_done]() { mtu_update_done.Notify(); });
-
   datapath_->UplinkMtuUpdated(1, 2);
-
   EXPECT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
