@@ -16,6 +16,7 @@
 package com.google.android.libraries.privacy.ppn.internal;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 import android.content.Context;
 import android.net.Network;
@@ -25,6 +26,7 @@ import android.security.keystore.KeyProperties;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
+import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.Tasks;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.proto.AndroidAttestationData;
@@ -47,9 +49,11 @@ import java.security.ProviderException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.spec.RSAKeyGenParameterSpec;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 /** Provides getAttestationData for OAuthTokenProvider. */
 @RequiresApi(23)
@@ -58,6 +62,7 @@ public class AttestationHelper {
   private static final String ANDROID_KEYSTORE_NAME = "AndroidKeyStore";
   private static final String HARDWARE_CERTIFICATE_ALIAS = "AndroidHardwareCerts";
   private static final String NONCE_HASH_FUNCTION = "SHA-256";
+  private static final Duration INTEGRITY_TIMEOUT = Duration.ofSeconds(30);
 
   public static final String ANDROID_ATTESTATION_DATA_TYPE_URL =
       "type.googleapis.com/privacy.ppn.AndroidAttestationData";
@@ -127,10 +132,11 @@ public class AttestationHelper {
         tokenRequestBuilder.setCloudProjectNumber(options.getAttestationCloudProjectNumber().get());
       }
       // TODO: Pass in the network here.
-      IntegrityTokenResponse token =
-          Tasks.await(integrityManager.requestIntegrityToken(tokenRequestBuilder.build()));
+      Task<IntegrityTokenResponse> task =
+          integrityManager.requestIntegrityToken(tokenRequestBuilder.build());
+      IntegrityTokenResponse token = Tasks.await(task, INTEGRITY_TIMEOUT.getSeconds(), SECONDS);
       return token.token();
-    } catch (ExecutionException | InterruptedException e) {
+    } catch (ExecutionException | InterruptedException | TimeoutException e) {
       throw new AttestationException("Failed to retrieve integrity token", e);
     }
   }
