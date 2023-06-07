@@ -404,7 +404,7 @@ TEST_P(AuthParamsTest, GetOAuthTokenFailure) {
   EXPECT_CALL(oauth_, GetOAuthToken)
       .WillOnce(Return(absl::PermissionDeniedError("Failure")));
   EXPECT_CALL(auth_notification_,
-              AuthFailure(absl::InternalError("Error fetching Oauth token")))
+              AuthFailure(absl::InternalError("Error fetching oauth token")))
       .WillOnce(InvokeWithoutArgs(&done, &absl::Notification::Notify));
 
   auth_->Start(/*is_rekey=*/GetParam());

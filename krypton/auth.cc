@@ -420,7 +420,7 @@ void Auth::RequestForInitialData(bool is_rekey) {
     LOG(ERROR) << "Error fetching oauth token: " << auth_token.status();
     SetState(State::kUnauthenticated);
     RaiseAuthFailureNotification(
-        absl::InternalError("Error fetching Oauth token"));
+        absl::InternalError("Error fetching oauth token"));
     return;
   }
   RecordLatency(request_time_, &oauth_latencies_, "oauth");
@@ -444,7 +444,7 @@ void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
   if (nonce.has_value()) {
     auto data = oauth_->GetAttestationData(*nonce);
     if (!data.ok()) {
-      LOG(ERROR) << "Error fetching attestation data";
+      LOG(ERROR) << "Error fetching attestation data: " << data.status();
       SetState(State::kUnauthenticated);
       RaiseAuthFailureNotification(
           absl::InternalError("Error fetching attestation data"));
@@ -458,7 +458,7 @@ void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
     LOG(ERROR) << "Error fetching oauth token: " << auth_token.status();
     SetState(State::kUnauthenticated);
     RaiseAuthFailureNotification(
-        absl::InternalError("Error fetching Oauth token"));
+        absl::InternalError("Error fetching oauth token"));
     return;
   }
   RecordLatency(request_time_, &oauth_latencies_, "oauth");
@@ -496,7 +496,7 @@ void Auth::AuthenticatePublicMetadata(bool is_rekey,
   if (nonce.has_value()) {
     auto data = oauth_->GetAttestationData(*nonce);
     if (!data.ok()) {
-      LOG(ERROR) << "Error fetching attestation data";
+      LOG(ERROR) << "Error fetching attestation data: " << data.status();
       SetState(State::kUnauthenticated);
       RaiseAuthFailureNotification(
           absl::InternalError("Error fetching attestation data"));
@@ -511,7 +511,7 @@ void Auth::AuthenticatePublicMetadata(bool is_rekey,
     LOG(ERROR) << "Error fetching oauth token: " << auth_token.status();
     SetState(State::kUnauthenticated);
     RaiseAuthFailureNotification(
-        absl::InternalError("Error fetching Oauth token"));
+        absl::InternalError("Error fetching oauth token"));
     return;
   }
   RecordLatency(request_time_, &oauth_latencies_, "oauth");
