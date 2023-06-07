@@ -16,9 +16,12 @@
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_HEALTH_CHECK_H_
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
@@ -58,6 +61,12 @@ class HealthCheck {
   // restart the health check.
   void Stop() ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Increments by one. Called when a network switch occurs to track
+  // number of switches between health checks.
+  void IncrementNetworkSwitchCounter() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void GetDebugInfo(DatapathDebugInfo* debug_info) ABSL_LOCKS_EXCLUDED(mutex_);
+
  private:
   void ConfigureHealthCheck(const KryptonConfig& config)
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -70,6 +79,11 @@ class HealthCheck {
   void CancelHealthCheckTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void HandleHealthCheckTimeout(std::shared_ptr<std::atomic_bool> cancelled);
+
+  void BuildDebugInfo(bool health_check_passed)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void ResetNetworkSwitchCounter() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   absl::Mutex mutex_;
 
@@ -85,6 +99,8 @@ class HealthCheck {
   int health_check_timer_id_ ABSL_GUARDED_BY(mutex_);
   std::shared_ptr<std::atomic_bool> health_check_cancelled_
       ABSL_GUARDED_BY(mutex_);
+  uint64_t network_switches_since_health_check_ ABSL_GUARDED_BY(mutex_);
+  std::vector<HealthCheckDebugInfo> health_check_info_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace android

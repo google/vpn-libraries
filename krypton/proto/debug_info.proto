@@ -55,6 +55,11 @@ message PacketPipeDebugInfo {
   optional int64 write_errors = 3;
 }
 
+message HealthCheckDebugInfo {
+  optional bool health_check_successful = 1;
+  optional int64 network_switches_since_health_check = 2;
+}
+
 message DatapathDebugInfo {
   optional int64 uplink_packets_read = 1;
   optional int64 downlink_packets_read = 2;
@@ -65,6 +70,7 @@ message DatapathDebugInfo {
 
   optional PacketPipeDebugInfo network_pipe = 6;
   optional PacketPipeDebugInfo device_pipe = 7;
+  repeated HealthCheckDebugInfo health_check_results = 9;
 }
 
 message SessionDebugInfo {

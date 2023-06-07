@@ -18,6 +18,7 @@
 #include <cstring>
 #include <memory>
 
+#include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/utils/ip_range.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
@@ -42,7 +43,8 @@ HealthCheck::HealthCheck(const KryptonConfig& config,
       notification_thread_(ABSL_DIE_IF_NULL(notification_thread)),
       periodic_health_check_enabled_(false),
       health_check_timer_id_(kInvalidTimerId),
-      health_check_cancelled_(nullptr) {
+      health_check_cancelled_(nullptr),
+      network_switches_since_health_check_(0) {
   ConfigureHealthCheck(config);
 }
 
@@ -164,6 +166,7 @@ void HealthCheck::HandleHealthCheckTimeout(
       return;
     }
     auto status = CheckConnection();
+    BuildDebugInfo(status.ok());
     LOG(INFO) << "HealthCheck finished with status: " << status;
     if (!status.ok()) {
       auto* notification = notification_;
@@ -174,6 +177,39 @@ void HealthCheck::HandleHealthCheckTimeout(
     }
     StartHealthCheckTimer(/*prev_timer_expired=*/true);
   });
+}
+
+void HealthCheck::BuildDebugInfo(bool health_check_passed) {
+  HealthCheckDebugInfo health_check_info;
+  health_check_info.set_health_check_successful(health_check_passed);
+  health_check_info.set_network_switches_since_health_check(
+      network_switches_since_health_check_);
+
+  ResetNetworkSwitchCounter();
+  health_check_info_.push_back(health_check_info);
+}
+
+void HealthCheck::GetDebugInfo(DatapathDebugInfo* debug_info) {
+  absl::MutexLock lock(&mutex_);
+  if (debug_info == nullptr) {
+    LOG(ERROR) << "HealthCheckDebugInfo not logged. Argument is nullptr.";
+    return;
+  }
+  for (const auto& stat : health_check_info_) {
+    *debug_info->mutable_health_check_results()->Add() = stat;
+  }
+}
+
+void HealthCheck::IncrementNetworkSwitchCounter() {
+  absl::MutexLock lock(&mutex_);
+  network_switches_since_health_check_++;
+  LOG(INFO) << "Incrementing network switch counter to: "
+            << network_switches_since_health_check_;
+}
+
+void HealthCheck::ResetNetworkSwitchCounter() {
+  LOG(INFO) << "Resetting network switch counter to: 0";
+  network_switches_since_health_check_ = 0;
 }
 
 }  // namespace android

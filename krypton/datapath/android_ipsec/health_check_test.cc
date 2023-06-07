@@ -19,6 +19,7 @@
 
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/pal/mock_timer_interface.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/cleanup/cleanup.h"
@@ -266,6 +267,95 @@ TEST_F(HealthCheckTest, HealthCheckFail) {
   failed.WaitForNotificationWithTimeout(absl::Seconds(1));
 
   health_check.Stop();
+}
+
+TEST_F(HealthCheckTest, HealthCheckGetDebugLogs) {
+  int sockfd = socket(AF_INET6, SOCK_STREAM, 0);
+
+  ASSERT_GE(sockfd, 0);
+
+  absl::Cleanup cleanup = [sockfd] { close(sockfd); };
+
+  sockaddr_in6 addr = {};
+  socklen_t addr_size = sizeof(addr);
+  addr.sin6_family = AF_INET6;
+  addr.sin6_addr = in6addr_any;
+  ASSERT_EQ(bind(sockfd, reinterpret_cast<sockaddr *>(&addr), addr_size), 0);
+
+  // Read the addr to figure out which port the socket is bound to.
+  getsockname(sockfd, reinterpret_cast<sockaddr *>(&addr), &addr_size);
+
+  ASSERT_EQ(listen(sockfd, /*n=*/1), 0);
+
+  utils::LooperThread server_looper("HealthCheckTest Server Looper");
+  server_looper.Post([sockfd] {
+    int clientfd = accept(sockfd, /*addr=*/nullptr, /*addr_len=*/nullptr);
+    EXPECT_GE(clientfd, 0);
+    close(clientfd);
+  });
+
+  KryptonConfig config;
+  config.set_periodic_health_check_enabled(true);
+  config.mutable_periodic_health_check_duration()->set_seconds(1);
+  config.set_periodic_health_check_url("localhost");
+  config.set_periodic_health_check_port(ntohs(addr.sin6_port));
+
+  HealthCheck health_check(config, &timer_manager_, &mock_notification_,
+                           &looper_);
+
+  // No Health Check info should exist before first health check.
+  DatapathDebugInfo debug_info;
+  health_check.GetDebugInfo(&debug_info);
+  ASSERT_EQ(debug_info.health_check_results().size(), 0);
+
+  // Three calls should be seen since the passing check starts the next timer.
+  int expected_timer_id;
+  int expected_timer_id2;
+  absl::Notification timer_started;
+  EXPECT_CALL(mock_timer_interface_, StartTimer(_, Eq(absl::Seconds(1))))
+      .WillOnce(
+          [&expected_timer_id](int timer_id, absl::Duration /*duration*/) {
+            expected_timer_id = timer_id;
+            return absl::OkStatus();
+          })
+      .WillOnce(
+          [&expected_timer_id2](int timer_id, absl::Duration /*duration*/) {
+            expected_timer_id2 = timer_id;
+            return absl::OkStatus();
+          })
+      .WillOnce([&timer_started]() {
+        timer_started.Notify();
+        return absl::OkStatus();
+      });
+
+  health_check.Start();
+  EXPECT_CALL(mock_notification_, HealthCheckFailed(_)).Times(0);
+
+  // Two network switches before first health check completes.
+  health_check.IncrementNetworkSwitchCounter();
+  health_check.IncrementNetworkSwitchCounter();
+  mock_timer_interface_.TimerExpiry(expected_timer_id);
+  timer_started.WaitForNotificationWithTimeout(absl::Seconds(2));
+
+  // No network switches between first and second health check completions.
+  mock_timer_interface_.TimerExpiry(expected_timer_id2);
+  timer_started.WaitForNotificationWithTimeout(absl::Seconds(2));
+  health_check.Stop();
+
+  health_check.GetDebugInfo(&debug_info);
+  ASSERT_EQ(debug_info.health_check_results().size(), 2);
+  // Verify results from first health check.
+  EXPECT_EQ(debug_info.health_check_results().at(0).health_check_successful(),
+            true);
+  EXPECT_EQ(debug_info.health_check_results()
+                .at(0)
+                .network_switches_since_health_check(),
+            2);
+  // Verify results from second health check.
+  EXPECT_EQ(debug_info.health_check_results()
+                .at(1)
+                .network_switches_since_health_check(),
+            0);
 }
 
 }  // namespace

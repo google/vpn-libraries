@@ -175,6 +175,8 @@ absl::Status IpSecDatapath::SwitchNetwork(
   LOG(INFO) << "Starting packet forwarder with ID=" << curr_forwarder_id_;
   forwarder_->Start();
 
+  health_check_.IncrementNetworkSwitchCounter();
+
   return absl::OkStatus();
 }
 
@@ -325,6 +327,7 @@ void IpSecDatapath::GetDebugInfo(DatapathDebugInfo* debug_info) {
   if (forwarder_ != nullptr) {
     forwarder_->GetDebugInfo(debug_info);
   }
+  health_check_.GetDebugInfo(debug_info);
 }
 
 }  // namespace android

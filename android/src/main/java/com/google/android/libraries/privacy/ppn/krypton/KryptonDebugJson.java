@@ -14,8 +14,10 @@
 
 package com.google.android.libraries.privacy.ppn.krypton;
 
+import com.google.android.libraries.privacy.ppn.internal.DatapathDebugInfo;
 import com.google.android.libraries.privacy.ppn.internal.KryptonDebugInfo;
 import com.google.android.libraries.privacy.ppn.internal.json.Json;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** Debug info about the Krypton library. */
@@ -56,6 +58,12 @@ public class KryptonDebugJson {
   public static final String DATAPATH_UPLINK_PACKETS_DROPPED = "datapathUplinkPacketsDropped";
   public static final String DATAPATH_DOWNLINK_PACKETS_DROPPED = "datapathDownlinkPacketsDropped";
   public static final String DATAPATH_DECRYPTION_ERRORS = "datapathDecryptionErrors";
+
+  // Health Check
+  public static final String HEALTH_CHECK_RESULTS = "healthCheckResults";
+  public static final String HEALTH_CHECK_SUCCESSFUL = "healthCheckSuccessful";
+  public static final String NETWORK_SWITCHES_SINCE_HEALTH_CHECK =
+      "networkSwitchesSinceHealthCheck";
 
   /** Creates a JSON representation of KryptonDebugInfo, as supplied by the cross-platform proto. */
   public static JSONObject fromProto(KryptonDebugInfo debugInfo) {
@@ -116,35 +124,42 @@ public class KryptonDebugJson {
         }
       }
       if (debugInfo.getSession().hasDatapath()) {
-        if (debugInfo.getSession().getDatapath().hasUplinkPacketsRead()) {
-          Json.put(
-              json,
-              DATAPATH_UPLINK_PACKETS_READ,
-              debugInfo.getSession().getDatapath().getUplinkPacketsRead());
+        DatapathDebugInfo datapathDebugInfo = debugInfo.getSession().getDatapath();
+        if (datapathDebugInfo.hasUplinkPacketsRead()) {
+          Json.put(json, DATAPATH_UPLINK_PACKETS_READ, datapathDebugInfo.getUplinkPacketsRead());
         }
-        if (debugInfo.getSession().getDatapath().hasDownlinkPacketsRead()) {
+        if (datapathDebugInfo.hasDownlinkPacketsRead()) {
           Json.put(
-              json,
-              DATAPATH_DOWNLINK_PACKETS_READ,
-              debugInfo.getSession().getDatapath().getDownlinkPacketsRead());
+              json, DATAPATH_DOWNLINK_PACKETS_READ, datapathDebugInfo.getDownlinkPacketsRead());
         }
-        if (debugInfo.getSession().getDatapath().hasUplinkPacketsDropped()) {
+        if (datapathDebugInfo.hasUplinkPacketsDropped()) {
           Json.put(
-              json,
-              DATAPATH_UPLINK_PACKETS_DROPPED,
-              debugInfo.getSession().getDatapath().getUplinkPacketsDropped());
+              json, DATAPATH_UPLINK_PACKETS_DROPPED, datapathDebugInfo.getUplinkPacketsDropped());
         }
-        if (debugInfo.getSession().getDatapath().hasDownlinkPacketsDropped()) {
+        if (datapathDebugInfo.hasDownlinkPacketsDropped()) {
           Json.put(
               json,
               DATAPATH_DOWNLINK_PACKETS_DROPPED,
-              debugInfo.getSession().getDatapath().getDownlinkPacketsDropped());
+              datapathDebugInfo.getDownlinkPacketsDropped());
         }
-        if (debugInfo.getSession().getDatapath().hasDecryptionErrors()) {
-          Json.put(
-              json,
-              DATAPATH_DECRYPTION_ERRORS,
-              debugInfo.getSession().getDatapath().getDecryptionErrors());
+        if (datapathDebugInfo.hasDecryptionErrors()) {
+          Json.put(json, DATAPATH_DECRYPTION_ERRORS, datapathDebugInfo.getDecryptionErrors());
+        }
+        if (datapathDebugInfo.getHealthCheckResultsCount() != 0) {
+          JSONArray healthCheckResults = new JSONArray();
+          for (int i = 0; i < datapathDebugInfo.getHealthCheckResultsCount(); i++) {
+            JSONObject singleHealthCheck = new JSONObject();
+            Json.put(
+                singleHealthCheck,
+                HEALTH_CHECK_SUCCESSFUL,
+                datapathDebugInfo.getHealthCheckResults(i).getHealthCheckSuccessful());
+            Json.put(
+                singleHealthCheck,
+                NETWORK_SWITCHES_SINCE_HEALTH_CHECK,
+                datapathDebugInfo.getHealthCheckResults(i).getNetworkSwitchesSinceHealthCheck());
+            healthCheckResults.put(singleHealthCheck);
+          }
+          Json.put(json, HEALTH_CHECK_RESULTS, healthCheckResults);
         }
       }
     }
