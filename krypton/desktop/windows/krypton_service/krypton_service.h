@@ -20,12 +20,12 @@
 #include <windows.h>
 
 #include <memory>
+#include <optional>
 
-#include "base/init_google.h"
 #include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/desktop/proto/ppn_telemetry.proto.h"
 #include "privacy/net/krypton/desktop/windows/http_fetcher.h"
-#include "privacy/net/krypton/desktop/windows/ipc/named_pipe_factory.h"
+#include "privacy/net/krypton/desktop/windows/ipc/named_pipe_factory_interface.h"
 #include "privacy/net/krypton/desktop/windows/ipc/named_pipe_interface.h"
 #include "privacy/net/krypton/desktop/windows/krypton_service/ipc_krypton_service.h"
 #include "privacy/net/krypton/desktop/windows/krypton_service/ipc_oauth.h"
@@ -36,7 +36,6 @@
 #include "privacy/net/krypton/desktop/windows/network_monitor.h"
 #include "privacy/net/krypton/desktop/windows/notification.h"
 #include "privacy/net/krypton/desktop/windows/ppn_service_interface.h"
-#include "privacy/net/krypton/desktop/windows/timer.h"
 #include "privacy/net/krypton/desktop/windows/vpn_service.h"
 #include "privacy/net/krypton/krypton.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
@@ -51,9 +50,9 @@ namespace windows {
 class KryptonService : public PpnServiceInterface,
                        NetworkMonitor::NotificationInterface {
  public:
-  KryptonService(NamedPipeFactoryInterface *named_pipe_factory)
-      : named_pipe_factory_(named_pipe_factory) {}
-  ~KryptonService();
+  explicit KryptonService(NamedPipeFactoryInterface *named_pipe_factory)
+      : named_pipe_factory_(named_pipe_factory), krypton_stopped_(true) {}
+  ~KryptonService() override;
 
   KryptonService(KryptonService &&) = delete;
   KryptonService(const KryptonService &) = delete;
@@ -82,6 +81,7 @@ class KryptonService : public PpnServiceInterface,
 
  private:
   void InitializeKrypton();
+  void StopKrypton() ABSL_LOCKS_EXCLUDED(mutex_);
   absl::Status InitializeIpcPipesAndHandlers();
 
   // Service functions
@@ -128,6 +128,9 @@ class KryptonService : public PpnServiceInterface,
   std::unique_ptr<Krypton> krypton_;
   krypton::utils::LooperThread xenon_looper_{"Xenon Looper"};
   std::unique_ptr<NetworkMonitor> xenon_;
+
+  absl::Mutex mutex_;
+  bool krypton_stopped_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace windows

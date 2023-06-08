@@ -20,12 +20,10 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
-#include <utility>
 
 #include "privacy/net/krypton/desktop/proto/ppn_telemetry.proto.h"
-#include "privacy/net/krypton/desktop/windows/ipc/named_pipe.h"
-#include "privacy/net/krypton/desktop/windows/ipc/named_pipe_factory.h"
 #include "privacy/net/krypton/desktop/windows/ipc/named_pipe_interface.h"
 #include "privacy/net/krypton/desktop/windows/krypton_service/constants.h"
 #include "privacy/net/krypton/desktop/windows/krypton_service/ipc_krypton_service.h"
@@ -33,6 +31,7 @@
 #include "privacy/net/krypton/desktop/windows/krypton_service/ppn_notification_receiver.h"
 #include "privacy/net/krypton/desktop/windows/logging/file_logger.h"
 #include "privacy/net/krypton/desktop/windows/logging/ppn_log_sink.h"
+#include "privacy/net/krypton/desktop/windows/timer.h"
 #include "privacy/net/krypton/desktop/windows/utils/error.h"
 #include "privacy/net/krypton/desktop/windows/utils/event.h"
 #include "privacy/net/krypton/desktop/windows/utils/file_utils.h"
@@ -40,6 +39,7 @@
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
 namespace krypton {
@@ -62,9 +62,7 @@ KryptonService::~KryptonService() {
   if (xenon_ != nullptr) {
     xenon_->Stop();
   }
-  if (krypton_ != nullptr) {
-    krypton_->Stop();
-  }
+  StopKrypton();
 }
 
 absl::Status KryptonService::RegisterServiceMain(
@@ -81,12 +79,12 @@ absl::Status KryptonService::RegisterServiceMain(
   return absl::OkStatus();
 }
 
-void KryptonService::ServiceMain(DWORD dwArgc, LPTSTR* lpszArgv) {
+void KryptonService::ServiceMain(DWORD /*dwArgc*/, LPTSTR* lpszArgv) {
   // Register the handler function for the service
   auto service_name = utils::CharToWstring(kKryptonSvcName);
   krypton_service_->service_status_handle_ =
       RegisterServiceCtrlHandlerW(service_name.c_str(), ServiceControlHandler);
-  if (krypton_service_->service_status_handle_ == 0) {
+  if (krypton_service_->service_status_handle_ == nullptr) {
     LOG(ERROR) << utils::GetStatusForError(
         "Service control handler registration failed with error:",
         GetLastError());
@@ -116,7 +114,7 @@ void KryptonService::ServiceMain(DWORD dwArgc, LPTSTR* lpszArgv) {
     return;
   }
   krypton_service_->service_stop_event_ = *krypton_service_stop_event_status;
-  if (krypton_service_->service_stop_event_ == NULL) {
+  if (krypton_service_->service_stop_event_ == nullptr) {
     LOG(ERROR) << utils::GetStatusForError(
         "Creation of Service Stop Event Failed", GetLastError());
     krypton_service_->ReportServiceStatus(SERVICE_STOPPED, GetLastError(), 0);
@@ -126,7 +124,7 @@ void KryptonService::ServiceMain(DWORD dwArgc, LPTSTR* lpszArgv) {
   absl::Status init_ipc_pipe_status =
       krypton_service_->InitializeIpcPipesAndHandlers();
   if (!init_ipc_pipe_status.ok()) {
-    LOG(ERROR) << init_ipc_pipe_status.ToString();
+    LOG(ERROR) << init_ipc_pipe_status;
     krypton_service_->ReportServiceStatus(
         SERVICE_STOPPED, init_ipc_pipe_status.raw_code(), 1000);
     return;
@@ -136,19 +134,17 @@ void KryptonService::ServiceMain(DWORD dwArgc, LPTSTR* lpszArgv) {
   krypton_service_->InitializeKrypton();
   LOG(INFO) << "Krypton initialised successfully";
 
-  krypton_service_->ipc_looper_.Post([] {
-    krypton_service_->app_to_service_pipe_ipc_handler_->PollOnPipe();
-  });
+  krypton_service_->ipc_looper_.Post(
+      [] { krypton_service_->app_to_service_pipe_ipc_handler_->PollOnPipe(); });
 
   krypton_service_->ReportServiceStatus(SERVICE_RUNNING, NO_ERROR, 1000);
 
   // The ServiceControlHandler signals an event "service_stop_event_" whenever a
-  // stop call for this service is trigerred. We wait for that signal here and
+  // stop call for this service is triggered. We wait for that signal here and
   // execute cleanup before exit.
   LOG(INFO) << "Waiting On Stop Event...";
   WaitForSingleObject(krypton_service_->service_stop_event_, INFINITE);
   krypton_service_->ReportServiceStatus(SERVICE_STOPPED, NO_ERROR, 0);
-  return;
 }
 
 void KryptonService::ReportServiceStatus(DWORD current_state, DWORD exit_code,
@@ -204,6 +200,19 @@ void KryptonService::InitializeKrypton() {
   xenon_->RegisterNotificationHandler(this, &xenon_looper_);
 }
 
+void KryptonService::StopKrypton() {
+  if (krypton_ == nullptr) {
+    LOG(INFO) << "Cannot stop Krypton because it is null.";
+    return;
+  }
+
+  absl::MutexLock lock(&mutex_);
+  if (!krypton_stopped_) {
+    krypton_->Stop();
+    krypton_stopped_ = true;
+  }
+}
+
 absl::Status KryptonService::InitializeIpcPipesAndHandlers() {
   LOG(INFO) << "Connect to pipes";
   PPN_ASSIGN_OR_RETURN(
@@ -230,14 +239,18 @@ void KryptonService::SetServiceToAppIpcHandler(NamedPipeInterface* pipe) {
 void KryptonService::Start(const KryptonConfig& config) {
   auto ppn_notification = ppn_notification_.get();
   ppn_telemetry_manager_->NotifyStarted();
-  krypton_->Start(config);
+  {
+    absl::MutexLock lock(&mutex_);
+    krypton_->Start(config);
+    krypton_stopped_ = false;
+  }
   LOG(INFO) << "KryptonService: Krypton started";
   PPN_LOG_IF_ERROR(xenon_->Start());
 }
 
 void KryptonService::Stop(const absl::Status& status) {
   xenon_->Stop();
-  krypton_->Stop();
+  StopKrypton();
   LOG(INFO) << "KryptonService: Krypton stopped";
   auto ppn_notification = ppn_notification_.get();
   ppn_notification_looper_.Post(
