@@ -43,6 +43,7 @@ static NSTimeInterval const PPNTimeoutInterval = 1.0;
 @property(nonatomic, readonly) BOOL kryptonStopCalled;
 @property(nonatomic, readonly) BOOL kryptonCollectTelemetryCalled;
 @property(nonatomic, readonly) privacy::ppn::IpGeoLevel kryptonIPGeoLevel;
+@property(nonatomic, readonly) XCTestExpectation *setIpGeoLevelCalled;
 @end
 
 @implementation FakePPNKryptonService
@@ -51,6 +52,7 @@ static NSTimeInterval const PPNTimeoutInterval = 1.0;
   self = [super init];
   if (self != nil) {
     _kryptonIPGeoLevel = privacy::ppn::IP_GEO_LEVEL_UNSPECIFIED;
+    _setIpGeoLevelCalled = [[XCTestExpectation alloc] initWithDescription:@"SetIpGeoLevel called"];
   }
   return self;
 }
@@ -78,6 +80,7 @@ static NSTimeInterval const PPNTimeoutInterval = 1.0;
 
 - (void)setIPGeoLevel:(privacy::ppn::IpGeoLevel)level {
   _kryptonIPGeoLevel = level;
+  [_setIpGeoLevelCalled fulfill];
 }
 
 @end
@@ -202,6 +205,7 @@ static NSTimeInterval const PPNTimeoutInterval = 1.0;
   [_PPNService setValue:fakeKryptonService forKey:@"kryptonService"];
 
   [_PPNService setIPGeoLevel:PPNIpGeoLevel_City];
+  [self waitForExpectations:@[ fakeKryptonService.setIpGeoLevelCalled ] timeout:PPNTimeoutInterval];
   XCTAssertEqual(fakeKryptonService.kryptonIPGeoLevel, privacy::ppn::CITY);
 }
 
