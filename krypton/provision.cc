@@ -61,21 +61,21 @@ constexpr int kControlPlanePort = 1849;
 
 }  // namespace
 
-Provision::Provision(const KryptonConfig& config, Auth* auth,
-                     EgressManager* egress_manager,
+Provision::Provision(const KryptonConfig& config, std::unique_ptr<Auth> auth,
+                     std::unique_ptr<EgressManager> egress_manager,
                      HttpFetcherInterface* http_fetcher,
                      NotificationInterface* notification,
                      utils::LooperThread* notification_thread)
     : config_(config),
-      auth_(ABSL_DIE_IF_NULL(auth)),
-      egress_manager_(ABSL_DIE_IF_NULL(egress_manager)),
+      auth_(std::move(ABSL_DIE_IF_NULL(auth))),
+      egress_manager_(std::move(ABSL_DIE_IF_NULL(egress_manager))),
       notification_(ABSL_DIE_IF_NULL(notification)),
       notification_thread_(ABSL_DIE_IF_NULL(notification_thread)),
       http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
                     ABSL_DIE_IF_NULL(notification_thread)),
       key_material_(nullptr) {
   auth_->RegisterNotificationHandler(this);
-  egress_manager->RegisterNotificationHandler(this);
+  egress_manager_->RegisterNotificationHandler(this);
 }
 
 void Provision::FailWithStatus(absl::Status status, bool permanent) {
@@ -97,6 +97,12 @@ void Provision::Start() {
   }
   key_material_ = *std::move(key_material);
   auth_->Start(/*is_rekey=*/false);
+}
+
+void Provision::Stop() {
+  absl::MutexLock l(&mutex_);
+  auth_->Stop();
+  egress_manager_->Stop();
 }
 
 void Provision::Rekey() {
@@ -153,6 +159,18 @@ absl::StatusOr<std::string> Provision::GetControlPlaneSockaddr() {
     return absl::FailedPreconditionError("Control plane sockaddr not set");
   }
   return control_plane_sockaddr_;
+}
+
+void Provision::GetDebugInfo(KryptonDebugInfo* debug_info) {
+  absl::MutexLock l(&mutex_);
+  auth_->GetDebugInfo(debug_info->mutable_auth());
+  egress_manager_->GetDebugInfo(debug_info->mutable_egress());
+}
+
+void Provision::CollectTelemetry(KryptonTelemetry* telemetry) {
+  absl::MutexLock l(&mutex_);
+  auth_->CollectTelemetry(telemetry);
+  egress_manager_->CollectTelemetry(telemetry);
 }
 
 void Provision::PpnDataplaneRequest(bool is_rekey) {

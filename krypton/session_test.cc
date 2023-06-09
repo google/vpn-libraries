@@ -162,6 +162,14 @@ class MockTunnelManager : public TunnelManagerInterface {
 class SessionTest : public ::testing::Test {
  public:
   void SetUp() override {
+    auto auth = std::make_unique<MockAuth>(config_, &http_fetcher_, &oauth_,
+                                           &notification_thread_);
+    auth_ = auth.get();
+
+    auto egress_manager = std::make_unique<MockEgressManager>(
+        config_, &http_fetcher_, &notification_thread_);
+    egress_manager_ = egress_manager.get();
+
     auto datapath = std::make_unique<MockDatapath>();
     datapath_ = datapath.get();
 
@@ -193,38 +201,37 @@ class SessionTest : public ::testing::Test {
     ASSERT_OK(fake_add_egress_response);
     fake_add_egress_response_ = *fake_add_egress_response;
 
-    EXPECT_CALL(auth_, RegisterNotificationHandler)
+    EXPECT_CALL(*auth_, RegisterNotificationHandler)
         .WillOnce([this](Auth::NotificationInterface* notification) {
           auth_notification_ = notification;
         });
 
-    EXPECT_CALL(egress_manager_, RegisterNotificationHandler)
+    EXPECT_CALL(*egress_manager_, RegisterNotificationHandler)
         .WillOnce([this](EgressManager::NotificationInterface* notification) {
           egress_notification_ = notification;
         });
 
     session_ = std::make_unique<Session>(
-        config_, &auth_, &egress_manager_, std::move(datapath), &vpn_service_,
-        &timer_manager_, &http_fetcher_, &tunnel_manager_, std::nullopt,
-        &notification_thread_);
+        config_, std::move(auth), std::move(egress_manager),
+        std::move(datapath), &vpn_service_, &timer_manager_, &http_fetcher_,
+        &tunnel_manager_, std::nullopt, &notification_thread_);
     session_->RegisterNotificationHandler(&notification_);
   }
 
   void TearDown() override {
-    auth_.Stop();
-    egress_manager_.Stop();
+    session_->Stop(/*forceFailOpen=*/true);
     tunnel_manager_.Stop();
   }
 
   void ExpectSuccessfulAuth() {
-    EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
+    EXPECT_CALL(*auth_, Start).WillOnce(Invoke([&]() {
       notification_thread_.Post([this] {
         ASSERT_NE(auth_notification_, nullptr);
         auth_notification_->AuthSuccessful(is_rekey_);
       });
     }));
     AuthAndSignResponse fake_auth_and_sign_response;
-    EXPECT_CALL(auth_, auth_response)
+    EXPECT_CALL(*auth_, auth_response)
         .WillRepeatedly(Return(fake_auth_and_sign_response));
   }
 
@@ -295,10 +302,10 @@ class SessionTest : public ::testing::Test {
 
     ASSERT_OK_AND_ASSIGN(auto fake_initial_data_response,
                          DecodeGetInitialDataResponse(initial_data_proto));
-    EXPECT_CALL(auth_, initial_data_response)
+    EXPECT_CALL(*auth_, initial_data_response)
         .WillOnce(Return(fake_initial_data_response));
 
-    EXPECT_CALL(egress_manager_, GetEgressNodeForPpnIpSec)
+    EXPECT_CALL(*egress_manager_, GetEgressNodeForPpnIpSec)
         .WillOnce(Invoke(
             [&](const AddEgressRequest::PpnDataplaneRequestParams& params) {
               EXPECT_EQ(params.dataplane_protocol, config_.datapath_protocol());
@@ -311,7 +318,7 @@ class SessionTest : public ::testing::Test {
               return absl::OkStatus();
             }));
     EXPECT_OK(
-        egress_manager_.SaveEgressDetailsTestOnly(fake_add_egress_response_));
+        egress_manager_->SaveEgressDetailsTestOnly(fake_add_egress_response_));
   }
 
   void CheckPublicMetadataParams(
@@ -339,7 +346,7 @@ class SessionTest : public ::testing::Test {
 
     EXPECT_CALL(notification_, ControlPlaneConnected());
 
-    EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+    EXPECT_CALL(*egress_manager_, GetEgressSessionDetails)
         .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
 
     EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
@@ -355,7 +362,7 @@ class SessionTest : public ::testing::Test {
 
     session_->Start();
     WaitInitial();
-    EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+    EXPECT_CALL(*egress_manager_, GetEgressSessionDetails)
         .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
     EXPECT_CALL(
         tunnel_manager_,
@@ -423,7 +430,7 @@ class SessionTest : public ::testing::Test {
 
     EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kConnected);
 
-    EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+    EXPECT_CALL(*egress_manager_, GetEgressSessionDetails)
         .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
     EXPECT_CALL(
         tunnel_manager_,
@@ -489,9 +496,8 @@ class SessionTest : public ::testing::Test {
   MockHttpFetcher http_fetcher_;
   MockOAuth oauth_;
   utils::LooperThread notification_thread_{"Session Test"};
-  MockAuth auth_{config_, &http_fetcher_, &oauth_, &notification_thread_};
-  MockEgressManager egress_manager_{config_, &http_fetcher_,
-                                    &notification_thread_};
+  MockAuth* auth_;
+  MockEgressManager* egress_manager_;
 
   MockDatapath* datapath_;
   MockTimerInterface timer_interface_;
@@ -515,7 +521,7 @@ TEST_F(SessionTest, DatapathInitFailure) {
   absl::Notification done;
   ExpectSuccessfulProvision();
 
-  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+  EXPECT_CALL(*egress_manager_, GetEgressSessionDetails)
       .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
 
   EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
@@ -539,9 +545,9 @@ TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
   session_->Start();
 
   WaitInitial();
-  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+  EXPECT_CALL(*egress_manager_, GetEgressSessionDetails)
       .WillRepeatedly(Invoke([&]() {
-        EXPECT_OK(egress_manager_.SaveEgressDetailsTestOnly(
+        EXPECT_OK(egress_manager_->SaveEgressDetailsTestOnly(
             fake_add_egress_response_));
         return fake_add_egress_response_;
       }));
@@ -697,7 +703,7 @@ TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
   absl::Notification done;
   // Switch network after auth is successful and before session is in
   // connected state.
-  EXPECT_CALL(auth_, Start).WillOnce(Invoke([&]() {
+  EXPECT_CALL(*auth_, Start).WillOnce(Invoke([&]() {
     NetworkInfo network_info;
     network_info.set_network_type(NetworkType::CELLULAR);
     notification_thread_.Post([this, network_info]() {
@@ -710,7 +716,7 @@ TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
     });
   }));
   AuthAndSignResponse fake_auth_and_sign_response;
-  EXPECT_CALL(auth_, auth_response)
+  EXPECT_CALL(*auth_, auth_response)
       .WillRepeatedly(Return(fake_auth_and_sign_response));
 
   EXPECT_CALL(http_fetcher_, LookupDns).WillRepeatedly(Return("0.0.0.0"));
@@ -719,7 +725,7 @@ TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
   EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_));
   EXPECT_CALL(notification_, ControlPlaneConnected());
 
-  EXPECT_CALL(egress_manager_, GetEgressSessionDetails)
+  EXPECT_CALL(*egress_manager_, GetEgressSessionDetails)
       .WillRepeatedly(Invoke([&]() { return fake_add_egress_response_; }));
 
   EXPECT_CALL(*datapath_, Start(_, _))
@@ -741,7 +747,10 @@ TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
 }
 
 TEST_F(SessionTest, PopulatesDebugInfo) {
-  session_->Start();
+  NetworkInfo network_info;
+  network_info.set_network_type(NetworkType::CELLULAR);
+  network_info.set_network_id(123);
+  ASSERT_OK(session_->SetNetwork(network_info));
 
   DatapathDebugInfo datapath_debug_info;
   datapath_debug_info.set_uplink_packets_read(1);
@@ -751,20 +760,29 @@ TEST_F(SessionTest, PopulatesDebugInfo) {
   EXPECT_CALL(*datapath_, GetDebugInfo(_))
       .WillRepeatedly(SetArgPointee<0>(datapath_debug_info));
 
-  SessionDebugInfo debug_info;
+  KryptonDebugInfo debug_info;
   session_->GetDebugInfo(&debug_info);
 
-  EXPECT_THAT(debug_info, EqualsProto(R"pb(
-                state: "kInitialized"
-                status: "OK"
-                successful_rekeys: 0
-                network_switches: 1
-                datapath: <
-                  uplink_packets_read: 1
-                  downlink_packets_read: 2
-                  decryption_errors: 3
-                >
-              )pb"));
+  EXPECT_THAT(*debug_info.mutable_session(), EqualsProto(R"pb(
+    state: "kInitialized"
+    status: "OK"
+    active_network < network_type: CELLULAR network_id: 123 >
+    successful_rekeys: 0
+    network_switches: 1
+    datapath: <
+      uplink_packets_read: 1
+      downlink_packets_read: 2
+      decryption_errors: 3
+    >
+  )pb"));
+}
+
+TEST_F(SessionTest, CollectTelemetry) {
+  KryptonTelemetry telemetry;
+  session_->CollectTelemetry(&telemetry);
+
+  EXPECT_THAT(telemetry, EqualsProto(R"pb(successful_rekeys: 0
+                                          network_switches: 1)pb"));
 }
 
 TEST_F(SessionTest, DatapathInitSuccessful) { BringDatapathToConnected(); }
@@ -790,13 +808,13 @@ TEST_F(SessionTest, TestSetKeyMaterials) {
       .WillOnce(
           DoAll(InvokeWithoutArgs(&rekey_done, &absl::Notification::Notify),
                 Return(absl::OkStatus())));
-  SessionDebugInfo debug_info;
+  KryptonDebugInfo debug_info;
   session_->GetDebugInfo(&debug_info);
-  EXPECT_EQ(debug_info.successful_rekeys(), 0);
+  EXPECT_EQ(debug_info.mutable_session()->successful_rekeys(), 0);
   session_->DoRekey();
   EXPECT_TRUE(rekey_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
   session_->GetDebugInfo(&debug_info);
-  EXPECT_EQ(debug_info.successful_rekeys(), 1);
+  EXPECT_EQ(debug_info.mutable_session()->successful_rekeys(), 1);
 }
 
 TEST_F(SessionTest, UplinkMtuUpdateHandler) {
@@ -815,7 +833,7 @@ TEST_F(SessionTest, UplinkMtuUpdateHandler) {
 TEST_F(SessionTest, UplinkMtuUpdateHandlerErrorWithNoExistingTunnel) {
   EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_)).Times(0);
   EXPECT_CALL(*datapath_, SwitchTunnel()).Times(0);
-  EXPECT_CALL(*datapath_, Stop()).Times(1);
+  EXPECT_CALL(*datapath_, Stop()).Times(2);
   EXPECT_CALL(notification_,
               ControlPlaneDisconnected(StatusIs(absl::StatusCode::kInternal)));
 

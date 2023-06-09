@@ -20,8 +20,6 @@
 #include <optional>
 
 #include "privacy/net/common/proto/ppn_options.proto.h"
-#include "privacy/net/krypton/auth.h"
-#include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
@@ -99,8 +97,6 @@ class SessionManager : public SessionManagerInterface {
   OAuthInterface* oauth_;                             // Not owned.
   utils::LooperThread* krypton_notification_thread_;  // Not owned.
 
-  std::unique_ptr<Auth> auth_ ABSL_GUARDED_BY(mutex_);
-  std::unique_ptr<EgressManager> egress_manager_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<Session> session_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<utils::LooperThread> looper_thread_ ABSL_GUARDED_BY(mutex_);
   std::atomic_bool session_created_ = false;

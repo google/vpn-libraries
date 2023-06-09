@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
@@ -80,22 +81,21 @@ class ProvisionContext : public Provision::NotificationInterface {
     oauth_ = std::make_unique<OAuth>(oauth_token_provider_instance);
 
     looper_ = std::make_unique<utils::LooperThread>("Provision Context");
-    auth_ = std::make_unique<Auth>(config_, http_fetcher_.get(), oauth_.get(),
-                                   looper_.get());
-    egress_manager_ = std::make_unique<EgressManager>(
+    auto auth = std::make_unique<Auth>(config_, http_fetcher_.get(),
+                                       oauth_.get(), looper_.get());
+    auto egress_manager = std::make_unique<EgressManager>(
         config_, http_fetcher_.get(), looper_.get());
     provision_instance_ = std::make_unique<JavaObject>(provision_instance);
-    provision_ =
-        std::make_unique<Provision>(config_, auth_.get(), egress_manager_.get(),
-                                    http_fetcher_.get(), this, looper_.get());
+    provision_ = std::make_unique<Provision>(
+        config_, std::move(auth), std::move(egress_manager),
+        http_fetcher_.get(), this, looper_.get());
   }
 
   void Start() { provision_->Start(); }
 
   /** This must not be called from this class's LooperThread. */
   void Stop() {
-    egress_manager_->Stop();
-    auth_->Stop();
+    provision_->Stop();
     looper_ = nullptr;
   }
 
@@ -157,8 +157,6 @@ class ProvisionContext : public Provision::NotificationInterface {
   std::unique_ptr<HttpFetcher> http_fetcher_;
   std::unique_ptr<OAuth> oauth_;
   std::unique_ptr<utils::LooperThread> looper_;
-  std::unique_ptr<Auth> auth_;
-  std::unique_ptr<EgressManager> egress_manager_;
   std::unique_ptr<Provision> provision_;
 
   std::unique_ptr<JavaObject> provision_instance_;

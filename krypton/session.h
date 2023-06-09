@@ -86,8 +86,8 @@ class Session : public DatapathInterface::NotificationInterface,
                                       const absl::Status& status) = 0;
   };
 
-  Session(const KryptonConfig& config, Auth* auth,
-          EgressManager* egress_manager,
+  Session(const KryptonConfig& config, std::unique_ptr<Auth> auth,
+          std::unique_ptr<EgressManager> egress_manager,
           std::unique_ptr<DatapathInterface> datapath,
           VpnServiceInterface* vpn_service, TimerManager* timer_manager,
           HttpFetcherInterface* http_fetcher,
@@ -116,9 +116,6 @@ class Session : public DatapathInterface::NotificationInterface,
   // Stops a session.
   void Stop(bool forceFailOpen) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Cancels all timers
-  void CancelAllTimers() ABSL_LOCKS_EXCLUDED(mutex_);
-
   // Override methods from the interface.
   void DatapathEstablished() override ABSL_LOCKS_EXCLUDED(mutex_);
   void DatapathFailed(const absl::Status& status) override
@@ -142,7 +139,7 @@ class Session : public DatapathInterface::NotificationInterface,
 
   void CollectTelemetry(KryptonTelemetry* telemetry)
       ABSL_LOCKS_EXCLUDED(mutex_);
-  void GetDebugInfo(SessionDebugInfo* debug_info) ABSL_LOCKS_EXCLUDED(mutex_);
+  void GetDebugInfo(KryptonDebugInfo* debug_info) ABSL_LOCKS_EXCLUDED(mutex_);
   // Callback from DatapathReattempt timer.
   void AttemptDatapathReconnect() ABSL_LOCKS_EXCLUDED(mutex_);
 

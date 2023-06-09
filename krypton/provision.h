@@ -25,6 +25,7 @@
 #include "privacy/net/krypton/http_fetcher.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
@@ -52,8 +53,9 @@ class Provision : public Auth::NotificationInterface,
     virtual void ProvisioningFailure(absl::Status status, bool permanent) = 0;
   };
 
-  Provision(const KryptonConfig& config, Auth* auth,
-            EgressManager* egress_manager, HttpFetcherInterface* http_fetcher,
+  Provision(const KryptonConfig& config, std::unique_ptr<Auth> auth,
+            std::unique_ptr<EgressManager> egress_manager,
+            HttpFetcherInterface* http_fetcher,
             NotificationInterface* notification,
             utils::LooperThread* notification_thread);
 
@@ -61,6 +63,8 @@ class Provision : public Auth::NotificationInterface,
 
   // Starts provisioning.
   void Start() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void Stop() ABSL_LOCKS_EXCLUDED(mutex_);
 
   void Rekey() ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -75,6 +79,11 @@ class Provision : public Auth::NotificationInterface,
   // Provides the sockaddr used for the control plane during provisioning. The
   // value will either be of the format IPv4:port or [IPv6]:port
   absl::StatusOr<std::string> GetControlPlaneSockaddr()
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void GetDebugInfo(KryptonDebugInfo* debug_info) ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void CollectTelemetry(KryptonTelemetry* telemetry)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Override methods from the interface.
@@ -99,8 +108,9 @@ class Provision : public Auth::NotificationInterface,
 
   KryptonConfig config_;
 
-  Auth* auth_;                                // Not owned.
-  EgressManager* egress_manager_;             // Not owned.
+  std::unique_ptr<Auth> auth_ ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<EgressManager> egress_manager_ ABSL_GUARDED_BY(mutex_);
+
   NotificationInterface* notification_;       // Not owned.
   utils::LooperThread* notification_thread_;  // Not owned.
   HttpFetcher http_fetcher_;

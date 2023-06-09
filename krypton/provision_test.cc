@@ -26,6 +26,7 @@
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/mock_oauth_interface.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
@@ -60,9 +61,13 @@ class MockNotification : public Provision::NotificationInterface {
 class ProvisionTest : public ::testing::Test {
  public:
   void SetUp() override {
-    provision_ =
-        std::make_unique<Provision>(config_, &auth_, &egress_manager_,
-                                    &http_fetcher_, &notification_, &looper_);
+    auto auth =
+        std::make_unique<Auth>(config_, &http_fetcher_, &oauth_, &looper_);
+    auto egress_manager =
+        std::make_unique<EgressManager>(config_, &http_fetcher_, &looper_);
+    provision_ = std::make_unique<Provision>(
+        config_, std::move(auth), std::move(egress_manager), &http_fetcher_,
+        &notification_, &looper_);
 
     ASSERT_OK_AND_ASSIGN(
         key_pair_, ::private_membership::anonymous_tokens::CreateTestKey());
@@ -85,10 +90,7 @@ class ProvisionTest : public ::testing::Test {
         .WillByDefault([this] { return CreateAddEgressHttpResponse(); });
   }
 
-  void TearDown() override {
-    auth_.Stop();
-    egress_manager_.Stop();
-  }
+  void TearDown() override { provision_->Stop(); }
 
   ppn::GetInitialDataResponse CreateGetInitialDataResponse() {
     ppn::GetInitialDataResponse response = ParseTextProtoOrDie(R"pb(
@@ -222,8 +224,6 @@ class ProvisionTest : public ::testing::Test {
   MockHttpFetcher http_fetcher_;
   MockNotification notification_;
   MockOAuth oauth_;
-  Auth auth_{config_, &http_fetcher_, &oauth_, &looper_};
-  EgressManager egress_manager_{config_, &http_fetcher_, &looper_};
 
   AddEgressResponse default_add_egress_response_;
   std::pair<bssl::UniquePtr<RSA>,
@@ -423,6 +423,30 @@ TEST_F(ProvisionTest, GenerateSignatureBeforeStartFails) {
 TEST_F(ProvisionTest, GetTransformParamsBeforeStartFails) {
   EXPECT_THAT(provision_->GetTransformParams(),
               StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_F(ProvisionTest, GetDebugInfo) {
+  KryptonDebugInfo debug_info;
+  EXPECT_FALSE(debug_info.has_auth());
+  EXPECT_FALSE(debug_info.has_egress());
+  provision_->GetDebugInfo(&debug_info);
+  EXPECT_TRUE(debug_info.has_auth());
+  EXPECT_TRUE(debug_info.has_egress());
+}
+
+TEST_F(ProvisionTest, CollectTelemetry) {
+  absl::Notification done;
+  EXPECT_CALL(notification_, Provisioned(_, _)).WillOnce([&done] {
+    done.Notify();
+  });
+
+  provision_->Start();
+  ASSERT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(1)));
+
+  KryptonTelemetry telemetry;
+  provision_->CollectTelemetry(&telemetry);
+  EXPECT_NE(telemetry.auth_latency_size(), 0);
+  EXPECT_NE(telemetry.egress_latency_size(), 0);
 }
 
 }  // namespace

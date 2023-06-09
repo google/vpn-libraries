@@ -70,17 +70,17 @@ void SessionManager::EstablishSession(int restart_count,
   LOG(INFO) << "Creating " << restart_count << " session";
   KryptonConfig local_config = config_;
   local_config.set_ip_geo_level(ip_geo_level_);
-  auth_ = std::make_unique<Auth>(local_config, http_fetcher_, oauth_,
-                                 looper_thread_.get());
-  egress_manager_ = std::make_unique<EgressManager>(local_config, http_fetcher_,
-                                                    looper_thread_.get());
+  auto auth = std::make_unique<Auth>(local_config, http_fetcher_, oauth_,
+                                     looper_thread_.get());
+  auto egress_manager = std::make_unique<EgressManager>(
+      local_config, http_fetcher_, looper_thread_.get());
   auto datapath =
       std::unique_ptr<DatapathInterface>(vpn_service_->BuildDatapath(
           local_config, looper_thread_.get(), timer_manager_));
   session_ = std::make_unique<Session>(
-      local_config, auth_.get(), egress_manager_.get(), std::move(datapath),
-      vpn_service_, timer_manager_, http_fetcher_, tunnel_manager, network_info,
-      krypton_notification_thread_);
+      local_config, std::move(auth), std::move(egress_manager),
+      std::move(datapath), vpn_service_, timer_manager_, http_fetcher_,
+      tunnel_manager, network_info, krypton_notification_thread_);
   session_->RegisterNotificationHandler(notification_);
   session_->Start();
   session_created_ = true;
@@ -95,30 +95,12 @@ void SessionManager::TerminateSession(bool forceFailOpen) {
     return;
   }
   LOG(INFO) << "Terminating Session";
-  LOG(INFO) << "Cancelling Session timers";
-  // Session timers need to be cancelled before destroying auth, egress_manager,
-  // or datapath. The timer callbacks could try to use them.
-  if (session_ != nullptr) {
-    session_->CancelAllTimers();
-  }
-  LOG(INFO) << "Session timers cancelled.";
   LOG(INFO) << "Stopping session looper thread ";
   if (looper_thread_ != nullptr) {
     looper_thread_->Stop();
     looper_thread_->Join();
   }
   LOG(INFO) << "Looper thread joined.";
-  if (auth_ != nullptr) {
-    auth_->Stop();
-    auth_.reset();
-  }
-  LOG(INFO) << "Auth stopped";
-  if (egress_manager_ != nullptr) {
-    egress_manager_->Stop();
-    egress_manager_.reset();
-  }
-  LOG(INFO) << "Egress stopped";
-
   LOG(INFO) << "Stopping session";
   if (session_ != nullptr) {
     session_->Stop(forceFailOpen);
@@ -132,12 +114,6 @@ void SessionManager::TerminateSession(bool forceFailOpen) {
 
 void SessionManager::CollectTelemetry(KryptonTelemetry* telemetry) {
   absl::MutexLock l(&mutex_);
-  if (auth_) {
-    auth_->CollectTelemetry(telemetry);
-  }
-  if (egress_manager_) {
-    egress_manager_->CollectTelemetry(telemetry);
-  }
   if (session_) {
     session_->CollectTelemetry(telemetry);
   }
@@ -145,14 +121,8 @@ void SessionManager::CollectTelemetry(KryptonTelemetry* telemetry) {
 
 void SessionManager::GetDebugInfo(KryptonDebugInfo* debug_info) {
   absl::MutexLock l(&mutex_);
-  if (auth_) {
-    auth_->GetDebugInfo(debug_info->mutable_auth());
-  }
-  if (egress_manager_) {
-    egress_manager_->GetDebugInfo(debug_info->mutable_egress());
-  }
   if (session_) {
-    session_->GetDebugInfo(debug_info->mutable_session());
+    session_->GetDebugInfo(debug_info);
   }
 }
 

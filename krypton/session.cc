@@ -130,8 +130,8 @@ void AddDns(absl::string_view dns_ip, TunFdData::IpRange::IpFamily family,
 
 }  // namespace
 
-Session::Session(const KryptonConfig& config, Auth* auth,
-                 EgressManager* egress_manager,
+Session::Session(const KryptonConfig& config, std::unique_ptr<Auth> auth,
+                 std::unique_ptr<EgressManager> egress_manager,
                  std::unique_ptr<DatapathInterface> datapath,
                  VpnServiceInterface* vpn_service, TimerManager* timer_manager,
                  HttpFetcherInterface* http_fetcher,
@@ -145,18 +145,18 @@ Session::Session(const KryptonConfig& config, Auth* auth,
       http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
                     ABSL_DIE_IF_NULL(notification_thread)),
       notification_thread_(ABSL_DIE_IF_NULL(notification_thread)),
+      tunnel_manager_(tunnel_manager),
       datapath_address_selector_(config),
       add_egress_response_(std::nullopt),
       uplink_spi_(-1),
-      provision_notification_thread_("Provision Notification Thread") {
+      active_network_info_(network_info),
+      provision_notification_thread_("Provision Notification Thread"),
+      provision_(std::make_unique<Provision>(
+          config, std::move(ABSL_DIE_IF_NULL(auth)),
+          std::move(ABSL_DIE_IF_NULL(egress_manager)), http_fetcher, this,
+          &provision_notification_thread_)) {
   // Register all state machine events to be sent to Session.
   datapath_->RegisterNotificationHandler(this);
-  active_network_info_ = network_info;
-  tunnel_manager_ = tunnel_manager;
-
-  provision_ =
-      std::make_unique<Provision>(config, auth, egress_manager, http_fetcher,
-                                  this, &provision_notification_thread_);
 }
 
 Session::~Session() {
@@ -287,17 +287,12 @@ void Session::Start() {
 
 void Session::Stop(bool forceFailOpen) {
   absl::MutexLock l(&mutex_);
+  CancelFetcherTimerIfRunning();
+  CancelDatapathReattemptTimerIfRunning();
+  provision_->Stop();
   datapath_->Stop();
   datapath_ = nullptr;
   tunnel_manager_->DatapathStopped(forceFailOpen);
-  CancelFetcherTimerIfRunning();
-  CancelDatapathReattemptTimerIfRunning();
-}
-
-void Session::CancelAllTimers() {
-  absl::MutexLock l(&mutex_);
-  CancelFetcherTimerIfRunning();
-  CancelDatapathReattemptTimerIfRunning();
 }
 
 absl::Status Session::BuildTunFdData(TunFdData* tun_fd_data) const {
@@ -688,25 +683,27 @@ void Session::CollectTelemetry(KryptonTelemetry* telemetry) {
       network_switches_count_ - last_repoted_network_switches_;
   telemetry->set_network_switches(delta_network_switches);
   last_repoted_network_switches_ = delta_network_switches;
+
+  provision_->CollectTelemetry(telemetry);
 }
 
-void Session::GetDebugInfo(SessionDebugInfo* debug_info) {
+void Session::GetDebugInfo(KryptonDebugInfo* debug_info) {
   absl::MutexLock l(&mutex_);
 
-  debug_info->set_state(StateString(state_));
-  debug_info->set_status(latest_status_.ToString());
+  auto* session_debug_info = debug_info->mutable_session();
+  session_debug_info->set_state(StateString(state_));
+  session_debug_info->set_status(latest_status_.ToString());
   if (active_network_info_) {
-    debug_info->mutable_active_network()->CopyFrom(
+    session_debug_info->mutable_active_network()->CopyFrom(
         active_network_info_.value());
   }
-  debug_info->set_successful_rekeys(number_of_rekeys_.load());
+  session_debug_info->set_successful_rekeys(number_of_rekeys_.load());
   auto delta_network_switches =
       network_switches_count_ - last_repoted_network_switches_;
-  debug_info->set_network_switches(delta_network_switches);
+  session_debug_info->set_network_switches(delta_network_switches);
 
-  if (datapath_ != nullptr) {
-    datapath_->GetDebugInfo(debug_info->mutable_datapath());
-  }
+  provision_->GetDebugInfo(debug_info);
+  datapath_->GetDebugInfo(session_debug_info->mutable_datapath());
 }
 
 void Session::DoRekey() {
