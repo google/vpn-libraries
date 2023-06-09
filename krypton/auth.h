@@ -120,7 +120,7 @@ class Auth {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Authenticates using public metadata and is a non blocking call.
-  void AuthenticatePublicMetadata(bool is_rekey,
+  void AuthenticatePublicMetadata(bool is_rekey, absl::string_view auth_token,
                                   std::optional<std::string> nonce)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -130,7 +130,7 @@ class Auth {
       ABSL_LOCKS_EXCLUDED(mutex_);
   void HandlePublicKeyResponse(bool is_rekey, const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
-  void HandleInitialDataResponse(bool is_rekey,
+  void HandleInitialDataResponse(bool is_rekey, absl::string_view auth_token,
                                  const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
   static void RecordLatency(absl::Time start,

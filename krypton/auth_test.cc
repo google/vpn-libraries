@@ -637,7 +637,7 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabled) {
 
   absl::Notification http_fetcher_done;
   // Step 0: RequestInitialData
-  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+  EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
   EXPECT_CALL(http_fetcher_,
               PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
       .WillOnce(::testing::Return(
@@ -692,7 +692,7 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabledAndAttestation) {
 
   absl::Notification http_fetcher_done;
   // Step 0: RequestInitialData
-  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+  EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
   EXPECT_CALL(http_fetcher_,
               PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
       .WillOnce(::testing::Return(
@@ -733,7 +733,7 @@ TEST_P(AuthParamsTest, InitialDataRequestNonEmptyCityGeoId) {
   config.set_ip_geo_level(ppn::COUNTRY);
   ConfigureAuth(config);
 
-  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+  EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
   EXPECT_CALL(http_fetcher_,
               PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
       .WillOnce(::testing::Return(buildBadCityIdInitialDataHttpResponse()));
@@ -763,7 +763,7 @@ TEST_P(AuthParamsTest, InitialDataRequestDebugModeSpecifiedWhenNotAllowed) {
   config.set_debug_mode_allowed(false);
   ConfigureAuth(config);
 
-  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+  EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
   EXPECT_CALL(http_fetcher_,
               PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
       .WillOnce(

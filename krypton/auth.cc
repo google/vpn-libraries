@@ -267,6 +267,7 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
 }
 
 void Auth::HandleInitialDataResponse(bool is_rekey,
+                                     absl::string_view auth_token,
                                      const HttpResponse& http_response) {
   std::optional<std::string> nonce = std::nullopt;
   {
@@ -359,7 +360,7 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
   }
   LOG(INFO) << "HandleInitialDataResponse Exiting InitialDataResponseHandler";
 
-  AuthenticatePublicMetadata(is_rekey, nonce);
+  AuthenticatePublicMetadata(is_rekey, auth_token, nonce);
 }
 
 void Auth::Start(bool is_rekey) {
@@ -425,17 +426,21 @@ void Auth::RequestForInitialData(bool is_rekey) {
   }
   RecordLatency(request_time_, &oauth_latencies_, "oauth");
 
+  std::string token = *auth_token;
   auto use_attestation = config_.integrity_attestation_enabled();
   auto service_type = config_.service_type();
   auto granularity = GetLocationGranularity(config_.ip_geo_level());
 
   InitialDataRequest request(use_attestation, service_type, granularity,
-                             kValidationVersion, *auth_token);
+                             kValidationVersion, token);
   auto get_initial_data_proto = request.EncodeToProto();
   get_initial_data_proto.set_url(config_.initial_data_url());
-  http_fetcher_.PostJsonAsync(
-      get_initial_data_proto,
-      absl::bind_front(&Auth::HandleInitialDataResponse, this, is_rekey));
+
+  std::function<void(const HttpResponse&)> callback =
+      [this, is_rekey, token](const HttpResponse& response) {
+        HandleInitialDataResponse(is_rekey, token, response);
+      };
+  http_fetcher_.PostJsonAsync(get_initial_data_proto, callback);
 }
 
 void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
@@ -489,6 +494,7 @@ void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
 }
 
 void Auth::AuthenticatePublicMetadata(bool is_rekey,
+                                      absl::string_view auth_token,
                                       std::optional<std::string> nonce) {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "Entering AuthenticatePublicMetadata.";
@@ -505,23 +511,12 @@ void Auth::AuthenticatePublicMetadata(bool is_rekey,
     attestation_data = data.value();
   }
 
-  request_time_ = absl::Now();
-  auto auth_token = oauth_->GetOAuthToken();
-  if (!auth_token.ok()) {
-    LOG(ERROR) << "Error fetching oauth token: " << auth_token.status();
-    SetState(State::kUnauthenticated);
-    RaiseAuthFailureNotification(
-        absl::InternalError("Error fetching oauth token"));
-    return;
-  }
-  RecordLatency(request_time_, &oauth_latencies_, "oauth");
-
   // Create AuthAndSign RPC.
   privacy::ppn::PublicMetadataInfo public_metadata_info =
       get_initial_data_response_.public_metadata_info();
 
   privacy::ppn::AuthAndSignRequest sign_request;
-  sign_request.set_oauth_token(auth_token.value());
+  sign_request.set_oauth_token(auth_token);
   sign_request.set_service_type(
       public_metadata_info.public_metadata().service_type());
   sign_request.set_key_type(privacy::ppn::AT_PUBLIC_METADATA_KEY_TYPE);
@@ -540,7 +535,7 @@ void Auth::AuthenticatePublicMetadata(bool is_rekey,
   auth_http_request.set_proto_body(sign_request.SerializeAsString());
   if (config_.attach_oauth_token_as_header()) {
     (*auth_http_request.mutable_headers())["Authorization"] =
-        absl::StrCat("Bearer ", auth_token.value());
+        absl::StrCat("Bearer ", auth_token);
   }
 
   // TODO: Clean up name of zinc_url.
