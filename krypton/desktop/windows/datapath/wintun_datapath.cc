@@ -157,6 +157,7 @@ void WintunDatapath::GetDebugInfo(DatapathDebugInfo* debug_info) {
 }
 
 void WintunDatapath::ShutdownPacketForwarder() {
+  connected_.clear();
   if (packet_forwarder_ == nullptr) {
     LOG(INFO) << "Packet forwarder is null";
     return;
