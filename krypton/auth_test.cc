@@ -45,6 +45,7 @@
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
+#include "third_party/anonymous_tokens/cpp/testing/proto_utils.h"
 #include "third_party/anonymous_tokens/cpp/testing/utils.h"
 #include "third_party/anonymous_tokens/proto/anonymous_tokens.proto.h"
 #include "third_party/json/include/nlohmann/json.hpp"
