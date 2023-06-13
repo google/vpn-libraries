@@ -24,6 +24,7 @@
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/http_fetcher.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
@@ -59,7 +60,7 @@ class Provision : public Auth::NotificationInterface,
             NotificationInterface* notification,
             utils::LooperThread* notification_thread);
 
-  ~Provision() override = default;
+  ~Provision() override;
 
   // Starts provisioning.
   void Start() ABSL_LOCKS_EXCLUDED(mutex_);
@@ -107,6 +108,7 @@ class Provision : public Auth::NotificationInterface,
   mutable absl::Mutex mutex_;
 
   KryptonConfig config_;
+  utils::LooperThread looper_;
 
   std::unique_ptr<Auth> auth_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<EgressManager> egress_manager_ ABSL_GUARDED_BY(mutex_);

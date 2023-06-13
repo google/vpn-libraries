@@ -81,10 +81,10 @@ class ProvisionContext : public Provision::NotificationInterface {
     oauth_ = std::make_unique<OAuth>(oauth_token_provider_instance);
 
     looper_ = std::make_unique<utils::LooperThread>("Provision Context");
-    auto auth = std::make_unique<Auth>(config_, http_fetcher_.get(),
-                                       oauth_.get(), looper_.get());
-    auto egress_manager = std::make_unique<EgressManager>(
-        config_, http_fetcher_.get(), looper_.get());
+    auto auth =
+        std::make_unique<Auth>(config_, http_fetcher_.get(), oauth_.get());
+    auto egress_manager =
+        std::make_unique<EgressManager>(config_, http_fetcher_.get());
     provision_instance_ = std::make_unique<JavaObject>(provision_instance);
     provision_ = std::make_unique<Provision>(
         config_, std::move(auth), std::move(egress_manager),

@@ -233,8 +233,9 @@ class EgressManagerTest : public ::testing::Test {
 TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
   MockHttpFetcher http_fetcher;
 
-  EgressManager egress_manager(config_, &http_fetcher, &looper_thread_);
-  egress_manager.RegisterNotificationHandler(&mock_notification_);
+  EgressManager egress_manager(config_, &http_fetcher);
+  egress_manager.RegisterNotificationHandler(&mock_notification_,
+                                             &looper_thread_);
 
   absl::Notification http_fetcher_done;
 
@@ -274,8 +275,9 @@ TEST_F(EgressManagerTest, GetEgressNodeForPpnIpSecWithBerylliumFields) {
   MockHttpFetcher http_fetcher;
   config_.set_public_metadata_enabled(true);
 
-  EgressManager egress_manager(config_, &http_fetcher, &looper_thread_);
-  egress_manager.RegisterNotificationHandler(&mock_notification_);
+  EgressManager egress_manager(config_, &http_fetcher);
+  egress_manager.RegisterNotificationHandler(&mock_notification_,
+                                             &looper_thread_);
 
   absl::Notification http_fetcher_done;
 

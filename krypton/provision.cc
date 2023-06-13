@@ -28,7 +28,9 @@
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/utils/ip_range.h"
 #include "privacy/net/krypton/utils/looper.h"
@@ -67,6 +69,7 @@ Provision::Provision(const KryptonConfig& config, std::unique_ptr<Auth> auth,
                      NotificationInterface* notification,
                      utils::LooperThread* notification_thread)
     : config_(config),
+      looper_("Provision Looper"),
       auth_(std::move(ABSL_DIE_IF_NULL(auth))),
       egress_manager_(std::move(ABSL_DIE_IF_NULL(egress_manager))),
       notification_(ABSL_DIE_IF_NULL(notification)),
@@ -74,8 +77,13 @@ Provision::Provision(const KryptonConfig& config, std::unique_ptr<Auth> auth,
       http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
                     ABSL_DIE_IF_NULL(notification_thread)),
       key_material_(nullptr) {
-  auth_->RegisterNotificationHandler(this);
-  egress_manager_->RegisterNotificationHandler(this);
+  auth_->RegisterNotificationHandler(this, &looper_);
+  egress_manager_->RegisterNotificationHandler(this, &looper_);
+}
+
+Provision::~Provision() {
+  looper_.Stop();
+  looper_.Join();
 }
 
 void Provision::FailWithStatus(absl::Status status, bool permanent) {

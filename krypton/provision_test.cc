@@ -62,10 +62,9 @@ class MockNotification : public Provision::NotificationInterface {
 class ProvisionTest : public ::testing::Test {
  public:
   void SetUp() override {
-    auto auth =
-        std::make_unique<Auth>(config_, &http_fetcher_, &oauth_, &looper_);
+    auto auth = std::make_unique<Auth>(config_, &http_fetcher_, &oauth_);
     auto egress_manager =
-        std::make_unique<EgressManager>(config_, &http_fetcher_, &looper_);
+        std::make_unique<EgressManager>(config_, &http_fetcher_);
     provision_ = std::make_unique<Provision>(
         config_, std::move(auth), std::move(egress_manager), &http_fetcher_,
         &notification_, &looper_);

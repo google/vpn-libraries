@@ -62,8 +62,8 @@ class EgressManager {
     kEgressSessionError,
   };
 
-  EgressManager(const KryptonConfig& config, HttpFetcherInterface* http_fetcher,
-                utils::LooperThread* notification_thread);
+  EgressManager(const KryptonConfig& config,
+                HttpFetcherInterface* http_fetcher);
   virtual ~EgressManager();
 
   // Gets the egress node details for PPN using IPSec
@@ -84,8 +84,10 @@ class EgressManager {
 
   // Update the notification where the events are generated to.
   virtual void RegisterNotificationHandler(
-      EgressManager::NotificationInterface* notification) {
+      NotificationInterface* notification,
+      utils::LooperThread* notification_thread) {
     notification_ = notification;
+    notification_thread_ = notification_thread;
   }
 
   void CollectTelemetry(KryptonTelemetry* telemetry)
@@ -116,6 +118,7 @@ class EgressManager {
       ABSL_GUARDED_BY(mutex_);
 
   KryptonConfig config_;
+  utils::LooperThread looper_;
   HttpFetcher http_fetcher_;
   NotificationInterface* notification_;       // Not owned.
   utils::LooperThread* notification_thread_;  // Not owned.

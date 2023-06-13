@@ -46,6 +46,7 @@
 #include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/functional/bind_front.h"
 #include "third_party/absl/log/die_if_null.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/escaping.h"
@@ -127,13 +128,14 @@ using ::private_membership::anonymous_tokens::RSABlindSignatureTokenWithInput;
 
 Auth::Auth(const KryptonConfig& config,
            HttpFetcherInterface* http_fetcher_native,
-           OAuthInterface* oath_native, utils::LooperThread* looper_thread)
+           OAuthInterface* oath_native)
     : state_(State::kUnauthenticated),
-      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher_native),
-                    ABSL_DIE_IF_NULL(looper_thread)),
+      looper_("Auth Looper"),
+      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher_native), &looper_),
       config_(config),
       oauth_(ABSL_DIE_IF_NULL(oath_native)),
-      looper_thread_(looper_thread) {
+      notification_(nullptr),
+      notification_thread_(nullptr) {
   key_material_ = std::make_unique<crypto::AuthCrypto>(config);
 }
 
@@ -169,9 +171,10 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
     return;
   }
 
-  bool enforce_copper_suffix = get_initial_data_response_.public_metadata_info()
-                                .public_metadata()
-                                .debug_mode() != ppn::PublicMetadata::DEBUG_ALL;
+  bool enforce_copper_suffix =
+      get_initial_data_response_.public_metadata_info()
+          .public_metadata()
+          .debug_mode() != ppn::PublicMetadata::DEBUG_ALL;
 
   auto auth_and_sign_response = AuthAndSignResponse::FromProto(
       http_response, config_, enforce_copper_suffix);
@@ -195,7 +198,7 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
 
   SetState(State::kAuthenticated);
   auto* notification = notification_;
-  looper_thread_->Post(
+  notification_thread_->Post(
       [notification, is_rekey] { notification->AuthSuccessful(is_rekey); });
   LOG(INFO) << "Exiting authentication response";
 }
@@ -614,7 +617,7 @@ void Auth::RaiseAuthFailureNotification(absl::Status status) {
   auto* notification = notification_;
   // Make a copy of the status to show in the debug info.
   latest_status_ = status;
-  looper_thread_->Post(
+  notification_thread_->Post(
       [notification, status] { notification->AuthFailure(status); });
 }
 

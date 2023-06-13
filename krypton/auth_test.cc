@@ -128,9 +128,8 @@ class AuthTest : public ::testing::Test {
   HttpResponse fake_response_;
 
   void ConfigureAuth(const KryptonConfig& config) {
-    auth_ = std::make_unique<Auth>(config, &http_fetcher_, &oauth_,
-                                   &looper_thread_);
-    auth_->RegisterNotificationHandler(&auth_notification_);
+    auth_ = std::make_unique<Auth>(config, &http_fetcher_, &oauth_);
+    auth_->RegisterNotificationHandler(&auth_notification_, &looper_thread_);
 
     ASSERT_OK_AND_ASSIGN(crypto_, crypto::SessionCrypto::Create(config));
   }

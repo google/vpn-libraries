@@ -99,8 +99,8 @@ class MockAuth : public Auth {
   MOCK_METHOD(AuthAndSignResponse, auth_response, (), (const, override));
   MOCK_METHOD(ppn::GetInitialDataResponse, initial_data_response, (),
               (const, override));
-  MOCK_METHOD(void, RegisterNotificationHandler, (Auth::NotificationInterface*),
-              (override));
+  MOCK_METHOD(void, RegisterNotificationHandler,
+              (Auth::NotificationInterface*, utils::LooperThread*), (override));
 };
 
 // Mock the Egress Management.
@@ -112,7 +112,8 @@ class MockEgressManager : public EgressManager {
   MOCK_METHOD(absl::Status, GetEgressNodeForPpnIpSec,
               (const AddEgressRequest::PpnDataplaneRequestParams&), (override));
   MOCK_METHOD(void, RegisterNotificationHandler,
-              (EgressManager::NotificationInterface*), (override));
+              (EgressManager::NotificationInterface*, utils::LooperThread*),
+              (override));
 };
 
 class MockSessionNotification : public Session::NotificationInterface {
@@ -162,12 +163,11 @@ class MockTunnelManager : public TunnelManagerInterface {
 class SessionTest : public ::testing::Test {
  public:
   void SetUp() override {
-    auto auth = std::make_unique<MockAuth>(config_, &http_fetcher_, &oauth_,
-                                           &notification_thread_);
+    auto auth = std::make_unique<MockAuth>(config_, &http_fetcher_, &oauth_);
     auth_ = auth.get();
 
-    auto egress_manager = std::make_unique<MockEgressManager>(
-        config_, &http_fetcher_, &notification_thread_);
+    auto egress_manager =
+        std::make_unique<MockEgressManager>(config_, &http_fetcher_);
     egress_manager_ = egress_manager.get();
 
     auto datapath = std::make_unique<MockDatapath>();
@@ -202,12 +202,14 @@ class SessionTest : public ::testing::Test {
     fake_add_egress_response_ = *fake_add_egress_response;
 
     EXPECT_CALL(*auth_, RegisterNotificationHandler)
-        .WillOnce([this](Auth::NotificationInterface* notification) {
+        .WillOnce([this](Auth::NotificationInterface* notification,
+                         utils::LooperThread* /*thread*/) {
           auth_notification_ = notification;
         });
 
     EXPECT_CALL(*egress_manager_, RegisterNotificationHandler)
-        .WillOnce([this](EgressManager::NotificationInterface* notification) {
+        .WillOnce([this](EgressManager::NotificationInterface* notification,
+                         utils::LooperThread* /*thread*/) {
           egress_notification_ = notification;
         });
 

@@ -66,16 +66,18 @@ std::string StateString(EgressManager::State state) {
 }  // namespace
 
 EgressManager::EgressManager(const KryptonConfig& config,
-                             HttpFetcherInterface* http_fetcher,
-                             utils::LooperThread* notification_thread)
+                             HttpFetcherInterface* http_fetcher)
     : config_(config),
-      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
-                    ABSL_DIE_IF_NULL(notification_thread)),
-      notification_thread_(notification_thread),
+      looper_("EgressManager Looper"),
+      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher), &looper_),
+      notification_(nullptr),
+      notification_thread_(nullptr),
       brass_url_(config.brass_url()),
       state_(State::kInitialized) {}
 
 EgressManager::~EgressManager() {
+  looper_.Stop();
+  looper_.Join();
   absl::MutexLock l(&mutex_);
   if (!stopped_) {
     LOG(DFATAL) << " Please call stop before deleting EgressManager";

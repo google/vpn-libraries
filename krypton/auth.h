@@ -69,13 +69,15 @@ class Auth {
   };
 
   Auth(const KryptonConfig& config, HttpFetcherInterface* http_fetcher_native,
-       OAuthInterface* oath_native, utils::LooperThread* looper_thread_);
+       OAuthInterface* oath_native);
   virtual ~Auth();
 
   // Register for auth status change notifications.
   virtual void RegisterNotificationHandler(
-      Auth::NotificationInterface* notification) {
+      NotificationInterface* notification,
+      utils::LooperThread* notification_thread) {
     notification_ = notification;
+    notification_thread_ = notification_thread;
   }
 
   // State of the current authentication.  If the status need to be async, use
@@ -148,6 +150,7 @@ class Auth {
   void RaiseAuthFailureNotification(absl::Status status)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  utils::LooperThread looper_;
   HttpFetcher http_fetcher_;
   KryptonConfig config_;
   std::unique_ptr<crypto::AuthCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
@@ -157,9 +160,9 @@ class Auth {
   private_membership::anonymous_tokens::AnonymousTokensSignRequest
       at_sign_request_ ABSL_GUARDED_BY(mutex_);
 
-  OAuthInterface* oauth_;                // Not owned.
-  NotificationInterface* notification_;  // Not owned.
-  utils::LooperThread* looper_thread_;   // Not owned.
+  OAuthInterface* oauth_;                     // Not owned.
+  NotificationInterface* notification_;       // Not owned.
+  utils::LooperThread* notification_thread_;  // Not owned.
   absl::StatusOr<std::vector<
       private_membership::anonymous_tokens::RSABlindSignatureTokenWithInput>>
       signed_tokens_;

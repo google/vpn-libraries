@@ -70,10 +70,9 @@ void SessionManager::EstablishSession(int restart_count,
   LOG(INFO) << "Creating " << restart_count << " session";
   KryptonConfig local_config = config_;
   local_config.set_ip_geo_level(ip_geo_level_);
-  auto auth = std::make_unique<Auth>(local_config, http_fetcher_, oauth_,
-                                     looper_thread_.get());
-  auto egress_manager = std::make_unique<EgressManager>(
-      local_config, http_fetcher_, looper_thread_.get());
+  auto auth = std::make_unique<Auth>(local_config, http_fetcher_, oauth_);
+  auto egress_manager =
+      std::make_unique<EgressManager>(local_config, http_fetcher_);
   auto datapath =
       std::unique_ptr<DatapathInterface>(vpn_service_->BuildDatapath(
           local_config, looper_thread_.get(), timer_manager_));
