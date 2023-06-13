@@ -73,9 +73,8 @@ class Auth {
   virtual ~Auth();
 
   // Register for auth status change notifications.
-  virtual void RegisterNotificationHandler(
-      NotificationInterface* notification,
-      utils::LooperThread* notification_thread) {
+  void RegisterNotificationHandler(NotificationInterface* notification,
+                                   utils::LooperThread* notification_thread) {
     notification_ = notification;
     notification_thread_ = notification_thread;
   }
@@ -87,14 +86,14 @@ class Auth {
   // Entry point to start the authentication procedures. |NotificationInterface|
   // will be called on successful or unsuccessful authentication.
   // Same API is used for starting Rekey procedures.
-  virtual void Start(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
+  void Start(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Stop needs to be called to exit the underlying threads clean.
   void Stop() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  virtual AuthAndSignResponse auth_response() const ABSL_LOCKS_EXCLUDED(mutex_);
+  AuthAndSignResponse auth_response() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  virtual ppn::GetInitialDataResponse initial_data_response() const
+  ppn::GetInitialDataResponse initial_data_response() const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void CollectTelemetry(KryptonTelemetry* telemetry)

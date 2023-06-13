@@ -67,11 +67,11 @@ class EgressManager {
   virtual ~EgressManager();
 
   // Gets the egress node details for PPN using IPSec
-  virtual absl::Status GetEgressNodeForPpnIpSec(
+  absl::Status GetEgressNodeForPpnIpSec(
       const AddEgressRequest::PpnDataplaneRequestParams& params)
       ABSL_LOCKS_EXCLUDED(mutex_);
   // Egress node details.
-  virtual absl::StatusOr<AddEgressResponse> GetEgressSessionDetails() const
+  absl::StatusOr<AddEgressResponse> GetEgressSessionDetails() const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Stop the processing of the Egress response for any inflight requests.
@@ -83,9 +83,8 @@ class EgressManager {
   }
 
   // Update the notification where the events are generated to.
-  virtual void RegisterNotificationHandler(
-      NotificationInterface* notification,
-      utils::LooperThread* notification_thread) {
+  void RegisterNotificationHandler(NotificationInterface* notification,
+                                   utils::LooperThread* notification_thread) {
     notification_ = notification;
     notification_thread_ = notification_thread;
   }
@@ -98,12 +97,6 @@ class EgressManager {
   uint32_t uplink_spi() const {
     absl::MutexLock l(&mutex_);
     return uplink_spi_;
-  }
-
-  absl::Status SaveEgressDetailsTestOnly(
-      const AddEgressResponse& egress_response) {
-    absl::MutexLock l(&mutex_);
-    return SaveEgressDetails(egress_response);
   }
 
  private:
