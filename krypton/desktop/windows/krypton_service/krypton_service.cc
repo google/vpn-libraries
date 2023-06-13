@@ -79,7 +79,7 @@ absl::Status KryptonService::RegisterServiceMain(
   return absl::OkStatus();
 }
 
-void KryptonService::ServiceMain(DWORD /*dwArgc*/, LPTSTR* lpszArgv) {
+void KryptonService::ServiceMain(DWORD dwArgc, LPTSTR* lpszArgv) {
   // Register the handler function for the service
   auto service_name = utils::CharToWstring(kKryptonSvcName);
   krypton_service_->service_status_handle_ =
@@ -94,13 +94,15 @@ void KryptonService::ServiceMain(DWORD /*dwArgc*/, LPTSTR* lpszArgv) {
 
   // Initiate logger
   // Takes base file path from parameter passed to service.
-  auto local_app_data_dir = std::filesystem::path(lpszArgv[1]);
-  auto debug_log_dir = local_app_data_dir / kDebugLogFolderName;
-  utils::CreateDirectoryRecursively(debug_log_dir);
-  krypton_service_->logger_ =
-      std::make_unique<FileLogger>(debug_log_dir, kDebugFilePrefix);
-  krypton_service_->log_sink_ =
-      std::make_unique<PpnLogSink>(krypton_service_->logger_.get());
+  if (dwArgc > 1) {
+    auto local_app_data_dir = std::filesystem::path(lpszArgv[1]);
+    auto debug_log_dir = local_app_data_dir / kDebugLogFolderName;
+    utils::CreateDirectoryRecursively(debug_log_dir);
+    krypton_service_->logger_ =
+        std::make_unique<FileLogger>(debug_log_dir, kDebugFilePrefix);
+    krypton_service_->log_sink_ =
+        std::make_unique<PpnLogSink>(krypton_service_->logger_.get());
+  }
 
   // Create an event. The control handler function, ServiceControlHandler,
   // signals this event when it receives the stop control code.
