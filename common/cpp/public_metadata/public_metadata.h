@@ -1,7 +1,6 @@
 #ifndef PRIVACY_NET_COMMON_CPP_PUBLIC_METADATA_PUBLIC_METADATA_H_
 #define PRIVACY_NET_COMMON_CPP_PUBLIC_METADATA_PUBLIC_METADATA_H_
 
-#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -18,7 +17,7 @@ struct BinaryPublicMetadata {
   // server.
   std::optional<std::string> service_type;
   // 2 character Country or Alpha2Code as defined by rfc8805 Section 2.1.1.2
-  std::optional<std::array<char, 2>> country;
+  std::optional<std::string> country;
   // Usually 5 character Region like US-CA (California) as defined by rfc8805
   // Section 2.1.1.3
   std::optional<std::string> region;
@@ -35,7 +34,7 @@ struct BinaryPublicMetadata {
 };
 
 BinaryPublicMetadata PublicMetadataProtoToStruct(
-    const PublicMetadata& metadata);
+    const privacy::ppn::PublicMetadata& metadata);
 
 }  // namespace privacy::ppn
 

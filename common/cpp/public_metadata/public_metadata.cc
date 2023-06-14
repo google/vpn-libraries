@@ -19,8 +19,7 @@ BinaryPublicMetadata PublicMetadataProtoToStruct(
   if (metadata.has_exit_location()) {
     if (!metadata.exit_location().country().empty() &&
         metadata.exit_location().country().size() == 2) {
-      binary_struct.country.value()[0] = metadata.exit_location().country()[0];
-      binary_struct.country.value()[1] = metadata.exit_location().country()[1];
+      binary_struct.country.value() = metadata.exit_location().country();
     }
     if (!metadata.exit_location().city_geo_id().empty()) {
       binary_struct.region = metadata.exit_location().city_geo_id();
