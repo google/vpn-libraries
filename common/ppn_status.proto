@@ -41,4 +41,8 @@ message PpnStatusDetails {
   // UNKNOWN, but can be set to specific values for errors we want to propagate
   // up to the user with a detailed message.
   DetailedErrorCode detailed_error_code = 1;
+
+  // A debug string to add more information than the error code. Only used for
+  // logging and debugging.
+  string debug_details = 2;
 }
