@@ -208,7 +208,8 @@ void HealthCheck::IncrementNetworkSwitchCounter() {
 }
 
 void HealthCheck::ResetNetworkSwitchCounter() {
-  LOG(INFO) << "Resetting network switch counter to: 0";
+  LOG(INFO) << "Resetting network switch counter from "
+            << network_switches_since_health_check_ << " to 0";
   network_switches_since_health_check_ = 0;
 }
 

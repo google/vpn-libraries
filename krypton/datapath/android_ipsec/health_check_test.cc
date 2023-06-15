@@ -234,7 +234,7 @@ TEST_F(HealthCheckTest, HealthCheckPass) {
 
   mock_timer_interface_.TimerExpiry(expected_timer_id);
 
-  timer_started.WaitForNotificationWithTimeout(absl::Seconds(1));
+  ASSERT_TRUE(timer_started.WaitForNotificationWithTimeout(absl::Seconds(1)));
 
   health_check.Stop();
 }
@@ -264,18 +264,18 @@ TEST_F(HealthCheckTest, HealthCheckFail) {
 
   mock_timer_interface_.TimerExpiry(expected_timer_id);
 
-  failed.WaitForNotificationWithTimeout(absl::Seconds(1));
+  ASSERT_TRUE(failed.WaitForNotificationWithTimeout(absl::Seconds(1)));
 
   health_check.Stop();
 }
 
 TEST_F(HealthCheckTest, HealthCheckGetDebugLogs) {
+  // Tests the debug info contains a correct record of the number of network
+  // switches occurring between health checks.
   int sockfd = socket(AF_INET6, SOCK_STREAM, 0);
-
   ASSERT_GE(sockfd, 0);
 
   absl::Cleanup cleanup = [sockfd] { close(sockfd); };
-
   sockaddr_in6 addr = {};
   socklen_t addr_size = sizeof(addr);
   addr.sin6_family = AF_INET6;
@@ -284,7 +284,6 @@ TEST_F(HealthCheckTest, HealthCheckGetDebugLogs) {
 
   // Read the addr to figure out which port the socket is bound to.
   getsockname(sockfd, reinterpret_cast<sockaddr *>(&addr), &addr_size);
-
   ASSERT_EQ(listen(sockfd, /*n=*/1), 0);
 
   utils::LooperThread server_looper("HealthCheckTest Server Looper");
@@ -303,28 +302,40 @@ TEST_F(HealthCheckTest, HealthCheckGetDebugLogs) {
   HealthCheck health_check(config, &timer_manager_, &mock_notification_,
                            &looper_);
 
-  // No Health Check info should exist before first health check.
+  // No Health Check debug info should exist before first health check.
   DatapathDebugInfo debug_info;
   health_check.GetDebugInfo(&debug_info);
   ASSERT_EQ(debug_info.health_check_results().size(), 0);
 
-  // Three calls should be seen since the passing check starts the next timer.
+  // Each time a health check timer expires, a health check is performed. If the
+  // health check passes, a new timer is started. Here StartTimer() is called
+  // three times and the timer expires twice before the health check is stopped.
+  // The result is two health checks being performed.
   int expected_timer_id;
   int expected_timer_id2;
   absl::Notification timer_started;
+  absl::Notification timer_started2;
   EXPECT_CALL(mock_timer_interface_, StartTimer(_, Eq(absl::Seconds(1))))
       .WillOnce(
           [&expected_timer_id](int timer_id, absl::Duration /*duration*/) {
             expected_timer_id = timer_id;
             return absl::OkStatus();
           })
-      .WillOnce(
-          [&expected_timer_id2](int timer_id, absl::Duration /*duration*/) {
-            expected_timer_id2 = timer_id;
-            return absl::OkStatus();
-          })
-      .WillOnce([&timer_started]() {
-        timer_started.Notify();
+      .WillOnce([&expected_timer_id2, &timer_started](
+                    int timer_id, absl::Duration /*duration*/) {
+        // Expected_timer_id2 is used in the TimerExpiry() call below, after
+        // WaitForNotificationWithTimeout() completes. If this function calls
+        // Notify() before the timer id value is assigned, there is a data race.
+        // That is because the timer id's value is being assigned in this scope
+        // while the same variable is used in the TimerExpiry() call below.
+        absl::Cleanup notify = [&timer_started] { timer_started.Notify(); };
+        expected_timer_id2 = timer_id;
+        return absl::OkStatus();
+      })
+      .WillOnce([&timer_started2]() {
+        // As there is no timer id value assignment in this lambda, Notify() may
+        // be called at the start of the function.
+        timer_started2.Notify();
         return absl::OkStatus();
       });
 
@@ -335,11 +346,11 @@ TEST_F(HealthCheckTest, HealthCheckGetDebugLogs) {
   health_check.IncrementNetworkSwitchCounter();
   health_check.IncrementNetworkSwitchCounter();
   mock_timer_interface_.TimerExpiry(expected_timer_id);
-  timer_started.WaitForNotificationWithTimeout(absl::Seconds(2));
+  ASSERT_TRUE(timer_started.WaitForNotificationWithTimeout(absl::Seconds(1)));
 
   // No network switches between first and second health check completions.
   mock_timer_interface_.TimerExpiry(expected_timer_id2);
-  timer_started.WaitForNotificationWithTimeout(absl::Seconds(2));
+  ASSERT_TRUE(timer_started2.WaitForNotificationWithTimeout(absl::Seconds(1)));
   health_check.Stop();
 
   health_check.GetDebugInfo(&debug_info);
