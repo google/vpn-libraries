@@ -41,10 +41,13 @@
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
+#include "third_party/anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client.h"
 #include "third_party/anonymous_tokens/cpp/testing/proto_utils.h"
 #include "third_party/anonymous_tokens/cpp/testing/utils.h"
 #include "third_party/anonymous_tokens/proto/anonymous_tokens.proto.h"
@@ -57,11 +60,13 @@ namespace krypton {
 using ::private_membership::anonymous_tokens::AnonymousTokensRsaBssaClient;
 using ::private_membership::anonymous_tokens::RSABlindSignaturePublicKey;
 using ::proto2::contrib::parse_proto::ParseTextProtoOrDie;
+using ::testing::_;
 using ::testing::EqualsProto;
 using ::testing::Invoke;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
 using ::testing::proto::Partially;
+using ::testing::status::StatusIs;
 
 MATCHER_P(PartiallyMatchHttpRequest, other_req,
           "Partially match JSON in an HttpRequest") {
@@ -88,6 +93,8 @@ MATCHER_P(PartiallyMatchHttpRequest, other_req,
   }
   return true;
 }
+
+MATCHER_P(RequestUrlMatcher, url, "") { return arg.url() == url; }
 
 class MockAuthNotification : public Auth::NotificationInterface {
  public:
@@ -119,10 +126,12 @@ class AuthTest : public ::testing::Test {
     KryptonConfig config;
     config.set_zinc_url("http://www.example.com/auth");
     config.set_zinc_public_signing_key_url("http://www.example.com/publickey");
+    config.set_initial_data_url("http://www.example.com/initial_data");
     config.set_service_type("service_type");
     config.set_enable_blind_signing(blind_signing);
     config.set_datapath_protocol(KryptonConfig::IPSEC);
     config.set_integrity_attestation_enabled(enable_attestation);
+    config.add_copper_hostname_suffix("com");
     return config;
   }
   HttpResponse fake_response_;
@@ -190,8 +199,10 @@ class AuthTest : public ::testing::Test {
   }
 
   // Response to AT Auth Request
-  HttpResponse buildATSignResponse(const HttpRequest& http_request) {
-    auto initial_data_response = createGetInitialDataResponse();
+  HttpResponse buildATSignResponse(const HttpRequest& http_request,
+                                   bool debug_mode_enabled) {
+    auto initial_data_response =
+        createGetInitialDataResponse(debug_mode_enabled);
 
     privacy::ppn::AuthAndSignRequest request;
     EXPECT_TRUE(request.ParseFromString(http_request.proto_body()));
@@ -209,6 +220,7 @@ class AuthTest : public ::testing::Test {
 
     // Construct AuthAndSignResponse.
     ppn::AuthAndSignResponse auth_response;
+    auth_response.set_copper_controller_hostname("www.example.com");
     for (const auto& request_token : request.blinded_token()) {
       std::string decoded_blinded_token;
       EXPECT_TRUE(absl::Base64Unescape(request_token, &decoded_blinded_token));
@@ -239,7 +251,8 @@ class AuthTest : public ::testing::Test {
     return response;
   }
 
-  ppn::GetInitialDataResponse createGetInitialDataResponse() {
+  ppn::GetInitialDataResponse createGetInitialDataResponse(
+      bool debug_mode_enabled) {
     ppn::GetInitialDataResponse response = ParseTextProtoOrDie(R"pb(
       at_public_metadata_public_key: {},
       public_metadata_info: {
@@ -252,17 +265,24 @@ class AuthTest : public ::testing::Test {
       },
       attestation: {}
     )pb");
+    if (debug_mode_enabled) {
+      response.mutable_public_metadata_info()
+          ->mutable_public_metadata()
+          ->set_debug_mode(ppn::PublicMetadata::DEBUG_ALL);
+    }
 
     *response.mutable_at_public_metadata_public_key() = keypair_.second;
     return response;
   }
 
-  HttpResponse buildInitialDataHttpResponse(bool with_attestation) {
+  HttpResponse buildInitialDataHttpResponse(bool with_attestation,
+                                            bool debug_mode_enabled) {
     HttpResponse response;
-    auto initial_data_response = createGetInitialDataResponse();
+    auto initial_data_response =
+        createGetInitialDataResponse(debug_mode_enabled);
     if (with_attestation) {
-      initial_data_response.mutable_attestation()
-       ->set_attestation_nonce("some_nonce");
+      initial_data_response.mutable_attestation()->set_attestation_nonce(
+          "some_nonce");
     }
     response.set_proto_body(initial_data_response.SerializeAsString());
     response.mutable_status()->set_code(200);
@@ -272,7 +292,8 @@ class AuthTest : public ::testing::Test {
   HttpResponse buildBadCityIdInitialDataHttpResponse() {
     HttpResponse response;
 
-    auto initial_data_response = createGetInitialDataResponse();
+    auto initial_data_response =
+        createGetInitialDataResponse(/*debug_mode_enabled=*/false);
     initial_data_response.mutable_public_metadata_info()
         ->mutable_public_metadata()
         ->mutable_exit_location()
@@ -285,7 +306,8 @@ class AuthTest : public ::testing::Test {
   HttpResponse buildDebugModeEnabledInitialDataHttpResponse() {
     HttpResponse response;
 
-    auto initial_data_response = createGetInitialDataResponse();
+    auto initial_data_response =
+        createGetInitialDataResponse(/*debug_mode_enabled=*/false);
     initial_data_response.mutable_public_metadata_info()
         ->mutable_public_metadata()
         ->set_debug_mode(ppn::PublicMetadata::DEBUG_ALL);
@@ -296,7 +318,8 @@ class AuthTest : public ::testing::Test {
 
   void inspectInitialDataResponse(
       ppn::GetInitialDataResponse initial_data_response) {
-    auto expected_response = createGetInitialDataResponse();
+    auto expected_response =
+        createGetInitialDataResponse(/*debug_mode_enabled=*/false);
 
     EXPECT_THAT(initial_data_response.public_metadata_info(),
                 EqualsProto(expected_response.public_metadata_info()));
@@ -640,14 +663,15 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabled) {
   EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
   EXPECT_CALL(http_fetcher_,
               PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
-      .WillOnce(::testing::Return(
-          buildInitialDataHttpResponse(/*with_attestation=*/false)));
+      .WillOnce(::testing::Return(buildInitialDataHttpResponse(
+          /*with_attestation=*/false, /*debug_mode_enabled=*/false)));
 
   // Step 1: AuthAndSign
   EXPECT_CALL(http_fetcher_, PostJson(Partially(EqualsProto(
                                  R"pb(url: "http://www.example.com/auth")pb"))))
       .WillOnce(Invoke([this](HttpRequest request) {
-        auto response = buildATSignResponse(request);
+        auto response =
+            buildATSignResponse(request, /*debug_mode_enabled=*/false);
         EXPECT_EQ(response.status().code(), 200);
         EXPECT_EQ(response.status().message(), "OK");
         EXPECT_TRUE(response.has_proto_body());
@@ -695,8 +719,8 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabledAndAttestation) {
   EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
   EXPECT_CALL(http_fetcher_,
               PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
-      .WillOnce(::testing::Return(
-          buildInitialDataHttpResponse(/*with_attestation=*/true)));
+      .WillOnce(::testing::Return(buildInitialDataHttpResponse(
+          /*with_attestation=*/true, /*debug_mode_enabled=*/false)));
 
   // Step 1: AuthAndSign
   EXPECT_CALL(oauth_, GetAttestationData).WillOnce(Return(attestation_data));
@@ -709,7 +733,8 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabledAndAttestation) {
         sign_request.ParseFromString(request.proto_body());
         EXPECT_TRUE(sign_request.attestation().has_attestation_data());
         // Build response.
-        auto response = buildATSignResponse(request);
+        auto response =
+            buildATSignResponse(request, /*debug_mode_enabled=*/false);
         return response;
       }));
 
@@ -721,6 +746,101 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabledAndAttestation) {
   auth_->Start(/*is_rekey=*/GetParam());
   EXPECT_TRUE(
       http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+}
+
+TEST_P(AuthParamsTest, AuthWithBadCopperHostnameDebugModeOff) {
+  // Configure the KryptonConfig with a copper hostname suffix that will not
+  // match the hostname being returned in the Auth response
+  auto config =
+      CreateKryptonConfig(/*blind_signing=*/true, /*enable_attestation=*/true);
+  config.set_public_metadata_enabled(true);
+  config.clear_copper_hostname_suffix();
+  config.add_copper_hostname_suffix("org");
+  ConfigureAuth(config);
+
+  // Set expectations for full Auth flow
+  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+
+  EXPECT_CALL(http_fetcher_,
+              PostJson(RequestUrlMatcher("http://www.example.com/publickey")))
+      .WillRepeatedly(Return(buildPublicKeyResponse()));
+
+  EXPECT_CALL(
+      http_fetcher_,
+      PostJson(RequestUrlMatcher("http://www.example.com/initial_data")))
+      .WillRepeatedly(Return(buildInitialDataHttpResponse(
+          /*with_attestation=*/true, /*debug_mode_enabled=*/false)));
+
+  ppn::AttestationData attestation_data;
+  EXPECT_CALL(oauth_, GetAttestationData).WillOnce(Return(attestation_data));
+  EXPECT_CALL(http_fetcher_,
+              PostJson(RequestUrlMatcher("http://www.example.com/auth")))
+      .WillOnce([this](HttpRequest request) {
+        privacy::ppn::AuthAndSignRequest sign_request;
+        sign_request.ParseFromString(request.proto_body());
+        // Build response without debug mode enabled
+        auto response =
+            buildATSignResponse(request, /*debug_mode_enabled=*/false);
+        return response;
+      });
+
+  // Expect failure from copper hostname suffix not matching
+  absl::Notification auth_failed;
+  EXPECT_CALL(auth_notification_,
+              AuthFailure(StatusIs(absl::StatusCode::kInvalidArgument)))
+      .WillOnce([&auth_failed] { auth_failed.Notify(); });
+
+  auth_->Start(/*is_rekey=*/GetParam());
+
+  EXPECT_TRUE(auth_failed.WaitForNotificationWithTimeout(absl::Seconds(1)));
+}
+
+TEST_P(AuthParamsTest, AuthWithBadCopperHostnameDebugModeOn) {
+  // Configure the KryptonConfig with a copper hostname suffix that will not
+  // match the hostname being returned in the Auth response and allow debug mode
+  auto config =
+      CreateKryptonConfig(/*blind_signing=*/true, /*enable_attestation=*/true);
+  config.set_public_metadata_enabled(true);
+  config.clear_copper_hostname_suffix();
+  config.add_copper_hostname_suffix("org");
+  config.set_debug_mode_allowed(true);
+  ConfigureAuth(config);
+
+  // Set expectations for full Auth flow
+  EXPECT_CALL(oauth_, GetOAuthToken).WillRepeatedly(Return("some_token"));
+
+  EXPECT_CALL(http_fetcher_,
+              PostJson(RequestUrlMatcher("http://www.example.com/publickey")))
+      .WillRepeatedly(Return(buildPublicKeyResponse()));
+
+  EXPECT_CALL(
+      http_fetcher_,
+      PostJson(RequestUrlMatcher("http://www.example.com/initial_data")))
+      .WillRepeatedly(Return(buildInitialDataHttpResponse(
+          /*with_attestation=*/true, /*debug_mode_enabled=*/true)));
+
+  ppn::AttestationData attestation_data;
+  EXPECT_CALL(oauth_, GetAttestationData).WillOnce(Return(attestation_data));
+  EXPECT_CALL(http_fetcher_,
+              PostJson(RequestUrlMatcher("http://www.example.com/auth")))
+      .WillOnce([this](HttpRequest request) {
+        privacy::ppn::AuthAndSignRequest sign_request;
+        sign_request.ParseFromString(request.proto_body());
+        // Build response with debug mode enabled
+        auto response =
+            buildATSignResponse(request, /*debug_mode_enabled=*/true);
+        return response;
+      });
+
+  // Expect success since debug mode should bypass the hostname suffix check
+  absl::Notification auth_success;
+  EXPECT_CALL(auth_notification_, AuthSuccessful(_)).WillOnce([&auth_success] {
+    auth_success.Notify();
+  });
+
+  auth_->Start(/*is_rekey=*/GetParam());
+
+  EXPECT_TRUE(auth_success.WaitForNotificationWithTimeout(absl::Seconds(3)));
 }
 
 TEST_P(AuthParamsTest, InitialDataRequestNonEmptyCityGeoId) {
