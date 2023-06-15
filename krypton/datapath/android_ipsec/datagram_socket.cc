@@ -36,6 +36,7 @@
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/utils/fd_util.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/log/log.h"
 #include "third_party/absl/memory/memory.h"
@@ -99,7 +100,7 @@ absl::Status DatagramSocket::Close() {
   LOG(INFO) << "Closing Socket FD=" << fd;
   PPN_LOG_IF_ERROR(events_helper_.RemoveFile(fd));
   shutdown(fd, SHUT_RDWR);
-  close(fd);
+  PPN_LOG_IF_ERROR(CloseFd(fd));
   PPN_LOG_IF_ERROR(CancelReadPackets());
   return absl::OkStatus();
 }

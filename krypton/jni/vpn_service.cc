@@ -17,8 +17,6 @@
 #include <jni.h>
 #include <jni_md.h>
 
-#include <cerrno>
-#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -41,6 +39,7 @@
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/utils/fd_util.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
@@ -300,15 +299,10 @@ void VpnService::CloseTunnelInternal() {
   int tunnel_fd = std::exchange(tunnel_fd_, -1);
   LOG(INFO) << "Closing tunnel fd=" << tunnel_fd;
 
-  // Retry close operation if it is interrupted.
-  int ret;
-  do {
-    ret = close(tunnel_fd);
-  } while (ret < 0 && errno == EINTR);
+  auto status = CloseFd(tunnel_fd);
 
-  if (ret < 0) {
-    LOG(ERROR) << "Error occurred while closing tunnel fd=" << tunnel_fd << ": "
-               << strerror(errno);
+  if (!status.ok()) {
+    LOG(ERROR) << "Error closing tunnel fd=" << tunnel_fd << ": " << status;
     return;
   }
   LOG(INFO) << "Successfully closed tunnel fd=" << tunnel_fd;
