@@ -97,6 +97,8 @@ NSDictionary<NSString *, id> *PPNKryptonConfigToNSDictionary(
 
   dictionary[@"use_objc_datapath"] = @(config.use_objc_datapath());
 
+  dictionary[@"ip_geo_level"] = @(config.ip_geo_level());
+
   return dictionary;
 }
 

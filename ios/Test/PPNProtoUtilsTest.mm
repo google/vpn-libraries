@@ -97,6 +97,7 @@
       @"copper_hostname_suffix" : @[ @"foo" ],
       @"datapath_protocol" : @"IPSec",
       @"enable_blind_signing" : @1,
+      @"ip_geo_level" : @2,
       @"ipv6_enabled" : @1,
       @"reconnector_config" : @{},
       @"rekey_duration" : @0,
