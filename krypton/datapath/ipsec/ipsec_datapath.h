@@ -22,8 +22,8 @@
 
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
-#include "privacy/net/krypton/datapath/cryptor_interface.h"
-#include "privacy/net/krypton/datapath/packet_forwarder.h"
+#include "privacy/net/krypton/datapath/ipsec/cryptor_interface.h"
+#include "privacy/net/krypton/datapath/ipsec/packet_forwarder.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/packet_pipe.h"
@@ -50,7 +50,7 @@ namespace ipsec {
 //
 // This class is thread safe.
 class IpSecDatapath : public DatapathInterface,
-                      public datapath::PacketForwarder::NotificationInterface {
+                      public PacketForwarder::NotificationInterface {
  public:
   // An interface for ipsec-specific extensions to the VpnService interface.
   class IpSecVpnServiceInterface : public virtual VpnServiceInterface {
@@ -117,11 +117,11 @@ class IpSecDatapath : public DatapathInterface,
   TimerManager* timer_manager_;                 // Not owned by this class.
   PacketPipe* tunnel_ ABSL_GUARDED_BY(mutex_);  // Not owned by this class.
   std::unique_ptr<PacketPipe> network_socket_ ABSL_GUARDED_BY(mutex_);
-  std::unique_ptr<datapath::CryptorInterface> encryptor_
+  std::unique_ptr<CryptorInterface> encryptor_
       ABSL_GUARDED_BY(mutex_);
-  std::unique_ptr<datapath::PacketForwarder> packet_forwarder_
+  std::unique_ptr<PacketForwarder> packet_forwarder_
       ABSL_GUARDED_BY(mutex_);
-  std::unique_ptr<datapath::CryptorInterface> decryptor_
+  std::unique_ptr<CryptorInterface> decryptor_
       ABSL_GUARDED_BY(mutex_);
   std::optional<uint32_t> uplink_spi_ ABSL_GUARDED_BY(mutex_);
   std::optional<TransformParams> key_material_ ABSL_GUARDED_BY(mutex_);

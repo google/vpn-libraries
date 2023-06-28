@@ -22,7 +22,7 @@
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/datapath/ipsec/ipsec_decryptor.h"
 #include "privacy/net/krypton/datapath/ipsec/ipsec_encryptor.h"
-#include "privacy/net/krypton/datapath/packet_forwarder.h"
+#include "privacy/net/krypton/datapath/ipsec/packet_forwarder.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
@@ -197,7 +197,7 @@ absl::Status IpSecDatapath::CreateNetworkPipeAndStartPacketForwarder() {
   }
 
   LOG(INFO) << "Creating packet forwarder.";
-  packet_forwarder_ = std::make_unique<datapath::PacketForwarder>(
+  packet_forwarder_ = std::make_unique<PacketForwarder>(
       encryptor_.get(), decryptor_.get(), tunnel_, network_socket_.get(),
       notification_thread_, this);
   LOG(INFO) << "Starting packet forwarder[" << packet_forwarder_ << "].";

@@ -16,19 +16,25 @@
 #define GOOGLEMAC_IPHONE_SHARED_PPN_KRYPTON_CLASSES_PPNDATAPATH_H_
 
 #include <atomic>
+#include <cstdint>
+#include <memory>
 
 #include "google/protobuf/duration.proto.h"
 #include "googlemac/iPhone/Shared/PPN/Krypton/Classes/PPNPacketForwarder.h"
-#include "privacy/net/krypton/datapath/ipsec/ipsec_decryptor.h"
-#include "privacy/net/krypton/datapath/ipsec/ipsec_encryptor.h"
-#include "privacy/net/krypton/datapath/packet_forwarder.h"
+#include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/datapath_interface.h"
+#include "privacy/net/krypton/endpoint.h"
+#include "privacy/net/krypton/pal/vpn_service_interface.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
+#include "third_party/absl/base/thread_annotations.h"
+#include "third_party/absl/status/status.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
+#include "third_party/absl/types/optional.h"
 
 namespace privacy {
 namespace krypton {

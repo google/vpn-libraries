@@ -20,9 +20,7 @@
 
 #include "privacy/net/krypton/datapath/ipsec/ipsec_decryptor.h"
 #include "privacy/net/krypton/datapath/ipsec/ipsec_encryptor.h"
-#include "privacy/net/krypton/datapath/packet_forwarder.h"
 #include "privacy/net/krypton/desktop/windows/datapath/wintun_tunnel.h"
-#include "privacy/net/krypton/desktop/windows/socket.h"
 #include "privacy/net/krypton/desktop/windows/wintun.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/socket_interface.h"
@@ -47,7 +45,6 @@ class WintunPacketForwarder {
     // NOTE: Clients should call Stop() after receiving this notification.
     virtual void PacketForwarderFailed(const absl::Status&) = 0;
     // PacketForward did successfully forward one packet since Start is called.
-    // TODO: call this notification in WintunPacketForwarder
     virtual void PacketForwarderConnected() = 0;
   };
 

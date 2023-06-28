@@ -12,17 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef PRIVACY_NET_KRYPTON_DATAPATH_CRYPTOR_INTERFACE_H_
-#define PRIVACY_NET_KRYPTON_DATAPATH_CRYPTOR_INTERFACE_H_
+#ifndef PRIVACY_NET_KRYPTON_DATAPATH_IPSEC_CRYPTOR_INTERFACE_H_
+#define PRIVACY_NET_KRYPTON_DATAPATH_IPSEC_CRYPTOR_INTERFACE_H_
 
-#include "privacy/net/krypton/pal/vpn_service_interface.h"
-#include "third_party/absl/strings/string_view.h"
+#include "privacy/net/krypton/pal/packet.h"
+#include "third_party/absl/status/statusor.h"
 
 namespace privacy {
 namespace krypton {
 namespace datapath {
+namespace ipsec {
 
-/// Common interface for how a packet is encrypted/decrypted in the Wireguard
+/// Common interface for how a packet is encrypted/decrypted in the IPsec
 /// datapath.
 class CryptorInterface {
  public:
@@ -36,8 +37,9 @@ class CryptorInterface {
   virtual absl::StatusOr<Packet> Process(const Packet& packet) = 0;
 };
 
+}  // namespace ipsec
 }  // namespace datapath
 }  // namespace krypton
 }  // namespace privacy
 
-#endif  // PRIVACY_NET_KRYPTON_DATAPATH_CRYPTOR_INTERFACE_H_
+#endif  // PRIVACY_NET_KRYPTON_DATAPATH_IPSEC_CRYPTOR_INTERFACE_H_

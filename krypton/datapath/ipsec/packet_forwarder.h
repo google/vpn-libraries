@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef PRIVACY_NET_KRYPTON_DATAPATH_PACKET_FORWARDER_H_
-#define PRIVACY_NET_KRYPTON_DATAPATH_PACKET_FORWARDER_H_
+#ifndef PRIVACY_NET_KRYPTON_DATAPATH_IPSEC_PACKET_FORWARDER_H_
+#define PRIVACY_NET_KRYPTON_DATAPATH_IPSEC_PACKET_FORWARDER_H_
 
 #include <atomic>
 
-#include "privacy/net/krypton/datapath/cryptor_interface.h"
+#include "privacy/net/krypton/datapath/ipsec/cryptor_interface.h"
 #include "privacy/net/krypton/pal/packet_pipe.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/utils/looper.h"
@@ -28,6 +28,7 @@
 namespace privacy {
 namespace krypton {
 namespace datapath {
+namespace ipsec {
 
 // Interface for forwarding packets between inbound packet pipe and outbound
 // packet pipe.
@@ -94,8 +95,9 @@ class PacketForwarder {
   std::atomic_int64_t decryption_errors_;
 };
 
+}  // namespace ipsec
 }  // namespace datapath
 }  // namespace krypton
 }  // namespace privacy
 
-#endif  // PRIVACY_NET_KRYPTON_DATAPATH_PACKET_FORWARDER_H_
+#endif  // PRIVACY_NET_KRYPTON_DATAPATH_IPSEC_PACKET_FORWARDER_H_

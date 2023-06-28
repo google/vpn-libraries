@@ -15,14 +15,18 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_IPSEC_IPSEC_DECRYPTOR_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_IPSEC_IPSEC_DECRYPTOR_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
-#include "privacy/net/krypton/datapath/cryptor_interface.h"
-#include "privacy/net/krypton/datapath/ipsec/ipsec.h"
+#include "privacy/net/krypton/datapath/ipsec/cryptor_interface.h"
+#include "privacy/net/krypton/datapath/ipsec/ipsec_packet.h"
 #include "privacy/net/krypton/datapath/ipsec/ipsec_packet_pool.h"
 #include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/proto/network_info.proto.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
@@ -53,7 +57,7 @@ class IpSecDecryptor {
   std::optional<std::string> salt_;
 };
 
-class Decryptor : public datapath::CryptorInterface {
+class Decryptor : public CryptorInterface {
  public:
   explicit Decryptor(std::unique_ptr<IpSecDecryptor> decryptor)
       : decryptor_(std::move(decryptor)) {}

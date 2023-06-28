@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "privacy/net/krypton/datapath/packet_forwarder.h"
+#include "privacy/net/krypton/datapath/ipsec/packet_forwarder.h"
 
 #include <atomic>
 #include <utility>
 #include <vector>
 
-#include "privacy/net/krypton/datapath/cryptor_interface.h"
+#include "privacy/net/krypton/datapath/ipsec/cryptor_interface.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/pal/packet_pipe.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
@@ -31,6 +31,7 @@
 namespace privacy {
 namespace krypton {
 namespace datapath {
+namespace ipsec {
 
 PacketForwarder::PacketForwarder(CryptorInterface* encryptor,
                                  CryptorInterface* decryptor,
@@ -239,6 +240,7 @@ void PacketForwarder::GetDebugInfo(DatapathDebugInfo* debug_info) {
   utun_pipe_->GetDebugInfo(debug_info->mutable_device_pipe());
 }
 
+}  // namespace ipsec
 }  // namespace datapath
 }  // namespace krypton
 }  // namespace privacy

@@ -23,6 +23,7 @@
 #import "googlemac/iPhone/Shared/PPN/API/PPNLog.h"
 #import "googlemac/iPhone/Shared/PPN/Classes/NSObject+PPNKVO.h"
 #import "googlemac/iPhone/Shared/PPN/Krypton/Classes/PPNPacket.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 
 #include "third_party/absl/synchronization/blocking_counter.h"
 

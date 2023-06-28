@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "privacy/net/krypton/datapath/packet_forwarder.h"
+#include "privacy/net/krypton/datapath/ipsec/packet_forwarder.h"
 
 #include <atomic>
 #include <functional>
@@ -21,13 +21,20 @@
 #include <utility>
 #include <vector>
 
+#include "privacy/net/krypton/datapath/ipsec/cryptor_interface.h"
+#include "privacy/net/krypton/pal/packet.h"
+#include "privacy/net/krypton/pal/packet_pipe.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 
 namespace privacy {
 namespace krypton {
 namespace datapath {
+namespace ipsec {
 
 class MockNotification : public PacketForwarder::NotificationInterface {
  public:
@@ -253,6 +260,7 @@ TEST_F(PacketForwarderTest, TestCounters) {
   notification_thread_.Join();
 }
 
+}  // namespace ipsec
 }  // namespace datapath
 }  // namespace krypton
 }  // namespace privacy

@@ -18,11 +18,12 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
-#include "privacy/net/krypton/datapath/cryptor_interface.h"
-#include "privacy/net/krypton/datapath/ipsec/ipsec.h"
+#include "privacy/net/krypton/datapath/ipsec/cryptor_interface.h"
+#include "privacy/net/krypton/datapath/ipsec/ipsec_packet.h"
 #include "privacy/net/krypton/datapath/ipsec/ipsec_packet_pool.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
@@ -54,7 +55,7 @@ class IpSecEncryptor {
   std::atomic_uint32_t sequence_number_;
 };
 
-class Encryptor : public datapath::CryptorInterface {
+class Encryptor : public CryptorInterface {
  public:
   explicit Encryptor(std::unique_ptr<IpSecEncryptor> encryptor)
       : encryptor_(std::move(encryptor)) {}

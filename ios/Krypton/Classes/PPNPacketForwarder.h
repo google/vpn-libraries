@@ -20,6 +20,8 @@
 #include "privacy/net/krypton/datapath/ipsec/ipsec_decryptor.h"
 #include "privacy/net/krypton/datapath/ipsec/ipsec_encryptor.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/status/status.h"
 
 @class PPNPacketForwarder;
