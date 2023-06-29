@@ -5,7 +5,13 @@
 #include <optional>
 #include <string>
 
+// copybara:strip_begin(internal)
+// We will limit dependencies in this file to only Abseil, BoringSSL, and the
+// existing common protos.
+// copybara:strip_end
 #include "privacy/net/common/proto/public_metadata.proto.h"
+#include "third_party/absl/status/status.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy::ppn {
 
@@ -35,6 +41,18 @@ struct BinaryPublicMetadata {
 
 BinaryPublicMetadata PublicMetadataProtoToStruct(
     const privacy::ppn::PublicMetadata& metadata);
+
+absl::Status ValidateBinaryPublicMetadataCardinality(
+    const privacy::ppn::BinaryPublicMetadata& metadata, absl::Time now);
+
+// Serialize a BinaryPublicMetadata struct into
+// draft-wood-privacypass-extensible-token format.
+// TODO: document extensions in more detail
+std::string Serialize(const privacy::ppn::BinaryPublicMetadata& metadata);
+
+// Deserialize a draft-wood-privacypass-extensible-token format into a struct.
+privacy::ppn::BinaryPublicMetadata Deserialize(
+    absl::string_view serialized_metadata);
 
 }  // namespace privacy::ppn
 
