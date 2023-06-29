@@ -120,13 +120,6 @@ absl::Status VpnService::CreateTunnel(const TunFdData& tun_fd_data) {
 
   LOG(INFO) << "Creating new tunnel with fd=" << fd;
   tunnel_fd_ = fd;
-  auto tunnel = datapath::android::IpSecTunnel::Create(fd);
-  if (!tunnel.ok()) {
-    LOG(INFO) << "Failed to create tunnel: " << tunnel.status();
-    CloseTunnelInternal();
-    return tunnel.status();
-  }
-  tunnel_ = *std::move(tunnel);
   return absl::OkStatus();
 }
 
@@ -136,8 +129,8 @@ absl::StatusOr<datapath::android::TunnelInterface*> VpnService::GetTunnel() {
   // This will prevent any old events from being processed.
   PPN_ASSIGN_OR_RETURN(auto tunnel,
                        datapath::android::IpSecTunnel::Create(tunnel_fd_));
-  tunnel->SetKeepaliveInterval(tunnel_->GetKeepaliveInterval());
   tunnel_ = std::move(tunnel);
+  UpdateKeepaliveInterval();
   return tunnel_.get();
 }
 
@@ -263,10 +256,9 @@ absl::Status VpnService::ConfigureIpSec(const IpSecTransformParams& params) {
 
 void VpnService::DisableKeepalive() {
   absl::MutexLock l(&mutex_);
-  if (tunnel_ == nullptr) {
-    return;
-  }
-  tunnel_->SetKeepaliveInterval(absl::ZeroDuration());
+  LOG(INFO) << "Disabling native keepalive";
+  native_keepalive_disabled_ = true;
+  UpdateKeepaliveInterval();
 }
 
 absl::Status VpnService::ConfigureNetworkSocket(
@@ -275,11 +267,8 @@ absl::Status VpnService::ConfigureNetworkSocket(
 
   {
     absl::MutexLock l(&mutex_);
-    if (endpoint.ip_protocol() == IPProtocol::kIPv4) {
-      tunnel_->SetKeepaliveInterval(keepalive_interval_ipv4_);
-    } else {
-      tunnel_->SetKeepaliveInterval(keepalive_interval_ipv6_);
-    }
+    network_ip_protocol_ = endpoint.ip_protocol();
+    UpdateKeepaliveInterval();
   }
 
   if (!status.ok()) {
@@ -306,6 +295,20 @@ void VpnService::CloseTunnelInternal() {
     return;
   }
   LOG(INFO) << "Successfully closed tunnel fd=" << tunnel_fd;
+}
+
+void VpnService::UpdateKeepaliveInterval() {
+  if (tunnel_ == nullptr) {
+    return;
+  }
+
+  if (native_keepalive_disabled_) {
+    tunnel_->SetKeepaliveInterval(absl::ZeroDuration());
+  } else if (network_ip_protocol_ == IPProtocol::kIPv4) {
+    tunnel_->SetKeepaliveInterval(keepalive_interval_ipv4_);
+  } else if (network_ip_protocol_ == IPProtocol::kIPv6) {
+    tunnel_->SetKeepaliveInterval(keepalive_interval_ipv6_);
+  }
 }
 
 }  // namespace jni

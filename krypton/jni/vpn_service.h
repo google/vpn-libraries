@@ -28,6 +28,7 @@
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
+#include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
@@ -52,7 +53,9 @@ class VpnService
         tunnel_(nullptr),
         tunnel_fd_(-1),
         keepalive_interval_ipv4_(absl::ZeroDuration()),
-        keepalive_interval_ipv6_(absl::ZeroDuration()) {}
+        keepalive_interval_ipv6_(absl::ZeroDuration()),
+        network_ip_protocol_(IPProtocol::kUnknown),
+        native_keepalive_disabled_(false) {}
 
   DatapathInterface* BuildDatapath(const KryptonConfig& config,
                                    utils::LooperThread* looper,
@@ -92,6 +95,8 @@ class VpnService
 
   void CloseTunnelInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  void UpdateKeepaliveInterval() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   std::unique_ptr<JavaObject> krypton_instance_;
 
   absl::Mutex mutex_;
@@ -101,6 +106,8 @@ class VpnService
 
   absl::Duration keepalive_interval_ipv4_;
   absl::Duration keepalive_interval_ipv6_;
+  IPProtocol network_ip_protocol_ ABSL_GUARDED_BY(mutex_);
+  bool native_keepalive_disabled_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace jni
