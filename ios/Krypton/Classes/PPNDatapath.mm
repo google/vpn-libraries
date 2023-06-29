@@ -98,6 +98,7 @@ absl::Status PPNDatapath::SwitchNetwork(uint32_t session_id, const Endpoint& end
 
   PPN_RETURN_IF_ERROR(CreateNetworkPipeAndStartPacketForwarder());
   StartDatapathConnectingTimer();
+  network_switches_since_health_check_++;
   return absl::OkStatus();
 }
 
@@ -249,6 +250,9 @@ void PPNDatapath::PacketForwarderConnected() {
 void PPNDatapath::GetDebugInfo(DatapathDebugInfo* debug_info) {
   absl::MutexLock l(&mutex_);
   [packet_forwarder_ collectDebugInfo:debug_info];
+  for (const auto& health_check_result : health_check_stats_) {
+    *debug_info->add_health_check_results() = health_check_result;
+  }
 }
 
 void PPNDatapath::StartHealthCheckTimer() {
@@ -262,7 +266,7 @@ void PPNDatapath::StartHealthCheckTimer() {
   LOG(INFO) << "Starting HealthCheck timer.";
   auto timer_id = timer_manager_->StartTimer(
       periodic_health_check_duration_,
-      absl::bind_front(&PPNDatapath::HandleHealthCheckTimeout, this), "HealthCheck");
+      absl::bind_front(&PPNDatapath::HandleHealthCheckTimerExpired, this), "HealthCheck");
   if (!timer_id.ok()) {
     LOG(ERROR) << "Cannot StartTimer for HealthCheck";
     return;
@@ -277,7 +281,7 @@ void PPNDatapath::CancelHealthCheckTimer() {
   health_check_timer_id_ = kInvalidTimerId;
 }
 
-void PPNDatapath::HandleHealthCheckTimeout() {
+void PPNDatapath::HandleHealthCheckTimerExpired() {
   absl::MutexLock l(&mutex_);
   if (health_check_cancelled_ == nullptr || *health_check_cancelled_) {
     // The timer expired after the check was cancelled.
@@ -288,9 +292,10 @@ void PPNDatapath::HandleHealthCheckTimeout() {
     LOG(INFO) << "Starting HealthCheck.";
     auto status = vpn_service_->CheckConnection();
     if (*health_check_cancelled) {
-      LOG(INFO) << "HealthCheck finished after it's cancelled";
+      LOG(INFO) << "HealthCheck timeout occurred after it was cancelled";
       return;
     }
+    SaveHealthCheckInfo(status.ok());
     LOG(INFO) << "HealthCheck finished with status: " << status;
     if (status.ok()) {
       StartHealthCheckTimer();
@@ -298,6 +303,17 @@ void PPNDatapath::HandleHealthCheckTimeout() {
     }
     PacketForwarderFailed(status);
   });
+}
+
+void PPNDatapath::SaveHealthCheckInfo(bool health_check_passed) {
+  absl::MutexLock l(&mutex_);
+
+  HealthCheckDebugInfo debug_details;
+  debug_details.set_health_check_successful(health_check_passed);
+  debug_details.set_network_switches_since_health_check(network_switches_since_health_check_);
+  health_check_stats_.push_back(debug_details);
+  LOG(INFO) << "Network switches since last HealthCheck: " << network_switches_since_health_check_;
+  network_switches_since_health_check_ = 0;
 }
 
 }  // namespace krypton

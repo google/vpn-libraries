@@ -22,6 +22,7 @@
 #import "googlemac/iPhone/Shared/PPN/Krypton/Classes/PPNDatapath.h"
 
 #include "privacy/net/krypton/datapath/ipsec/ipsec_encryptor.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/test_packet_pipe.h"
@@ -494,6 +495,64 @@ KryptonConfig CreateTestConfig() {
 
   LOG(INFO) << "Stopping datapath...";
   _datapath->Stop();
+}
+
+- (void)testDebugInfoFailedHealthCheckWithNetworkSwitch {
+  ::privacy::krypton::TransformParams params;
+  params.mutable_ipsec()->set_uplink_key(std::string(32, 'z'));
+  params.mutable_ipsec()->set_downlink_key(std::string(32, 'z'));
+  params.mutable_ipsec()->set_uplink_salt(std::string(4, 'a'));
+  params.mutable_ipsec()->set_downlink_salt(std::string(4, 'a'));
+
+  LOG(INFO) << "Starting datapath...";
+  XCTAssertTrue(_datapath->Start(_fakeAddEgressResponse, params).ok());
+
+  // Simulate some network traffic, so that we know everything is running.
+  XCTestExpectation *established = _notification->ExpectDatapathEstablished();
+
+  // Make a fake packet to send back to the datapath from the backend.
+  ASSERT_OK_AND_ASSIGN(auto encryptor,
+                       privacy::krypton::datapath::ipsec::Encryptor::Create(2, params));
+  privacy::krypton::Packet unencrypted("foo", 3, privacy::krypton::IPProtocol::kIPv4, [] {});
+  ASSERT_OK_AND_ASSIGN(auto encrypted, encryptor->Process(unencrypted));
+  NSArray<NSData *> *datagrams = @[ [NSData dataWithBytes:encrypted.data().data()
+                                                   length:encrypted.data().size()] ];
+
+  // Set up the mock pipe to receive the packet
+  OCMExpect([_mockUDPSession state]).andReturn(NWUDPSessionStateReady);
+  OCMStub([_mockUDPSession
+      setReadHandler:([OCMArg invokeBlockWithArgs:datagrams, [NSNull null], nil])
+        maxDatagrams:64]);
+  OCMExpect([_mockPacketTunnelFlow writePacketObjects:[OCMArg any]]).andReturn(YES);
+  privacy::krypton::Endpoint endpoint{"192.0.2.0:8080", "192.0.2.0", 8080,
+                                      privacy::krypton::IPProtocol::kIPv4};
+  privacy::krypton::NetworkInfo network_info;
+  LOG(INFO) << "Switching network...";
+  XCTAssertTrue(_datapath->SwitchNetwork(1, endpoint, network_info, 1).ok());
+
+  // Wait for the datapath to be connected.
+  LOG(INFO) << "Waiting for establishment...";
+  [self waitForExpectations:@[ established ] timeout:kTimeout];
+
+  // Verify that the health check failing fails the datapath.
+  LOG(INFO) << "Failing health check...";
+  XCTestExpectation *failed = _notification->ExpectDatapathFailed();
+  _timerInterface->TimerExpiry(1);
+  _VPNService->FulfillHealthCheck(absl::UnknownError("test error"));
+  [self waitForExpectations:@[ failed ] timeout:kTimeout];
+
+  // Get debug info from datapath.
+  LOG(INFO) << "Getting DatapathDebugInfo...";
+  privacy::krypton::DatapathDebugInfo debug_info;
+  _datapath->GetDebugInfo(&debug_info);
+
+  LOG(INFO) << "Stopping datapath...";
+  _datapath->Stop();
+
+  // Check HealthCheckDebugInfo.
+  XCTAssertEqual(debug_info.health_check_results_size(), 1);
+  XCTAssertFalse(debug_info.health_check_results().at(0).health_check_successful());
+  XCTAssertEqual(debug_info.health_check_results().at(0).network_switches_since_health_check(), 1);
 }
 
 @end

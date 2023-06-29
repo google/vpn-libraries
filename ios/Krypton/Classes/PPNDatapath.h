@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "google/protobuf/duration.proto.h"
 #include "googlemac/iPhone/Shared/PPN/Krypton/Classes/PPNPacketForwarder.h"
@@ -130,6 +131,8 @@ class PPNDatapath : public DatapathInterface,
   int datapath_connecting_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int health_check_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int datapath_connecting_count_ ABSL_GUARDED_BY(mutex_) = 0;
+  int network_switches_since_health_check_ ABSL_GUARDED_BY(mutex_) = 0;
+  std::vector<HealthCheckDebugInfo> health_check_stats_ ABSL_GUARDED_BY(mutex_);
 
   const bool periodic_health_check_enabled_;
   const absl::Duration periodic_health_check_duration_;
@@ -148,7 +151,9 @@ class PPNDatapath : public DatapathInterface,
   void HandleDatapathConnectingTimeout();
   void StartHealthCheckTimer();
   void CancelHealthCheckTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  void HandleHealthCheckTimeout();
+  void HandleHealthCheckTimerExpired();
+  void SaveHealthCheckInfo(bool health_check_passed)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 };
 
 }  // namespace krypton
