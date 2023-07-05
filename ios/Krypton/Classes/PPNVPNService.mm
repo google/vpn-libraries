@@ -19,6 +19,7 @@
 #import <Foundation/Foundation.h>
 #import <NetworkExtension/NetworkExtension.h>
 
+#include <memory>
 #include <utility>
 
 #import "googlemac/iPhone/Shared/PPN/API/PPNError.h"
@@ -32,7 +33,6 @@
 #import "googlemac/iPhone/Shared/PPN/Krypton/Classes/PPNUDPSessionPipe.h"
 
 #include "base/logging.h"
-#include "privacy/net/krypton/datapath/ipsec/ipsec_datapath.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
@@ -123,10 +123,7 @@ namespace krypton {
 DatapathInterface* PPNVPNService::BuildDatapath(const KryptonConfig& config,
                                                 utils::LooperThread* looper,
                                                 TimerManager* timer_manager) {
-  if (config.use_objc_datapath()) {
-    return new PPNDatapath(config, looper, this, timer_manager);
-  }
-  return new datapath::ipsec::IpSecDatapath(config, looper, this, timer_manager);
+  return new PPNDatapath(config, looper, this, timer_manager);
 }
 
 absl::Status PPNVPNService::CreateTunnel(const TunFdData& tun_fd_data) {
@@ -140,11 +137,6 @@ absl::Status PPNVPNService::CreateTunnel(const TunFdData& tun_fd_data) {
   }
   tunnel_ = std::make_unique<PPNPacketTunnelPipe>(GetPacketTunnelFlow());
   return absl::OkStatus();
-}
-
-PacketPipe* PPNVPNService::GetTunnel() {
-  absl::MutexLock l(&mutex_);
-  return tunnel_.get();
 }
 
 NEPacketTunnelFlow* PPNVPNService::GetPacketTunnelFlow() {
@@ -168,15 +160,7 @@ void PPNVPNService::CloseTunnel() {
   tunnel_.reset();
 }
 
-absl::StatusOr<std::unique_ptr<PacketPipe>> PPNVPNService::CreateNetworkPipe(
-    const NetworkInfo& network_info, const Endpoint& endpoint) {
-  PPN_ASSIGN_OR_RETURN(auto session, CreateUDPSession(network_info, endpoint));
-  auto pipe = std::make_unique<PPNUDPSessionPipe>(session, endpoint.ip_protocol());
-  PPN_RETURN_IF_ERROR(pipe->WaitForReady());
-  return pipe;
-}
-
-absl::StatusOr<NWUDPSession*> PPNVPNService::CreateUDPSession(const NetworkInfo& network_info,
+absl::StatusOr<NWUDPSession*> PPNVPNService::CreateUDPSession(const NetworkInfo& /*network_info*/,
                                                               const Endpoint& endpoint) {
   TunFdData tun_fd_data;
   {

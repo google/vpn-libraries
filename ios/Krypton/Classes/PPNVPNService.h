@@ -22,10 +22,8 @@
 #include <memory>
 
 #include "googlemac/iPhone/Shared/PPN/Krypton/Classes/PPNDatapath.h"
-#include "privacy/net/krypton/datapath/ipsec/ipsec_datapath.h"
-#include "privacy/net/krypton/pal/vpn_service_interface.h"
+#include "privacy/net/krypton/pal/packet_pipe.h"
 #include "third_party/absl/base/thread_annotations.h"
-#include "third_party/absl/container/flat_hash_map.h"
 #include "third_party/absl/synchronization/mutex.h"
 
 @protocol PPNUDPSessionManaging;
@@ -34,8 +32,7 @@
 namespace privacy {
 namespace krypton {
 
-class PPNVPNService : public datapath::ipsec::IpSecDatapath::IpSecVpnServiceInterface,
-                      public PPNDatapath::PPNDatapathVpnServiceInterface {
+class PPNVPNService : public PPNDatapath::PPNDatapathVpnServiceInterface {
  public:
   explicit PPNVPNService(id<PPNUDPSessionManaging> UDPSessionManager,
                          id<PPNVirtualNetworkInterfaceManaging> networkManager)
@@ -47,17 +44,12 @@ class PPNVPNService : public datapath::ipsec::IpSecDatapath::IpSecVpnServiceInte
                                    TimerManager* timer_manager) override;
   // Establishes the tunnel.
   absl::Status CreateTunnel(const TunFdData& tun_fd_data) override;
-  PacketPipe* GetTunnel() override;
   NEPacketTunnelFlow* GetPacketTunnelFlow() override;
   void CloseTunnel() override;
 
   // Create aa udp session to a given endpoint.
   absl::StatusOr<NWUDPSession*> CreateUDPSession(const NetworkInfo& network_info,
                                                  const Endpoint& endpoint) override;
-
-  // Creates a network side packet pipe using the `endpoint`.
-  absl::StatusOr<std::unique_ptr<PacketPipe>> CreateNetworkPipe(const NetworkInfo& network_info,
-                                                                const Endpoint& endpoint) override;
 
   // Verifies the tunnel connection is still up.
   absl::Status CheckConnection() override;
