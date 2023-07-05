@@ -87,6 +87,11 @@ absl::Status IpSecDatapath::SwitchNetwork(
     LOG(ERROR) << "network_info is unset";
     return absl::InvalidArgumentError("network_info is unset");
   }
+
+  LOG(INFO) << "Switching Network";
+
+  ShutdownIpSecPacketForwarder(/*close_network_socket=*/true);
+
   auto tunnel = vpn_service_->GetTunnel();
   if (!tunnel.ok()) {
     NotifyDatapathPermanentFailure(tunnel.status());
@@ -96,9 +101,6 @@ absl::Status IpSecDatapath::SwitchNetwork(
     NotifyDatapathPermanentFailure(absl::InternalError("tunnel is null"));
     return absl::OkStatus();
   }
-  LOG(INFO) << "Switching Network";
-
-  ShutdownIpSecPacketForwarder(/*close_network_socket=*/true);
 
   if (!key_material_) {
     return absl::FailedPreconditionError("Key Material is not set");

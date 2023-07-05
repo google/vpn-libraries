@@ -64,6 +64,9 @@ class VpnService
   // TUN fd creation
   absl::Status CreateTunnel(const TunFdData& tun_fd_data)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
+  // Every call to this will return a new TunnelInterface object and delete the
+  // previous instance. Make sure the previous instance is no longer being used
+  // before calling.
   absl::StatusOr<datapath::android::TunnelInterface*> GetTunnel()
       ABSL_LOCKS_EXCLUDED(mutex_) override;
   absl::StatusOr<int> GetTunnelFd() ABSL_LOCKS_EXCLUDED(mutex_) override;
