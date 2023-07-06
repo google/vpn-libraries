@@ -690,40 +690,44 @@ TEST_F(SessionTest, TestSetKeyMaterials) {
 TEST_F(SessionTest, UplinkMtuUpdateHandler) {
   BringDatapathToConnected();
 
-  EXPECT_CALL(*datapath_, PrepareForTunnelSwitch()).Times(1);
-  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_)).Times(1);
-  EXPECT_CALL(*datapath_, SwitchTunnel()).Times(1);
+  EXPECT_CALL(*datapath_, PrepareForTunnelSwitch());
+  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_));
+  EXPECT_CALL(*datapath_, SwitchTunnel());
 
-  session_->DoUplinkMtuUpdate(123, 456);
+  session_->DoUplinkMtuUpdate(/*uplink_mtu=*/123, /*tunnel_mtu=*/456);
 
   EXPECT_EQ(session_->GetUplinkMtuTestOnly(), 123);
   EXPECT_EQ(session_->GetTunnelMtuTestOnly(), 456);
 }
 
-TEST_F(SessionTest, UplinkMtuUpdateHandlerErrorWithNoExistingTunnel) {
-  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_)).Times(0);
-  EXPECT_CALL(*datapath_, SwitchTunnel()).Times(0);
-  EXPECT_CALL(*datapath_, Stop()).Times(2);
-  EXPECT_CALL(notification_,
-              ControlPlaneDisconnected(StatusIs(absl::StatusCode::kInternal)));
+TEST_F(SessionTest, UplinkMtuUpdateHandlerSessionDisconnected) {
+  session_->DoUplinkMtuUpdate(/*uplink_mtu=*/123, /*tunnel_mtu=*/456);
 
-  session_->DoUplinkMtuUpdate(123, 456);
+  EXPECT_NE(session_->GetUplinkMtuTestOnly(), 123);
+  EXPECT_NE(session_->GetTunnelMtuTestOnly(), 456);
 }
 
 TEST_F(SessionTest, DownlinkMtuUpdateHandler) {
-  session_->DoDownlinkMtuUpdate(123);
+  BringDatapathToConnected();
+
+  session_->DoDownlinkMtuUpdate(/*downlink_mtu=*/123);
   EXPECT_EQ(session_->GetDownlinkMtuTestOnly(), 123);
+}
+
+TEST_F(SessionTest, DownlinkMtuUpdateHandlerSessionDisconnected) {
+  session_->DoDownlinkMtuUpdate(/*downlink_mtu=*/123);
+  EXPECT_NE(session_->GetDownlinkMtuTestOnly(), 123);
 }
 
 TEST_F(SessionTest, UplinkMtuUpdateHandlerHttpStatusOk) {
   BringDatapathToConnected();
 
   EXPECT_CALL(tunnel_manager_,
-              EnsureTunnelIsUp(EqualsProto(GetTunFdData(456))));
+              EnsureTunnelIsUp(EqualsProto(GetTunFdData(/*mtu=*/456))));
 
   EXPECT_CALL(notification_, ControlPlaneDisconnected(_)).Times(0);
 
-  session_->DoUplinkMtuUpdate(123, 456);
+  session_->DoUplinkMtuUpdate(/*uplink_mtu=*/123, /*tunnel_mtu=*/456);
 
   EXPECT_EQ(session_->GetUplinkMtuTestOnly(), 123);
   EXPECT_EQ(session_->GetTunnelMtuTestOnly(), 456);
@@ -748,7 +752,7 @@ TEST_F(SessionTest, DownlinkMtuUpdateHandlerHttpStatusOk) {
 
   EXPECT_CALL(notification_, ControlPlaneDisconnected(_)).Times(0);
 
-  session_->DoDownlinkMtuUpdate(123);
+  session_->DoDownlinkMtuUpdate(/*downlink_mtu=*/123);
 
   ASSERT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
 
@@ -778,7 +782,7 @@ TEST_F(SessionTest, DownlinkMtuUpdateHandlerHttpStatusBadRequest) {
                                           HasSubstr("Bad Request"))))
       .WillOnce([&notification_done] { notification_done.Notify(); });
 
-  session_->DoDownlinkMtuUpdate(123);
+  session_->DoDownlinkMtuUpdate(/*downlink_mtu=*/123);
 
   ASSERT_TRUE(
       notification_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
