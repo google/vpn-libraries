@@ -127,7 +127,7 @@ public class PpnNotificationManager {
       if (VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
         // Including the foregroundServiceType for Android U & above.
         service.startForeground(
-            notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED);
+            notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
       } else if (VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         service.startForeground(notificationId, notification);
       } else {
