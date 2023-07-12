@@ -73,6 +73,7 @@ namespace {
 
 using ::proto2::contrib::parse_proto::ParseTextProtoOrDie;
 using ::testing::_;
+using ::testing::AnyNumber;
 using ::testing::DoAll;
 using ::testing::Eq;
 using ::testing::EqualsProto;
@@ -366,8 +367,11 @@ class SessionTest : public ::testing::Test {
   }
 
   void ExpectSuccessfulDatapathInit() {
-    EXPECT_CALL(timer_interface_, StartTimer(_, absl::Minutes(5)))
-        .WillOnce(Return(absl::OkStatus()));
+    EXPECT_CALL(timer_interface_, StartTimer(_, absl::Minutes(5)));
+
+    // Expect the DatapathConnecting timer to be started
+    EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(10)))
+        .Times(AnyNumber());
 
     EXPECT_CALL(notification_, ControlPlaneConnected());
 
@@ -413,7 +417,9 @@ class SessionTest : public ::testing::Test {
            ip_geo_level: CITY
            enable_blind_signing: true
            dynamic_mtu_enabled: true
-           public_metadata_enabled: true)pb")};
+           public_metadata_enabled: true
+           datapath_connecting_timer_enabled: true
+           datapath_connecting_timer_duration: { seconds: 10 })pb")};
 
   MockSessionNotification notification_;
   MockHttpFetcher http_fetcher_;
@@ -455,6 +461,72 @@ TEST_F(SessionTest, DatapathInitFailure) {
 }
 
 TEST_F(SessionTest, DatapathInitSuccessful) { BringDatapathToConnected(); }
+
+TEST_F(SessionTest, DatapathConnectingTimerExpired) {
+  ExpectSuccessfulDatapathInit();
+
+  session_->Start();
+
+  WaitForDatapathStart();
+
+  int datapath_connecting_timer_id = -1;
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(10)))
+      .WillOnce([&datapath_connecting_timer_id](int timer_id,
+                                                absl::Duration /*duration*/) {
+        datapath_connecting_timer_id = timer_id;
+        return absl::OkStatus();
+      });
+
+  NetworkInfo network_info;
+  network_info.set_network_id(123);
+  network_info.set_network_type(NetworkType::CELLULAR);
+  EXPECT_OK(session_->SetNetwork(network_info));
+
+  // Expect the datapath reattempt to be scheduled after the datapath connecting
+  // timer expires.
+  absl::Notification reattempt_scheduled;
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Milliseconds(500)))
+      .WillOnce([&reattempt_scheduled] {
+        reattempt_scheduled.Notify();
+        return absl::OkStatus();
+      });
+
+  timer_interface_.TimerExpiry(datapath_connecting_timer_id);
+
+  ASSERT_TRUE(
+      reattempt_scheduled.WaitForNotificationWithTimeout(absl::Seconds(1)));
+}
+
+TEST_F(SessionTest, DatapathConnectingTimerCancelled) {
+  ExpectSuccessfulDatapathInit();
+
+  session_->Start();
+
+  WaitForDatapathStart();
+
+  int datapath_connecting_timer_id = -1;
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(10)))
+      .WillOnce([&datapath_connecting_timer_id](int timer_id,
+                                                absl::Duration /*duration*/) {
+        datapath_connecting_timer_id = timer_id;
+        return absl::OkStatus();
+      });
+
+  NetworkInfo network_info;
+  network_info.set_network_id(123);
+  network_info.set_network_type(NetworkType::CELLULAR);
+  EXPECT_OK(session_->SetNetwork(network_info));
+
+  EXPECT_CALL(timer_interface_, CancelTimer(_)).Times(AnyNumber());
+
+  absl::Notification timer_cancelled;
+  EXPECT_CALL(timer_interface_, CancelTimer(Eq(datapath_connecting_timer_id)))
+      .WillOnce([&timer_cancelled] { timer_cancelled.Notify(); });
+
+  session_->DatapathEstablished();
+
+  ASSERT_TRUE(timer_cancelled.WaitForNotificationWithTimeout(absl::Seconds(1)));
+}
 
 TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
   ExpectSuccessfulDatapathInit();

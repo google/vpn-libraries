@@ -47,6 +47,7 @@
 #include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/network_info.h"
 #include "privacy/net/krypton/utils/status.h"
+#include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/functional/bind_front.h"
 #include "third_party/absl/log/check.h"
 #include "third_party/absl/log/die_if_null.h"
@@ -77,6 +78,7 @@ constexpr int kInvalidTimerId = -1;
 constexpr absl::Duration kFetchTimerDuration = absl::Minutes(5);
 constexpr absl::Duration kDatapathReattemptDuration = absl::Milliseconds(500);
 constexpr absl::Duration kDefaultRekeyDuration = absl::Hours(24);
+constexpr absl::Duration kDefaultDatapathConnectingDuration = absl::Seconds(20);
 
 std::string StateString(Session::State state) {
   switch (state) {
@@ -150,6 +152,9 @@ Session::Session(const KryptonConfig& config, std::unique_ptr<Auth> auth,
       add_egress_response_(std::nullopt),
       uplink_spi_(-1),
       active_network_info_(network_info),
+      datapath_connecting_timer_id_(kInvalidTimerId),
+      datapath_connecting_timer_enabled_(false),
+      datapath_connecting_timer_duration_(kDefaultDatapathConnectingDuration),
       provision_notification_thread_("Provision Notification Thread"),
       provision_(std::make_unique<Provision>(
           config, std::move(ABSL_DIE_IF_NULL(auth)),
@@ -157,15 +162,35 @@ Session::Session(const KryptonConfig& config, std::unique_ptr<Auth> auth,
           &provision_notification_thread_)) {
   // Register all state machine events to be sent to Session.
   datapath_->RegisterNotificationHandler(this);
+
+  if (config_.has_datapath_connecting_timer_duration()) {
+    auto duration =
+        utils::DurationFromProto(config_.datapath_connecting_timer_duration());
+    if (duration.ok()) {
+      datapath_connecting_timer_duration_ = *duration;
+    } else {
+      LOG(WARNING) << "Failed to parse datapath connecting timer duration: "
+                   << duration.status();
+    }
+  }
+
+  if (config_.datapath_connecting_timer_enabled()) {
+    if (datapath_connecting_timer_duration_ > absl::ZeroDuration()) {
+      datapath_connecting_timer_enabled_ = true;
+      LOG(INFO) << "Datapath connecting timer enabled with duration "
+                << datapath_connecting_timer_duration_;
+    } else {
+      LOG(WARNING) << "Unable to enable datapath connecting timer without "
+                      "valid duration.";
+    }
+  }
 }
 
 Session::~Session() {
-  {
-    absl::MutexLock l(&mutex_);
-    CancelDatapathReattemptTimerIfRunning();
-    CancelFetcherTimerIfRunning();
-    CancelDatapathReattemptTimerIfRunning();
-  }
+  absl::MutexLock l(&mutex_);
+  CancelDatapathReattemptTimerIfRunning();
+  CancelFetcherTimerIfRunning();
+  CancelDatapathConnectingTimerIfRunning();
 }
 
 void Session::CancelFetcherTimerIfRunning() {
@@ -180,6 +205,13 @@ void Session::CancelDatapathReattemptTimerIfRunning() {
     timer_manager_->CancelTimer(datapath_reattempt_timer_id_);
   }
   datapath_reattempt_timer_id_ = kInvalidTimerId;
+}
+
+void Session::CancelDatapathConnectingTimerIfRunning() {
+  if (datapath_connecting_timer_id_ != kInvalidTimerId) {
+    timer_manager_->CancelTimer(datapath_connecting_timer_id_);
+  }
+  datapath_connecting_timer_id_ = kInvalidTimerId;
 }
 
 std::string ProtoToJsonString(
@@ -289,6 +321,7 @@ void Session::Stop(bool forceFailOpen) {
   absl::MutexLock l(&mutex_);
   CancelFetcherTimerIfRunning();
   CancelDatapathReattemptTimerIfRunning();
+  CancelDatapathConnectingTimerIfRunning();
   provision_->Stop();
   datapath_->Stop();
   datapath_ = nullptr;
@@ -427,8 +460,8 @@ void Session::StartDatapath() {
     SetState(State::kSessionError, datapath_status);
     return;
   }
-  // Datapath initialized is treated as connected event. In case of failure, we
-  // should get a failure from datapath.
+  // Datapath initialized is treated as connected event. In case of failure,
+  // we should get a failure from datapath.
   SetState(State::kConnected, absl::OkStatus());
 
   if (!active_network_info_) {
@@ -471,6 +504,20 @@ void Session::StartDatapathReattemptTimer() {
   datapath_reattempt_timer_id_ = *timer_id;
 }
 
+void Session::StartDatapathConnectingTimer() {
+  CancelDatapathConnectingTimerIfRunning();
+  LOG(INFO) << "Starting Datapath connecting timer.";
+  auto timer_id = timer_manager_->StartTimer(
+      datapath_connecting_timer_duration_,
+      absl::bind_front(&Session::HandleDatapathConnectingTimeout, this),
+      "DatapathConnecting");
+  if (!timer_id.ok()) {
+    LOG(ERROR) << "Cannot StartTimer for DatapathConnecting";
+    return;
+  }
+  datapath_connecting_timer_id_ = *timer_id;
+}
+
 void Session::FetchCounters() {
   absl::MutexLock l(&mutex_);
   if (fetch_timer_id_ == kInvalidTimerId) {
@@ -495,6 +542,7 @@ void Session::DatapathEstablished() {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "Datapath is established";
   datapath_connected_ = true;
+  CancelDatapathConnectingTimerIfRunning();
   ResetAllDatapathReattempts();
   auto notification = notification_;
   notification_thread_->Post(
@@ -546,42 +594,32 @@ void Session::AttemptDatapathReconnect() {
   }
 }
 
+void Session::HandleDatapathConnectingTimeout() {
+  absl::MutexLock l(&mutex_);
+  LOG(INFO) << "Datapath connecting timer expiry.";
+
+  if (datapath_connecting_timer_id_ == kInvalidTimerId) {
+    LOG(INFO) << "Datapath connecting timer is already cancelled.";
+    return;
+  }
+  datapath_connecting_timer_id_ = kInvalidTimerId;
+  datapath_->Stop();
+  HandleDatapathFailure(absl::DeadlineExceededError(
+      "Timed out waiting for DatapathEstablished."));
+}
+
 void Session::DatapathFailed(const absl::Status& status) {
   absl::MutexLock l(&mutex_);
-  if (!active_network_info_) {
-    LOG(INFO) << "Received event after network info was reset.";
-    return;
-  }
-
-  LOG(ERROR) << "Datapath Failed with status:" << status;
-  datapath_connected_ = false;
-  latest_datapath_status_ = status;
-
-  // For failures on datapath, see if we can reattempt.
-  // Check if there are more datapaths.
-  if (datapath_address_selector_.HasMoreAddresses()) {
-    LOG(INFO) << "Datapath attempt " << datapath_reattempt_count_
-              << " failed, waiting to see if it can get reconnected.";
-    datapath_reattempt_count_++;
-    StartDatapathReattemptTimer();
-    return;
-  }
-
-  LOG(ERROR)
-      << "Not reattempting datapath connection. Exhausted all addresses.";
-
-  // Datapath failure is not treated as session failure. These are
-  // notifications to the upper layers to fix the network.
-  auto network_info =
-      active_network_info_ ? active_network_info_.value() : NetworkInfo();
-  NotifyDatapathDisconnected(network_info, status);
+  CancelDatapathConnectingTimerIfRunning();
+  HandleDatapathFailure(status);
 }
 
 void Session::DatapathPermanentFailure(const absl::Status& status) {
   LOG(ERROR) << "Datapath has permanent failure with status " << status;
-  // Send notification to the reconnector that will automatically reconnect the
-  // session. Permanent failures have to be terminated and a new session needs
-  // to be created.
+  absl::MutexLock l(&mutex_);
+  // Send notification to the reconnector that will automatically reconnect
+  // the session. Permanent failures have to be terminated and a new session
+  // needs to be created.
   NotifyDatapathDisconnected(NetworkInfo(), status);
 }
 
@@ -659,6 +697,9 @@ absl::Status Session::SwitchDatapath() {
     return ip.status();
   }
 
+  if (datapath_connecting_timer_enabled_) {
+    StartDatapathConnectingTimer();
+  }
   auto switch_data_status = datapath_->SwitchNetwork(
       uplink_spi_, *ip, active_network_info_, current_restart_counter);
 
@@ -798,8 +839,39 @@ void Session::ProvisioningFailure(absl::Status status, bool permanent) {
   }
 }
 
+void Session::HandleDatapathFailure(const absl::Status& status) {
+  if (!active_network_info_) {
+    LOG(INFO) << "Received event after network info was reset.";
+    return;
+  }
+
+  LOG(ERROR) << "Datapath Failed with status:" << status;
+  datapath_connected_ = false;
+  latest_datapath_status_ = status;
+
+  // For failures on datapath, see if we can reattempt.
+  // Check if there are more datapaths.
+  if (datapath_address_selector_.HasMoreAddresses()) {
+    LOG(INFO) << "Datapath attempt " << datapath_reattempt_count_
+              << " failed, waiting to see if it can get reconnected.";
+    datapath_reattempt_count_++;
+    StartDatapathReattemptTimer();
+    return;
+  }
+
+  LOG(ERROR)
+      << "Not reattempting datapath connection. Exhausted all addresses.";
+
+  // Datapath failure is not treated as session failure. These are
+  // notifications to the upper layers to fix the network.
+  auto network_info =
+      active_network_info_ ? active_network_info_.value() : NetworkInfo();
+  NotifyDatapathDisconnected(network_info, status);
+}
+
 void Session::NotifyDatapathDisconnected(const NetworkInfo& network_info,
                                          const absl::Status& status) {
+  CancelDatapathConnectingTimerIfRunning();
   tunnel_manager_->DatapathStopped(/*forceFailOpen=*/false);
   auto* notification = notification_;
   notification_thread_->Post([notification, status, network_info] {

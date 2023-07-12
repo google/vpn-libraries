@@ -41,7 +41,7 @@ message ReconnectorConfig {
   optional uint32 datapath_watchdog_timer_msec = 5;  // 2 secs.
 }
 
-// Next ID: 37
+// Next ID: 39
 message KryptonConfig {
   reserved 5, 7, 10, 13, 24;
 
@@ -131,4 +131,8 @@ message KryptonConfig {
   // If this flag is set to false, any Public Metadata with debug_mode = true
   // will be rejected.
   optional bool debug_mode_allowed = 34;
+
+  // Fields for configuring the datapath connecting timer.
+  optional bool datapath_connecting_timer_enabled = 37;
+  optional google.protobuf.Duration datapath_connecting_timer_duration = 38;
 }

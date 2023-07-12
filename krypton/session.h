@@ -143,6 +143,9 @@ class Session : public DatapathInterface::NotificationInterface,
   // Callback from DatapathReattempt timer.
   void AttemptDatapathReconnect() ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Callback from DatapathConnecting timer.
+  void HandleDatapathConnectingTimeout() ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Test only methods
   absl::Status LatestStatusTestOnly() const ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
@@ -202,6 +205,7 @@ class Session : public DatapathInterface::NotificationInterface,
 
   void StartFetchCountersTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void StartDatapathReattemptTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void StartDatapathConnectingTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   absl::Status CreateTunnel() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -216,6 +220,8 @@ class Session : public DatapathInterface::NotificationInterface,
   void CancelFetcherTimerIfRunning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelDatapathReattemptTimerIfRunning()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void CancelDatapathConnectingTimerIfRunning()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   absl::Status SendUpdatePathInfoRequest()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -223,8 +229,12 @@ class Session : public DatapathInterface::NotificationInterface,
   void HandleUpdatePathInfoResponse(const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  void HandleDatapathFailure(const absl::Status& status)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   void NotifyDatapathDisconnected(const NetworkInfo& network_info,
-                                  const absl::Status& status);
+                                  const absl::Status& status)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;
 
@@ -255,7 +265,11 @@ class Session : public DatapathInterface::NotificationInterface,
   std::atomic_int network_switches_count_ ABSL_GUARDED_BY(mutex_) = 1;
   int fetch_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int datapath_reattempt_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
+  int datapath_connecting_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   std::atomic_int datapath_reattempt_count_ ABSL_GUARDED_BY(mutex_) = 0;
+
+  bool datapath_connecting_timer_enabled_ ABSL_GUARDED_BY(mutex_);
+  absl::Duration datapath_connecting_timer_duration_ ABSL_GUARDED_BY(mutex_);
 
   // Initialize uplink and downlink MTU values to 0 so that the initial update
   // will always cause the value to change.
