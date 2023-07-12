@@ -345,13 +345,11 @@ absl::Status Session::CreateTunnel() {
   // If bringing up the tunnel fails, assume there is no tunnel. Technically,
   // the tunnel manager may leave the tunnel up even if there's an error with
   // the new one, but it won't hurt to request it again later.
-  auto status = tunnel_manager_->EnsureTunnelIsUp(tun_fd_data);
-  has_active_tunnel_ = status.ok();
-  return status;
+  return tunnel_manager_->EnsureTunnelIsUp(tun_fd_data);
 }
 
 absl::Status Session::UpdateTunnelIfNeeded() {
-  if (!has_active_tunnel_) {
+  if (!tunnel_manager_->IsTunnelActive()) {
     return absl::InternalError("No active tunnel to update.");
   }
 
@@ -359,7 +357,7 @@ absl::Status Session::UpdateTunnelIfNeeded() {
 }
 
 absl::Status Session::CreateTunnelIfNeeded() {
-  if (has_active_tunnel_) {
+  if (tunnel_manager_->IsTunnelActive()) {
     LOG(INFO) << "Not creating tun fd as it's already present";
     return absl::OkStatus();
   }

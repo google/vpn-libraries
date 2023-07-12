@@ -47,7 +47,7 @@
 #include "privacy/net/krypton/proto/network_type.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
-#include "privacy/net/krypton/tunnel_manager_interface.h"
+#include "privacy/net/krypton/tunnel_manager.h"
 #include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
@@ -128,22 +128,11 @@ class MockDatapath : public DatapathInterface {
   MOCK_METHOD(void, GetDebugInfo, (DatapathDebugInfo*), (override));
 };
 
-class MockTunnelManager : public TunnelManagerInterface {
- public:
-  MOCK_METHOD(absl::Status, Start, (), (override));
-  MOCK_METHOD(void, Stop, (), (override));
-  MOCK_METHOD(void, SetSafeDisconnectEnabled, (bool), (override));
-  MOCK_METHOD(bool, IsSafeDisconnectEnabled, (), (override));
-  MOCK_METHOD(void, DatapathStarted, (), (override));
-  MOCK_METHOD(absl::Status, EnsureTunnelIsUp, (TunFdData), (override));
-  MOCK_METHOD(absl::Status, RecreateTunnelIfNeeded, (), (override));
-  MOCK_METHOD(void, DatapathStopped, (bool), (override));
-  MOCK_METHOD(bool, IsTunnelActive, (), (override));
-};
-
 // Tests Bridge dataplane and PPN control plane.
 class SessionTest : public ::testing::Test {
  public:
+  SessionTest() : tunnel_manager_(&vpn_service_, false) {}
+
   void SetUp() override {
     auto datapath = std::make_unique<MockDatapath>();
     datapath_ = datapath.get();
@@ -398,7 +387,7 @@ class SessionTest : public ::testing::Test {
 
     EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kConnected);
 
-    EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(EqualsProto(GetTunFdData())));
+    EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())));
 
     NetworkInfo network_info;
     network_info.set_network_id(123);
@@ -436,7 +425,7 @@ class SessionTest : public ::testing::Test {
   TimerManager timer_manager_{&timer_interface_};
 
   MockVpnService vpn_service_;
-  MockTunnelManager tunnel_manager_;
+  TunnelManager tunnel_manager_;
   std::unique_ptr<Session> session_;
   DatapathInterface::NotificationInterface* datapath_notification_;
   absl::Notification datapath_started_;
@@ -473,7 +462,7 @@ TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
   session_->Start();
 
   WaitForDatapathStart();
-  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(EqualsProto(GetTunFdData())));
+  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())));
 
   NetworkInfo expected_network_info;
   expected_network_info.set_network_type(NetworkType::CELLULAR);
@@ -691,7 +680,7 @@ TEST_F(SessionTest, UplinkMtuUpdateHandler) {
   BringDatapathToConnected();
 
   EXPECT_CALL(*datapath_, PrepareForTunnelSwitch());
-  EXPECT_CALL(tunnel_manager_, EnsureTunnelIsUp(_));
+  EXPECT_CALL(vpn_service_, CreateTunnel(_));
   EXPECT_CALL(*datapath_, SwitchTunnel());
 
   session_->DoUplinkMtuUpdate(/*uplink_mtu=*/123, /*tunnel_mtu=*/456);
@@ -722,8 +711,8 @@ TEST_F(SessionTest, DownlinkMtuUpdateHandlerSessionDisconnected) {
 TEST_F(SessionTest, UplinkMtuUpdateHandlerHttpStatusOk) {
   BringDatapathToConnected();
 
-  EXPECT_CALL(tunnel_manager_,
-              EnsureTunnelIsUp(EqualsProto(GetTunFdData(/*mtu=*/456))));
+  EXPECT_CALL(vpn_service_,
+              CreateTunnel(EqualsProto(GetTunFdData(/*mtu=*/456))));
 
   EXPECT_CALL(notification_, ControlPlaneDisconnected(_)).Times(0);
 

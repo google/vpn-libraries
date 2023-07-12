@@ -249,7 +249,6 @@ class Session : public DatapathInterface::NotificationInterface,
   absl::Status latest_datapath_status_ ABSL_GUARDED_BY(mutex_) =
       absl::OkStatus();
 
-  bool has_active_tunnel_ ABSL_GUARDED_BY(mutex_) = false;
   std::optional<NetworkInfo> active_network_info_ ABSL_GUARDED_BY(mutex_);
 
   // Counts the number of times the endpoint switched till now.
