@@ -89,8 +89,7 @@ DatapathInterface* VpnService::BuildDatapath(const KryptonConfig& config,
 }
 
 absl::Status VpnService::CreateTunnel(const TunFdData& tun_fd_data) {
-  LOG(INFO) << "Requesting TUN fd from Java with tun data "
-            << tun_fd_data.DebugString();
+  LOG(INFO) << "Requesting TUN fd from Java with tun data " << tun_fd_data;
 
   auto jni_cache = JniCache::Get();
   auto env = jni_cache->GetJavaEnv();
@@ -150,7 +149,7 @@ void VpnService::CloseTunnel() {
 absl::StatusOr<int> VpnService::CreateProtectedNetworkSocket(
     const NetworkInfo& network_info) {
   LOG(INFO) << "Requesting network fd from Java with network info "
-            << network_info.DebugString();
+            << network_info;
 
   auto jni_cache = JniCache::Get();
   auto env = jni_cache->GetJavaEnv();
@@ -176,8 +175,7 @@ absl::StatusOr<int> VpnService::CreateProtectedNetworkSocket(
 
 absl::StatusOr<int> VpnService::CreateProtectedTcpSocket(
     const NetworkInfo& network_info) {
-  LOG(INFO) << "Requesting TCP fd from Java with network info "
-            << network_info.DebugString();
+  LOG(INFO) << "Requesting TCP fd from Java with network info " << network_info;
 
   auto jni_cache = JniCache::Get();
   auto env = jni_cache->GetJavaEnv();

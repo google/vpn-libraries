@@ -26,7 +26,7 @@ namespace krypton {
 namespace windows {
 
 void Notification::Connected(const ConnectionStatus& status) {
-  LOG(INFO) << "PPN is connected: " << status.DebugString();
+  LOG(INFO) << "PPN is connected: " << status;
   auto ppn_notification = ppn_notification_;
   ppn_notification_looper_->Post(
       [ppn_notification] { ppn_notification->PpnConnected(); });
@@ -34,7 +34,7 @@ void Notification::Connected(const ConnectionStatus& status) {
 }
 
 void Notification::Connecting(const ConnectingStatus& status) {
-  LOG(INFO) << "PPN is connecting: " << status.DebugString();
+  LOG(INFO) << "PPN is connecting: " << status;
   auto ppn_notification = ppn_notification_;
   ppn_notification_looper_->Post(
       [ppn_notification] { ppn_notification->PpnConnecting(); });
@@ -45,11 +45,11 @@ void Notification::ControlPlaneConnected() {
 }
 
 void Notification::StatusUpdated(const ConnectionStatus& status) {
-  LOG(ERROR) << "PPN status updated: " << status.DebugString();
+  LOG(ERROR) << "PPN status updated: " << status;
 }
 
 void Notification::Disconnected(const DisconnectionStatus& status) {
-  LOG(ERROR) << "PPN is disconnected: " << status.DebugString();
+  LOG(ERROR) << "PPN is disconnected: " << status;
   auto ppn_notification = ppn_notification_;
   ppn_notification_looper_->Post([ppn_notification, status] {
     ppn_notification->PpnDisconnected(status);
@@ -73,15 +73,15 @@ void Notification::PermanentFailure(const absl::Status& status) {
 void Notification::Crashed() { LOG(ERROR) << "PPN is crashing."; }
 
 void Notification::Snoozed(const SnoozeStatus& status) {
-  LOG(INFO) << "PPN is snoozed: " << status.DebugString();
+  LOG(INFO) << "PPN is snoozed: " << status;
 }
 
 void Notification::Resumed(const ResumeStatus& status) {
-  LOG(INFO) << "Ppn is resumed: " << status.DebugString();
+  LOG(INFO) << "Ppn is resumed: " << status;
 }
 
 void Notification::WaitingToReconnect(const ReconnectionStatus& status) {
-  LOG(INFO) << "WaitingToReconnect event: " << status.DebugString();
+  LOG(INFO) << "WaitingToReconnect event: " << status;
   auto ppn_notification = ppn_notification_;
   ppn_notification_looper_->Post(
       [ppn_notification] { ppn_notification->PpnWaitingToReconnect(); });

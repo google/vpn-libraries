@@ -117,7 +117,7 @@ TEST_F(FdPacketPipeTest, WritePacket) {
   ASSERT_OK_AND_ASSIGN((auto [port, received_buffer]), copper_.ReceivePacket());
   datapath::Packet expected;
   expected.ParseFromString(received_buffer);
-  LOG(INFO) << "Received " << expected.DebugString();
+  LOG(INFO) << "Received " << expected;
   EXPECT_THAT(packet_buffer, EqualsProto(expected));
 }
 

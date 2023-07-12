@@ -74,7 +74,7 @@ void TryInitialDataRequest(HttpFetcher* http_fetcher,
   LOG(INFO) << "Result of PostJson:";
   LOG(INFO) << "Status code: " << http_response.status().code();
   LOG(INFO) << "Status message: " << http_response.status().message();
-  LOG(INFO) << "Initial data response: " << initial_data_response.DebugString();
+  LOG(INFO) << "Initial data response: " << initial_data_response;
 }
 
 int main(int argc, char* argv[]) {
