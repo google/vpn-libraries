@@ -3,6 +3,7 @@
 
 %include "base/swig/google.swig"
 %include "net/proto/swig/go/protofunc.swig"
+%include "strings/strings.swig"
 
 %{
 #include "privacy/net/common/cpp/public_metadata/public_metadata.h"
@@ -25,8 +26,12 @@ OPTIONAL_TYPEMAP(uint64_t, uint64, uint64, Uint64Optional)
 %unignore privacy::ppn::BinaryPublicMetadata::region;
 %unignore privacy::ppn::BinaryPublicMetadata::city;
 %unignore privacy::ppn::BinaryPublicMetadata::expiration_epoch_seconds;
+%unignore privacy::ppn::BinaryPublicMetadata::debug_mode;
 
 %unignore privacy::ppn::PublicMetadataProtoToStruct(const privacy::ppn::PublicMetadata&);
+
+%unignore privacy::ppn::Serialize(const privacy::ppn::BinaryPublicMetadata&);
+%unignore privacy::ppn::Deserialize(absl::string_view);
 
 %include "privacy/net/common/cpp/public_metadata/public_metadata.h"
 %unignoreall
