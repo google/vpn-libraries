@@ -137,37 +137,37 @@ class Auth {
   static void RecordLatency(absl::Time start,
                             std::vector<google::protobuf::Duration>* latencies,
                             const std::string& latency_type);
+  void RaiseAuthFailureNotification(absl::Status status)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   // Unblinds AT token provided in AuthAndSign response.
   virtual absl::StatusOr<std::vector<
       private_membership::anonymous_tokens::RSABlindSignatureTokenWithInput>>
   UnblindATToken() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  State state_ ABSL_GUARDED_BY(mutex_);
-  mutable absl::Mutex mutex_;
-  AuthAndSignResponse auth_and_sign_response_ ABSL_GUARDED_BY(mutex_);
-
-  void RaiseAuthFailureNotification(absl::Status status)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  utils::LooperThread looper_;
-  HttpFetcher http_fetcher_;
   KryptonConfig config_;
+  absl::Duration expiry_increments_ = absl::Minutes(15);
+  OAuthInterface* oauth_;                     // Not owned.
+  NotificationInterface* notification_;       // Not owned.
+  utils::LooperThread* notification_thread_;  // Not owned.
+
+  mutable absl::Mutex mutex_;
+  std::atomic_bool stopped_ ABSL_GUARDED_BY(mutex_) = false;
+  State state_ ABSL_GUARDED_BY(mutex_);
+  absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
+  AuthAndSignResponse auth_and_sign_response_ ABSL_GUARDED_BY(mutex_);
+  ppn::GetInitialDataResponse get_initial_data_response_
+      ABSL_GUARDED_BY(mutex_);
+
   std::unique_ptr<crypto::AuthCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<
       private_membership::anonymous_tokens::AnonymousTokensRsaBssaClient>
       bssa_client_ ABSL_GUARDED_BY(mutex_);
-  private_membership::anonymous_tokens::AnonymousTokensSignRequest
-      at_sign_request_ ABSL_GUARDED_BY(mutex_);
-
-  OAuthInterface* oauth_;                     // Not owned.
-  NotificationInterface* notification_;       // Not owned.
-  utils::LooperThread* notification_thread_;  // Not owned.
   absl::StatusOr<std::vector<
       private_membership::anonymous_tokens::RSABlindSignatureTokenWithInput>>
       signed_tokens_;
+  private_membership::anonymous_tokens::AnonymousTokensSignRequest
+      at_sign_request_ ABSL_GUARDED_BY(mutex_);
 
-  std::atomic_bool stopped_ = false;
-  absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
   std::vector<google::protobuf::Duration> latencies_ ABSL_GUARDED_BY(mutex_);
   std::vector<google::protobuf::Duration> oauth_latencies_
       ABSL_GUARDED_BY(mutex_);
@@ -175,9 +175,9 @@ class Auth {
       ABSL_GUARDED_BY(mutex_);
   absl::Time request_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
   absl::Time auth_call_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
-  absl::Duration expiry_increments_ = absl::Minutes(15);
-  ppn::GetInitialDataResponse get_initial_data_response_
-      ABSL_GUARDED_BY(mutex_);
+
+  utils::LooperThread looper_;
+  HttpFetcher http_fetcher_;
 };
 
 }  // namespace krypton

@@ -111,18 +111,20 @@ class EgressManager {
       ABSL_GUARDED_BY(mutex_);
 
   KryptonConfig config_;
-  utils::LooperThread looper_;
-  HttpFetcher http_fetcher_;
-  NotificationInterface* notification_;       // Not owned.
-  utils::LooperThread* notification_thread_;  // Not owned.
-
   std::atomic_bool stopped_ ABSL_GUARDED_BY(mutex_) = false;
   const std::string brass_url_ ABSL_GUARDED_BY(mutex_);
   State state_ ABSL_GUARDED_BY(mutex_);
+
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
+  NotificationInterface* notification_;       // Not owned.
+  utils::LooperThread* notification_thread_;  // Not owned.
+
   uint32_t uplink_spi_ ABSL_GUARDED_BY(mutex_) = -1;
   std::vector<google::protobuf::Duration> latencies_ ABSL_GUARDED_BY(mutex_);
   absl::Time request_time_ ABSL_GUARDED_BY(mutex_) = absl::InfinitePast();
+
+  utils::LooperThread looper_;
+  HttpFetcher http_fetcher_;
 };
 
 }  // namespace krypton

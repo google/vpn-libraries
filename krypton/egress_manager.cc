@@ -68,12 +68,12 @@ std::string StateString(EgressManager::State state) {
 EgressManager::EgressManager(const KryptonConfig& config,
                              HttpFetcherInterface* http_fetcher)
     : config_(config),
-      looper_("EgressManager Looper"),
-      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher), &looper_),
+      brass_url_(config.brass_url()),
+      state_(State::kInitialized),
       notification_(nullptr),
       notification_thread_(nullptr),
-      brass_url_(config.brass_url()),
-      state_(State::kInitialized) {}
+      looper_("EgressManager Looper"),
+      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher), &looper_) {}
 
 EgressManager::~EgressManager() {
   looper_.Stop();
@@ -158,7 +158,6 @@ void EgressManager::DecodeAddEgressResponse(bool is_rekey,
                  << absl::Now() - request_time_;
     }
   }
-
   request_time_ = ::absl::InfinitePast();
 
   LOG(INFO) << "Got AddEgressResponse";

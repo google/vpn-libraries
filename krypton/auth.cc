@@ -129,13 +129,13 @@ using ::private_membership::anonymous_tokens::RSABlindSignatureTokenWithInput;
 Auth::Auth(const KryptonConfig& config,
            HttpFetcherInterface* http_fetcher_native,
            OAuthInterface* oath_native)
-    : state_(State::kUnauthenticated),
-      looper_("Auth Looper"),
-      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher_native), &looper_),
-      config_(config),
+    : config_(config),
       oauth_(ABSL_DIE_IF_NULL(oath_native)),
       notification_(nullptr),
-      notification_thread_(nullptr) {
+      notification_thread_(nullptr),
+      state_(State::kUnauthenticated),
+      looper_("Auth Looper"),
+      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher_native), &looper_) {
   key_material_ = std::make_unique<crypto::AuthCrypto>(config);
 }
 
@@ -151,7 +151,6 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
   absl::MutexLock l(&mutex_);
   RecordLatency(request_time_, &latencies_, "auth");
   RecordLatency(auth_call_time_, &zinc_latencies_, "zinc");
-
   request_time_ = ::absl::InfinitePast();
 
   LOG(INFO) << "Got Authentication Response. Rekey: "
@@ -231,12 +230,10 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
     request_time_ = ::absl::InfinitePast();
 
     LOG(INFO) << "Got PublicKeyResponse Response.";
-
     if (stopped_) {
       LOG(ERROR) << "Auth is already cancelled, don't update";
       return;
     }
-
     if (http_response.status().code() < 200 ||
         http_response.status().code() >= 300) {
       SetState(State::kUnauthenticated);
@@ -635,6 +632,7 @@ Auth::State Auth::GetState() const {
 void Auth::Stop() {
   // There should be a better way to cancel the thread as it has reference to
   // the Auth object and it might lead to crash if the response comes back.
+  absl::MutexLock l(&mutex_);
   stopped_ = true;
   http_fetcher_.CancelAsync();
 }
