@@ -201,6 +201,11 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     telemetry.notifyDisconnected();
     connected.set(false);
 
+    // Normally, this should be a no-op. But it's possible that we're failing to connect because
+    // the network we are using no longer exists, and Android forgot to tell us about it. So, we
+    // give Xenon a chance to double-check that the networks it knows about are still valid.
+    xenon.reevaluateNetworks();
+
     PpnDisconnectionStatus ppnStatus = PpnDisconnectionStatus.fromProto(status);
     Log.w(TAG, "Krypton disconnection status: " + ppnStatus);
     if (listener == null) {
