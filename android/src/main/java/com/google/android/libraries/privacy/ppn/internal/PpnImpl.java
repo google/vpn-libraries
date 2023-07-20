@@ -115,6 +115,8 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
   private Xenon xenon;
 
+  private final VpnMonitor vpnMonitor;
+
   // This is lazy-initialized, because it is only created if we are actually using IpSec.
   @Nullable private KryptonIpSecHelper ipSecHelper;
 
@@ -394,6 +396,10 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     this.accountCache = new AccountCache(context, backgroundExecutor, accountManager);
 
     this.xenon = new XenonImpl(context, this, httpFetcher, options);
+
+    ConnectivityManager connectivityManager =
+        (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+    this.vpnMonitor = new VpnMonitor(connectivityManager);
 
     this.disallowedApplications = options.getDisallowedApplications();
 
@@ -791,6 +797,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
    */
   private void startKrypton() throws PpnException {
     ensureBackgroundThread();
+    vpnMonitor.start();
 
     synchronized (kryptonLock) {
       if (krypton != null) {
@@ -820,6 +827,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     Log.w(TAG, "PPN stopping Xenon.");
     xenon.stop();
     Log.w(TAG, "PPN stopped Xenon.");
+    vpnMonitor.stop();
 
     synchronized (kryptonLock) {
       if (krypton == null) {
