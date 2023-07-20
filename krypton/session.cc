@@ -142,24 +142,22 @@ Session::Session(const KryptonConfig& config, std::unique_ptr<Auth> auth,
                  utils::LooperThread* notification_thread)
     : config_(config),
       datapath_(std::move(ABSL_DIE_IF_NULL(datapath))),
+      datapath_connecting_timer_enabled_(false),
+      datapath_connecting_timer_duration_(kDefaultDatapathConnectingDuration),
       vpn_service_(ABSL_DIE_IF_NULL(vpn_service)),
       timer_manager_(ABSL_DIE_IF_NULL(timer_manager)),
-      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
-                    ABSL_DIE_IF_NULL(notification_thread)),
       notification_thread_(ABSL_DIE_IF_NULL(notification_thread)),
       tunnel_manager_(tunnel_manager),
       datapath_address_selector_(config),
       add_egress_response_(std::nullopt),
       uplink_spi_(-1),
       active_network_info_(network_info),
-      datapath_connecting_timer_id_(kInvalidTimerId),
-      datapath_connecting_timer_enabled_(false),
-      datapath_connecting_timer_duration_(kDefaultDatapathConnectingDuration),
-      provision_notification_thread_("Provision Notification Thread"),
+      looper_("Session Looper"),
       provision_(std::make_unique<Provision>(
           config, std::move(ABSL_DIE_IF_NULL(auth)),
           std::move(ABSL_DIE_IF_NULL(egress_manager)), http_fetcher, this,
-          &provision_notification_thread_)) {
+          &looper_)),
+      http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher), &looper_) {
   // Register all state machine events to be sent to Session.
   datapath_->RegisterNotificationHandler(this);
 

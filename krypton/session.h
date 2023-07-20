@@ -242,10 +242,15 @@ class Session : public DatapathInterface::NotificationInterface,
 
   std::unique_ptr<DatapathInterface> datapath_;
 
+  bool datapath_connecting_timer_enabled_ ABSL_GUARDED_BY(mutex_);
+  absl::Duration datapath_connecting_timer_duration_ ABSL_GUARDED_BY(mutex_);
+  int fetch_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
+  int datapath_reattempt_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
+  int datapath_connecting_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
+
   NotificationInterface* notification_;  // Not owned.
   VpnServiceInterface* vpn_service_;     // Not owned.
   TimerManager* timer_manager_;          // Not owned.
-  HttpFetcher http_fetcher_;
   utils::LooperThread* notification_thread_;  // Not owned.
   TunnelManagerInterface* tunnel_manager_;    // Not owned.
 
@@ -263,13 +268,7 @@ class Session : public DatapathInterface::NotificationInterface,
 
   // Counts the number of times the endpoint switched till now.
   std::atomic_int network_switches_count_ ABSL_GUARDED_BY(mutex_) = 1;
-  int fetch_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
-  int datapath_reattempt_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
-  int datapath_connecting_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   std::atomic_int datapath_reattempt_count_ ABSL_GUARDED_BY(mutex_) = 0;
-
-  bool datapath_connecting_timer_enabled_ ABSL_GUARDED_BY(mutex_);
-  absl::Duration datapath_connecting_timer_duration_ ABSL_GUARDED_BY(mutex_);
 
   // Initialize uplink and downlink MTU values to 0 so that the initial update
   // will always cause the value to change.
@@ -285,8 +284,9 @@ class Session : public DatapathInterface::NotificationInterface,
   std::atomic_int last_repoted_network_switches_ = 0;
   std::atomic_int number_of_rekeys_ = 0;
 
-  utils::LooperThread provision_notification_thread_;
+  utils::LooperThread looper_;
   std::unique_ptr<Provision> provision_ ABSL_GUARDED_BY(mutex_);
+  HttpFetcher http_fetcher_;
 };
 
 }  // namespace krypton

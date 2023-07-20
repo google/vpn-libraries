@@ -424,7 +424,6 @@ class SessionTest : public ::testing::Test {
   MockSessionNotification notification_;
   MockHttpFetcher http_fetcher_;
   MockOAuth oauth_;
-  utils::LooperThread looper_{"SessionTest Looper"};
 
   MockDatapath* datapath_;
   MockTimerInterface timer_interface_;
@@ -432,7 +431,7 @@ class SessionTest : public ::testing::Test {
 
   MockVpnService vpn_service_;
   TunnelManager tunnel_manager_;
-  std::unique_ptr<Session> session_;
+
   DatapathInterface::NotificationInterface* datapath_notification_;
   absl::Notification datapath_started_;
 
@@ -442,6 +441,9 @@ class SessionTest : public ::testing::Test {
   std::pair<bssl::UniquePtr<RSA>,
             ::private_membership::anonymous_tokens::RSABlindSignaturePublicKey>
       key_pair_;
+
+    utils::LooperThread looper_{"SessionTest Looper"};
+    std::unique_ptr<Session> session_;
 };
 
 TEST_F(SessionTest, DatapathInitFailure) {
@@ -463,7 +465,14 @@ TEST_F(SessionTest, DatapathInitFailure) {
 TEST_F(SessionTest, DatapathInitSuccessful) { BringDatapathToConnected(); }
 
 TEST_F(SessionTest, DatapathConnectingTimerExpired) {
-  ExpectSuccessfulDatapathInit();
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Minutes(5)));
+
+  EXPECT_CALL(notification_, ControlPlaneConnected());
+
+  EXPECT_CALL(*datapath_, Start(_, _))
+      .WillOnce(DoAll(
+          InvokeWithoutArgs(&datapath_started_, &absl::Notification::Notify),
+          Return(absl::OkStatus())));
 
   session_->Start();
 
@@ -498,7 +507,14 @@ TEST_F(SessionTest, DatapathConnectingTimerExpired) {
 }
 
 TEST_F(SessionTest, DatapathConnectingTimerCancelled) {
-  ExpectSuccessfulDatapathInit();
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Minutes(5)));
+
+  EXPECT_CALL(notification_, ControlPlaneConnected());
+
+  EXPECT_CALL(*datapath_, Start(_, _))
+      .WillOnce(DoAll(
+          InvokeWithoutArgs(&datapath_started_, &absl::Notification::Notify),
+          Return(absl::OkStatus())));
 
   session_->Start();
 
