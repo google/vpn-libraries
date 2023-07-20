@@ -58,7 +58,7 @@ namespace utils {
   if (ABSL_PREDICT_FALSE(!statusor.ok())) {              \
     return statusor.status();                            \
   }                                                      \
-  lhs = std::move(statusor.ValueOrDie())
+  lhs = *std::move(statusor)
 
 // Takes an HTTP status code and returns the corresponding absl::Status.
 // This uses the standard HTTP status code -> error mapping defined in:
