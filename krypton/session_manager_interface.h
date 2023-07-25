@@ -18,7 +18,6 @@
 #include <optional>
 
 #include "privacy/net/krypton/session.h"
-#include "third_party/absl/strings/string_view.h"
 
 namespace privacy {
 namespace krypton {
@@ -36,8 +35,7 @@ class SessionManagerInterface {
   // Terminates the session.
   virtual void TerminateSession(bool forceFailOpen) = 0;
 
-  // Gets the active session.
-  virtual std::optional<Session*> session() const = 0;
+  virtual absl::Status SetNetwork(std::optional<NetworkInfo> network_info) = 0;
 };
 }  // namespace krypton
 }  // namespace privacy

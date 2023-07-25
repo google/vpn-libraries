@@ -26,7 +26,6 @@
 #include "privacy/net/krypton/proto/connection_status.proto.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
-#include "privacy/net/krypton/session.h"
 #include "privacy/net/krypton/session_manager_interface.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/tunnel_manager_interface.h"
@@ -599,13 +598,12 @@ absl::Status Reconnector::SetNetwork(std::optional<NetworkInfo> network_info) {
     return absl::OkStatus();
   }
 
-  // If there is a session, pass on the info.
-  if (session_manager_ != nullptr && session_manager_->session()) {
-    return session_manager_->session().value()->SetNetwork(
-        active_network_info_);
+  if (session_manager_ == nullptr) {
+    return absl::OkStatus();
   }
 
-  return absl::OkStatus();
+  // If there is a SessionManager, pass on the info.
+  return session_manager_->SetNetwork(active_network_info_);
 }
 
 DisconnectionStatus Reconnector::GetDisconnectionStatus(

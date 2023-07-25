@@ -55,13 +55,8 @@ class SessionManager : public SessionManagerInterface {
   void TerminateSession(bool forceFailOpen) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  std::optional<Session*> session() const override {
-    absl::MutexLock l(&mutex_);
-    if (session_ == nullptr) {
-      return std::nullopt;
-    }
-    return session_.get();
-  }
+  absl::Status SetNetwork(std::optional<NetworkInfo> network_info) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   void CollectTelemetry(KryptonTelemetry* telemetry);
 

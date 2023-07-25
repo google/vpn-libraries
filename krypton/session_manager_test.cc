@@ -15,6 +15,7 @@
 #include "privacy/net/krypton/session_manager.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "privacy/net/krypton/datapath_interface.h"
@@ -23,6 +24,7 @@
 #include "privacy/net/krypton/pal/mock_oauth_interface.h"
 #include "privacy/net/krypton/pal/mock_timer_interface.h"
 #include "privacy/net/krypton/pal/mock_vpn_service_interface.h"
+#include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/looper.h"
@@ -36,6 +38,19 @@ namespace {
 
 MATCHER_P(UrlMatcher, url, "Matches URL field of HttpRequest") {
   return arg.url() == url;
+}
+
+MATCHER_P(OptNetworkInfoEq, expected, "Matches std::optional<NetworkInfo>") {
+  if (expected.has_value() != arg.has_value()) {
+    return false;
+  }
+
+  if (!expected) {
+    return true;
+  }
+
+  return expected->network_id() == arg->network_id() &&
+         expected->network_type() == arg->network_type();
 }
 
 using ::testing::_;
@@ -197,7 +212,7 @@ TEST_F(SessionManagerTest, EstablishSessionStartsSession) {
   session_manager_->EstablishSession(/*restart_count=*/1, &mock_tunnel_manager_,
                                      NetworkInfo());
 
-  started.WaitForNotificationWithTimeout(absl::Seconds(1));
+  ASSERT_TRUE(started.WaitForNotificationWithTimeout(absl::Seconds(1)));
 
   session_manager_->TerminateSession(false);
 }
@@ -216,10 +231,10 @@ TEST_F(SessionManagerTest, SecondEstablishSessionTerminatesOldSession) {
 
   session_manager_->EstablishSession(/*restart_count=*/1, &mock_tunnel_manager_,
                                      NetworkInfo());
-  started1.WaitForNotificationWithTimeout(absl::Seconds(1));
+  ASSERT_TRUE(started1.WaitForNotificationWithTimeout(absl::Seconds(1)));
   session_manager_->EstablishSession(/*restart_count=*/1, &mock_tunnel_manager_,
                                      NetworkInfo());
-  started2.WaitForNotificationWithTimeout(absl::Seconds(1));
+  ASSERT_TRUE(started2.WaitForNotificationWithTimeout(absl::Seconds(1)));
 
   session_manager_->TerminateSession(false);
 }
@@ -238,10 +253,49 @@ TEST_F(SessionManagerTest, SecondTerminateSessionClosesTunnel) {
 
   session_manager_->EstablishSession(/*restart_count=*/1, &mock_tunnel_manager_,
                                      NetworkInfo());
-  started.WaitForNotificationWithTimeout(absl::Seconds(1));
+  ASSERT_TRUE(started.WaitForNotificationWithTimeout(absl::Seconds(1)));
 
   session_manager_->TerminateSession(false);
   session_manager_->TerminateSession(true);
+}
+
+TEST_F(SessionManagerTest, SetNetworkWithoutSession) {
+  EXPECT_OK(session_manager_->SetNetwork(NetworkInfo()));
+}
+
+TEST_F(SessionManagerTest, SetNetworkWithSession) {
+  // Set up expectations to start the Session
+  auto* mock_datapath = new MockDatapath();
+
+  EXPECT_CALL(mock_vpn_service_, BuildDatapath(_, _, _))
+      .WillOnce([&mock_datapath] { return mock_datapath; });
+
+  absl::Notification switch_network_called;
+  std::optional<NetworkInfo> initial_network_info = NetworkInfo();
+  initial_network_info->set_network_id(123);
+  EXPECT_CALL(*mock_datapath,
+              SwitchNetwork(_, _, OptNetworkInfoEq(initial_network_info), _))
+      .WillOnce([&switch_network_called] {
+        switch_network_called.Notify();
+        return absl::OkStatus();
+      });
+
+  session_manager_->EstablishSession(/*restart_count=*/1, &mock_tunnel_manager_,
+                                     initial_network_info);
+
+  ASSERT_TRUE(
+      switch_network_called.WaitForNotificationWithTimeout(absl::Seconds(1)));
+
+  // Set up expectations for SetNetwork and call it
+  std::optional<NetworkInfo> updated_network_info = NetworkInfo();
+  updated_network_info->set_network_id(456);
+  EXPECT_CALL(*mock_datapath,
+              SwitchNetwork(_, _, OptNetworkInfoEq(updated_network_info), _));
+
+  EXPECT_OK(session_manager_->SetNetwork(updated_network_info));
+
+  // Clean up after test is done
+  session_manager_->TerminateSession(/*forceFailOpen=*/false);
 }
 
 }  // namespace

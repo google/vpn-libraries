@@ -111,6 +111,15 @@ void SessionManager::TerminateSession(bool forceFailOpen) {
   LOG(INFO) << "Session termination done.";
 }
 
+absl::Status SessionManager::SetNetwork(
+    std::optional<NetworkInfo> network_info) {
+  absl::MutexLock l(&mutex_);
+  if (session_ == nullptr) {
+    return absl::OkStatus();
+  }
+  return session_->SetNetwork(network_info);
+}
+
 void SessionManager::CollectTelemetry(KryptonTelemetry* telemetry) {
   absl::MutexLock l(&mutex_);
   if (session_) {
