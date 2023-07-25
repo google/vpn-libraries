@@ -20,14 +20,11 @@
 #include <string>
 #include <utility>
 
-#include "google/protobuf/timestamp.proto.h"
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/common/proto/auth_and_sign.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
-#include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/common/proto/update_path_info.proto.h"
-#include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/datapath_interface.h"
@@ -195,28 +192,6 @@ class SessionTest : public ::testing::Test {
     return fake_add_egress_http_response;
   }
 
-  HttpResponse CreateRekeyResponse() {
-    // Return a response with different uplink_spi, server_nonce, and
-    // egress_point_public_value
-    HttpResponse fake_add_egress_http_response;
-    fake_add_egress_http_response.mutable_status()->set_code(200);
-    fake_add_egress_http_response.mutable_status()->set_message("OK");
-    fake_add_egress_http_response.set_json_body(R"string({
-      "ppn_dataplane": {
-        "user_private_ip": [{
-          "ipv4_range": "10.2.2.123/32",
-          "ipv6_range": "fec2:0001::3/64"
-        }],
-        "egress_point_sock_addr": ["64.9.240.165:2153", "[2604:ca00:f001:4::5]:2153"],
-        "egress_point_public_value": "a22j+91TxHtS5qa625KCE5ybsyzPR1wkTDWHV2qSQQc=",
-        "server_nonce": "Uzt2lEzyvBYzjLAP3E+dAA==",
-        "uplink_spi": 456,
-        "expiry": "2020-08-07T01:06:13+00:00"
-      }
-    })string");
-    return fake_add_egress_http_response;
-  }
-
   HttpResponse CreateAuthHttpResponse(
       HttpRequest auth_and_sign_request,
       absl::string_view copper_controller_hostname = "") {
@@ -347,25 +322,6 @@ class SessionTest : public ::testing::Test {
     condition.Wait(&lock);
   }
 
-  void CheckPublicMetadataParams(
-      const AddEgressRequest::PpnDataplaneRequestParams& params) {
-    auto expected = CreateGetInitialDataResponse();
-    auto public_metadata = expected.public_metadata_info().public_metadata();
-
-    EXPECT_THAT(params.service_type,
-                testing::Eq(public_metadata.service_type()));
-    EXPECT_THAT(
-        params.signing_key_version,
-        testing::Eq(expected.at_public_metadata_public_key().key_version()));
-    EXPECT_THAT(params.country,
-                testing::Eq(public_metadata.exit_location().country()));
-    EXPECT_THAT(params.city_geo_id,
-                testing::Eq(public_metadata.exit_location().city_geo_id()));
-    EXPECT_THAT(params.expiration,
-                testing::Eq(absl::FromUnixSeconds(
-                    public_metadata.expiration().seconds())));
-  }
-
   void ExpectSuccessfulDatapathInit() {
     EXPECT_CALL(timer_interface_, StartTimer(_, absl::Minutes(5)));
 
@@ -434,9 +390,6 @@ class SessionTest : public ::testing::Test {
 
   DatapathInterface::NotificationInterface* datapath_notification_;
   absl::Notification datapath_started_;
-
-  Auth::NotificationInterface* auth_notification_ = nullptr;
-  EgressManager::NotificationInterface* egress_notification_ = nullptr;
 
   std::pair<bssl::UniquePtr<RSA>,
             ::private_membership::anonymous_tokens::RSABlindSignaturePublicKey>
