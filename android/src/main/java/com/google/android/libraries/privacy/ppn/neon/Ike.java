@@ -69,6 +69,9 @@ public class Ike {
             public byte[] getAttestationData(String nonce) {
               return attestationHelper.getAttestationData(nonce, network);
             }
+
+            @Override
+            public void clearOAuthToken(String token) {}
           };
     } else {
       tokenProvider =
@@ -83,6 +86,9 @@ public class Ike {
             public byte[] getAttestationData(String nonce) {
               return null;
             }
+
+            @Override
+            public void clearOAuthToken(String token) {}
           };
     }
 

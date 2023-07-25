@@ -25,6 +25,7 @@ import android.os.ConditionVariable;
 import android.os.Looper;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.work.testing.WorkManagerTestInitHelper;
+import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.libraries.privacy.ppn.IpGeoLevel;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
@@ -48,6 +49,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.net.SocketFactory;
 import org.json.JSONObject;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -65,29 +67,25 @@ public class KryptonTest {
   @Mock private KryptonListener kryptonListener;
   @Mock private BoundSocketFactoryFactory socketFactoryFactory;
   private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
-  private final MockZinc mockZinc = new MockZinc();
-  private final MockBrass mockBrass = new MockBrass();
 
-  private static KryptonConfig.Builder createConfig(String zincUrl, String brassUrl) {
+  private final MockZinc mockPublicKeyServer = new MockZinc();
+  private final MockZinc mockInitialDataServer = new MockZinc();
+  private final MockZinc mockAuthServer = new MockZinc();
+  private final MockBrass mockEgressServer = new MockBrass();
+
+  private KryptonConfig.Builder createConfig() {
     return KryptonConfig.newBuilder()
-        .setZincUrl(zincUrl)
-        .setZincPublicSigningKeyUrl(zincUrl)
-        .setBrassUrl(brassUrl)
+        .setZincUrl(mockAuthServer.url())
+        .setZincPublicSigningKeyUrl(mockPublicKeyServer.url())
+        .setBrassUrl(mockEgressServer.url())
         .setServiceType("some_service_type")
         .setDatapathProtocol(DatapathProtocol.BRIDGE)
         .setEnableBlindSigning(true);
   }
 
-  Krypton createKrypton() {
-    WorkManagerTestInitHelper.initializeTestWorkManager(
-        ApplicationProvider.getApplicationContext());
-    when(socketFactoryFactory.withCurrentNetwork()).thenReturn(SocketFactory.getDefault());
-    when(socketFactoryFactory.withNetwork(any())).thenReturn(SocketFactory.getDefault());
-    HttpFetcher httpFetcher = new HttpFetcher(socketFactoryFactory);
-    OAuthTokenProvider tokenProvider =
-        new OAuthTokenProvider() {
-          @Override
-          public String getOAuthToken() {
+  private static class MockOAuthTokenProvider implements OAuthTokenProvider {
+    @Override
+    public String getOAuthToken() {
             return "some_auth_token";
           }
 
@@ -106,7 +104,17 @@ public class KryptonTest {
 
             return proto.toByteArray();
           }
-        };
+
+    @Override
+    public void clearOAuthToken(String token) {}
+  }
+
+  private Krypton createKrypton(OAuthTokenProvider tokenProvider) {
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext());
+    when(socketFactoryFactory.withCurrentNetwork()).thenReturn(SocketFactory.getDefault());
+    when(socketFactoryFactory.withNetwork(any())).thenReturn(SocketFactory.getDefault());
+    HttpFetcher httpFetcher = new HttpFetcher(socketFactoryFactory);
 
     return new KryptonImpl(
         ApplicationProvider.getApplicationContext(),
@@ -114,6 +122,18 @@ public class KryptonTest {
         tokenProvider,
         kryptonListener,
         backgroundExecutor);
+  }
+
+  private Krypton createKrypton() {
+    return createKrypton(new MockOAuthTokenProvider());
+  }
+
+  @Before
+  public final void startServers() throws Exception {
+    mockPublicKeyServer.start();
+    mockInitialDataServer.start();
+    mockAuthServer.start();
+    mockEgressServer.start();
   }
 
   @Test
@@ -135,7 +155,12 @@ public class KryptonTest {
         .onKryptonDisconnected(any(DisconnectionStatus.class));
 
     try {
-      krypton.start(createConfig(INVALID_URL, INVALID_URL).build());
+      krypton.start(
+          createConfig()
+              .setZincUrl(INVALID_URL)
+              .setZincPublicSigningKeyUrl(INVALID_URL)
+              .setBrassUrl(INVALID_URL)
+              .build());
       assertThat(condition.block(1000)).isTrue();
       // Validate the calls to onKryptonDisconnected
       assertThat(firstStatus.get().getCode()).isEqualTo(PpnStatus.Code.INTERNAL.getCode());
@@ -152,9 +177,8 @@ public class KryptonTest {
     Krypton krypton = createKrypton();
     final ConditionVariable condition = new ConditionVariable(false);
 
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueueNegativeResponseWithCode(403, "Auth failed");
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+    mockAuthServer.enqueueNegativeResponseWithCode(403, "Auth failed");
 
     AtomicReference<PpnStatus> status = new AtomicReference<>();
     doAnswer(
@@ -167,7 +191,7 @@ public class KryptonTest {
         .onKryptonPermanentFailure(any(PpnStatus.class));
 
     try {
-      krypton.start(createConfig(mockZinc.url(), INVALID_URL).build());
+      krypton.start(createConfig().setBrassUrl(INVALID_URL).build());
       assertThat(condition.block(1000)).isTrue();
       // Validate the Status
       assertThat(status.get().getCode()).isEqualTo(PpnStatus.Code.PERMISSION_DENIED);
@@ -181,12 +205,9 @@ public class KryptonTest {
     Krypton krypton = createKrypton();
     final ConditionVariable condition = new ConditionVariable(false);
 
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
-
-    mockBrass.start();
-    mockBrass.enqueuePositiveResponse();
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+    mockAuthServer.enqueuePositiveJsonAuthResponse();
+    mockEgressServer.enqueuePositiveResponse();
 
     AtomicReference<DisconnectionStatus> firstStatus = new AtomicReference<>();
     AtomicReference<DisconnectionStatus> secondStatus = new AtomicReference<>();
@@ -202,7 +223,7 @@ public class KryptonTest {
         .onKryptonDisconnected(any(DisconnectionStatus.class));
 
     try {
-      krypton.start(createConfig(mockZinc.url(), INVALID_URL).build());
+      krypton.start(createConfig().setBrassUrl(INVALID_URL).build());
       assertThat(condition.block(1000)).isTrue();
 
       // Validate the calls to onKryptonDisconnected
@@ -212,7 +233,7 @@ public class KryptonTest {
       assertThat(secondStatus.get().getIsBlockingTraffic()).isFalse();
 
       // Validate the PublicKeyRequest
-      final RecordedRequest publicKeyRequest = mockZinc.takeRequest();
+      final RecordedRequest publicKeyRequest = mockPublicKeyServer.takeRequest();
       final String publicKeyBodyString = publicKeyRequest.getBody().readUtf8();
       final JSONObject publicKeyBody = new JSONObject(publicKeyBodyString);
       assertThat(publicKeyBody.opt("get_public_key")).isEqualTo(true);
@@ -220,7 +241,7 @@ public class KryptonTest {
           .isEqualTo("application/json; charset=utf-8");
 
       // Validate the AuthAndSignRequest
-      final RecordedRequest authAndSignRequest = mockZinc.takeRequest();
+      final RecordedRequest authAndSignRequest = mockAuthServer.takeRequest();
       final String authAndSignRequestBodyString = authAndSignRequest.getBody().readUtf8();
       final JSONObject authAndSignRequestBody = new JSONObject(authAndSignRequestBodyString);
       assertThat(authAndSignRequestBody.opt("blinded_token")).isNotNull();
@@ -238,12 +259,9 @@ public class KryptonTest {
     Krypton krypton = createKrypton();
     final ConditionVariable condition = new ConditionVariable(false);
 
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
-
-    mockBrass.start();
-    mockBrass.enqueuePositiveResponse();
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+    mockAuthServer.enqueuePositiveJsonAuthResponse();
+    mockEgressServer.enqueuePositiveResponse();
 
     doReturn(0xbeef).when(kryptonListener).onKryptonNeedsTunFd(any(TunFdData.class));
 
@@ -256,11 +274,11 @@ public class KryptonTest {
         .onKryptonControlPlaneConnected();
 
     try {
-      krypton.start(createConfig(mockZinc.url(), mockBrass.url()).build());
+      krypton.start(createConfig().build());
       assertThat(condition.block(1000)).isTrue();
 
       // Validate the PublicKeyRequest
-      final RecordedRequest publicKeyRequest = mockZinc.takeRequest();
+      final RecordedRequest publicKeyRequest = mockPublicKeyServer.takeRequest();
       final String publicKeyBodyString = publicKeyRequest.getBody().readUtf8();
       final JSONObject publicKeyBody = new JSONObject(publicKeyBodyString);
       assertThat(publicKeyBody.opt("get_public_key")).isEqualTo(true);
@@ -268,7 +286,7 @@ public class KryptonTest {
           .isEqualTo("application/json; charset=utf-8");
 
       // Validate the AuthAndSignRequest
-      final RecordedRequest authAndSignRequest = mockZinc.takeRequest();
+      final RecordedRequest authAndSignRequest = mockAuthServer.takeRequest();
       final String authAndSignRequestBodyString = authAndSignRequest.getBody().readUtf8();
       final JSONObject authAndSignRequestBody = new JSONObject(authAndSignRequestBodyString);
       assertThat(authAndSignRequestBody.opt("blinded_token")).isNotNull();
@@ -277,9 +295,51 @@ public class KryptonTest {
           .isEqualTo("application/json; charset=utf-8");
 
       // Validate the AddEgressRequest
-      final RecordedRequest addEgressRequest = mockBrass.takeRequest();
+      final RecordedRequest addEgressRequest = mockEgressServer.takeRequest();
       assertThat(addEgressRequest.getHeader("Content-Type"))
           .isEqualTo("application/json; charset=utf-8");
+    } finally {
+      krypton.stop();
+    }
+  }
+
+  @Test
+  public void start_clearsAuthTokenOn401() throws Exception {
+    TaskCompletionSource<String> clearedToken = new TaskCompletionSource<>();
+
+    OAuthTokenProvider tokenProvider =
+        new MockOAuthTokenProvider() {
+          @Override
+          public void clearOAuthToken(String token) {
+            clearedToken.trySetResult(token);
+          }
+        };
+
+    Krypton krypton = createKrypton(tokenProvider);
+    final ConditionVariable condition = new ConditionVariable(false);
+
+    mockInitialDataServer.enqueueNegativeResponseWithCode(401, "Unauthenticated");
+
+    doAnswer(
+            invocation -> {
+              condition.open();
+              return null;
+            })
+        .when(kryptonListener)
+        .onKryptonDisconnected(any(DisconnectionStatus.class));
+
+    try {
+      KryptonConfig config =
+          createConfig()
+              .setPublicMetadataEnabled(true)
+              .setInitialDataUrl(mockInitialDataServer.url())
+              .setServiceType("test_service_type")
+              .build();
+      krypton.start(config);
+      assertThat(condition.block(1000)).isTrue();
+
+      assertThat(clearedToken.getTask().getResult()).isEqualTo(tokenProvider.getOAuthToken());
+
     } finally {
       krypton.stop();
     }
@@ -291,16 +351,13 @@ public class KryptonTest {
     final ConditionVariable connectedCondition = new ConditionVariable(false);
     final ConditionVariable restartCondition = new ConditionVariable(false);
 
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+    mockAuthServer.enqueuePositiveJsonAuthResponse();
+    mockEgressServer.enqueueNegativeResponseWithCode(402, "Something went wrong with the server");
 
-    mockBrass.start();
-    // Send 402 for AddEgressResponse.
-    mockBrass.enqueueNegativeResponseWithCode(402, "Something went wrong with the server");
-    mockBrass.enqueuePositiveResponse();
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+    mockAuthServer.enqueuePositiveJsonAuthResponse();
+    mockEgressServer.enqueuePositiveResponse();
 
     doReturn(0xbeef).when(kryptonListener).onKryptonNeedsTunFd(any(TunFdData.class));
 
@@ -326,7 +383,7 @@ public class KryptonTest {
         .onKryptonControlPlaneConnected();
 
     try {
-      krypton.start(createConfig(mockZinc.url(), mockBrass.url()).build());
+      krypton.start(createConfig().build());
 
       assertThat(restartCondition.block(2000)).isTrue();
 
@@ -350,11 +407,9 @@ public class KryptonTest {
     Krypton krypton = createKrypton();
     final ConditionVariable condition = new ConditionVariable(false);
 
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
-    mockBrass.start();
-    mockBrass.enqueuePositiveResponse();
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+    mockAuthServer.enqueuePositiveJsonAuthResponse();
+    mockEgressServer.enqueuePositiveResponse();
     doReturn(0xbeef).when(kryptonListener).onKryptonNeedsTunFd(any(TunFdData.class));
 
     doAnswer(
@@ -366,8 +421,7 @@ public class KryptonTest {
         .onKryptonControlPlaneConnected();
 
     try {
-      krypton.start(
-          createConfig(mockZinc.url(), mockBrass.url()).setSafeDisconnectEnabled(true).build());
+      krypton.start(createConfig().setSafeDisconnectEnabled(true).build());
       assertThat(condition.block(1000)).isTrue();
 
       // Validate the Safe Disconnect config value.
@@ -386,11 +440,9 @@ public class KryptonTest {
     Krypton krypton = createKrypton();
     final ConditionVariable condition = new ConditionVariable(false);
 
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
-    mockBrass.start();
-    mockBrass.enqueuePositiveResponse();
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+    mockAuthServer.enqueuePositiveJsonAuthResponse();
+    mockEgressServer.enqueuePositiveResponse();
 
     doAnswer(
             invocation -> {
@@ -401,16 +453,16 @@ public class KryptonTest {
         .onKryptonControlPlaneConnected();
 
     try {
-      krypton.start(createConfig(mockZinc.url(), mockBrass.url()).build());
+      krypton.start(createConfig().build());
       assertThat(condition.block(1000)).isTrue();
 
       // TODO: Change this to test a value passed in using PpnOptions.
       assertThat(krypton.getIpGeoLevel()).isEqualTo(IpGeoLevel.COUNTRY);
 
       condition.close();
-      mockZinc.enqueuePositivePublicKeyResponse();
-      mockZinc.enqueuePositiveAuthResponse();
-      mockBrass.enqueuePositiveResponse();
+      mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+      mockAuthServer.enqueuePositiveJsonAuthResponse();
+      mockEgressServer.enqueuePositiveResponse();
 
       // Update IP Geo Level while Krypton is alive.
       krypton.setIpGeoLevel(IpGeoLevel.CITY);
@@ -428,12 +480,9 @@ public class KryptonTest {
     Krypton krypton = createKrypton();
     final ConditionVariable condition = new ConditionVariable(false);
 
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
-
-    mockBrass.start();
-    mockBrass.enqueuePositiveResponse();
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+    mockAuthServer.enqueuePositiveJsonAuthResponse();
+    mockEgressServer.enqueuePositiveResponse();
 
     doReturn(0xbeef).when(kryptonListener).onKryptonNeedsTunFd(any(TunFdData.class));
 
@@ -446,7 +495,7 @@ public class KryptonTest {
         .onKryptonControlPlaneConnected();
 
     try {
-      krypton.start(createConfig(mockZinc.url(), mockBrass.url()).build());
+      krypton.start(createConfig().build());
       assertThat(condition.block(1000)).isTrue();
 
       krypton.disableKryptonKeepalive();
@@ -458,11 +507,9 @@ public class KryptonTest {
   @Test
   public void debugInfo_isPopulated() throws Exception {
     Krypton krypton = createKrypton();
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
-    mockBrass.start();
-    mockBrass.enqueuePositiveResponse();
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+    mockAuthServer.enqueuePositiveJsonAuthResponse();
+    mockEgressServer.enqueuePositiveResponse();
     doReturn(0xbeef).when(kryptonListener).onKryptonNeedsTunFd(any(TunFdData.class));
 
     final ConditionVariable connectedCondition = new ConditionVariable(false);
@@ -475,14 +522,14 @@ public class KryptonTest {
         .onKryptonControlPlaneConnected();
 
     try {
-      krypton.start(createConfig(mockZinc.url(), mockBrass.url()).build());
+      krypton.start(createConfig().build());
       assertThat(connectedCondition.block(1000)).isTrue();
 
       JSONObject debugInfo = krypton.getDebugJson();
 
       assertThat(debugInfo.opt(KryptonDebugJson.AUTH_STATE)).isEqualTo("Authenticated");
       assertThat(debugInfo.opt(KryptonDebugJson.AUTH_STATUS)).isEqualTo("OK");
-      assertThat(debugInfo.opt(KryptonDebugJson.BRASS_URL)).isEqualTo(mockBrass.url());
+      assertThat(debugInfo.opt(KryptonDebugJson.BRASS_URL)).isEqualTo(mockEgressServer.url());
       assertThat(debugInfo.optBoolean(KryptonDebugJson.CANCELLED)).isFalse();
       assertThat(debugInfo.opt(KryptonDebugJson.SUCCESSIVE_CONTROL_PLANE_FAILURES)).isEqualTo(1);
       assertThat(debugInfo.opt(KryptonDebugJson.EGRESS_STATE)).isEqualTo("kEgressSessionCreated");
@@ -493,7 +540,7 @@ public class KryptonTest {
       assertThat(debugInfo.opt(KryptonDebugJson.SESSION_STATE)).isEqualTo("kConnected");
       assertThat(debugInfo.opt(KryptonDebugJson.SESSION_STATUS)).isEqualTo("OK");
       assertThat(debugInfo.has(KryptonDebugJson.SESSION_ACTIVE_TUN_FD)).isFalse();
-      assertThat(debugInfo.opt(KryptonDebugJson.ZINC_URL)).isEqualTo(mockZinc.url());
+      assertThat(debugInfo.opt(KryptonDebugJson.ZINC_URL)).isEqualTo(mockAuthServer.url());
     } finally {
       krypton.stop();
     }
@@ -503,11 +550,9 @@ public class KryptonTest {
   public void attestationData_isPopulated() throws Exception {
     final String nonce = "some_nonce";
     Krypton krypton = createKrypton();
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse(Optional.of(nonce));
-    mockZinc.enqueuePositiveAuthResponse();
-    mockBrass.start();
-    mockBrass.enqueuePositiveResponse();
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse(Optional.of(nonce));
+    mockAuthServer.enqueuePositiveJsonAuthResponse();
+    mockEgressServer.enqueuePositiveResponse();
     doReturn(0xbeef).when(kryptonListener).onKryptonNeedsTunFd(any(TunFdData.class));
 
     final ConditionVariable connectedCondition = new ConditionVariable(false);
@@ -519,14 +564,11 @@ public class KryptonTest {
         .when(kryptonListener)
         .onKryptonControlPlaneConnected();
     try {
-      krypton.start(
-          createConfig(mockZinc.url(), mockBrass.url())
-              .setIntegrityAttestationEnabled(true)
-              .build());
+      krypton.start(createConfig().setIntegrityAttestationEnabled(true).build());
       assertThat(connectedCondition.block(1000)).isTrue();
 
       // Validate the PublicKeyRequest
-      final RecordedRequest publicKeyRequest = mockZinc.takeRequest();
+      final RecordedRequest publicKeyRequest = mockPublicKeyServer.takeRequest();
       final String publicKeyBodyString = publicKeyRequest.getBody().readUtf8();
       final JSONObject publicKeyBody = new JSONObject(publicKeyBodyString);
       assertThat(publicKeyBody.optBoolean("request_nonce")).isTrue();
@@ -534,7 +576,7 @@ public class KryptonTest {
           .isEqualTo("application/json; charset=utf-8");
 
       // validate the AuthAndSignRequest
-      final RecordedRequest authAndSignRequest = mockZinc.takeRequest();
+      final RecordedRequest authAndSignRequest = mockAuthServer.takeRequest();
       assertThat(authAndSignRequest.getHeader("Content-Type")).isEqualTo("application/x-protobuf");
       byte[] protoBytes = authAndSignRequest.getBody().readByteArray();
       AuthAndSignRequest proto =

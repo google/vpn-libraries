@@ -366,6 +366,11 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
               }
               return attestationHelper.getAttestationData(nonce, network);
             }
+
+            @Override
+            public void clearOAuthToken(String token) {
+              clearZincOAuthToken(token);
+            }
           };
     } else {
       oAuthTokenProvider =
@@ -384,6 +389,11 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
             @Nullable
             public byte[] getAttestationData(String nonce) {
               return null;
+            }
+
+            @Override
+            public void clearOAuthToken(String token) {
+              clearZincOAuthToken(token);
             }
           };
     }
@@ -760,6 +770,13 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
     Account account = accountCache.getPpnAccount();
     return accountManager.getOAuthToken(context, account, options.getZincOAuthScopes(), network);
+  }
+
+  /** Removes the given oauth token from the cache. */
+  private void clearZincOAuthToken(String token) {
+    ensureBackgroundThread();
+    Log.w(TAG, "Clearing oauth token");
+    accountManager.clearOAuthToken(context, token);
   }
 
   /**

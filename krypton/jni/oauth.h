@@ -42,6 +42,8 @@ class OAuth : public OAuthInterface {
   absl::StatusOr<privacy::ppn::AttestationData> GetAttestationData(
       const std::string& nonce) override;
 
+  void ClearOAuthToken(const std::string& token) override;
+
  private:
   std::unique_ptr<JavaObject> oauth_token_provider_instance_;
 };

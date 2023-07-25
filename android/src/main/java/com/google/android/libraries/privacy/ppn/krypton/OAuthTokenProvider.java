@@ -33,5 +33,8 @@ public interface OAuthTokenProvider {
    * the Hardware Attested IDs, if feasible, to validate the device type.
    */
   byte[] getAttestationData(String nonce);
+
+  /** Clears the given OAuth token from any cache that may have provided it. */
+  void clearOAuthToken(String token);
 }
 // LINT.ThenChange(//depot/google3/privacy/net/krypton/jni/jni_cache.cc)

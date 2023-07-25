@@ -80,4 +80,13 @@ public class GoogleAccountManager implements PpnAccountManager {
       throw new PpnException("Unable to obtain oauth token.", e);
     }
   }
+
+  @Override
+  public void clearOAuthToken(Context context, String token) {
+    try {
+      GoogleAuthUtil.clearToken(context, token);
+    } catch (Exception e) {
+      Log.w(TAG, "Unable to clear token.", e);
+    }
+  }
 }

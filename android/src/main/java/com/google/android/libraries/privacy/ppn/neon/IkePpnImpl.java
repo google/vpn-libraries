@@ -102,6 +102,11 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
             public byte[] getAttestationData(String nonce) {
               return attestationHelper.getAttestationData(nonce, null);
             }
+
+            @Override
+            public void clearOAuthToken(String token) {
+              IkePpnImpl.this.clearOAuthToken(token);
+            }
           };
     } else {
       tokenProvider =
@@ -121,6 +126,11 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
             public byte[] getAttestationData(String nonce) {
               return null;
             }
+
+            @Override
+            public void clearOAuthToken(String token) {
+              IkePpnImpl.this.clearOAuthToken(token);
+            }
           };
     }
 
@@ -130,6 +140,10 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
   private String getOAuthToken() throws PpnException {
     Account account = accountCache.getPpnAccount();
     return accountManager.getOAuthToken(context, account, options.getZincOAuthScopes(), null);
+  }
+
+  private void clearOAuthToken(String token) {
+    accountManager.clearOAuthToken(context, token);
   }
 
   private Ikev2VpnProfile buildVpnProfile(PpnIkeResponse ikeResponse) {

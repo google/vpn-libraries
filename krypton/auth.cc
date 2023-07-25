@@ -282,6 +282,12 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
       LOG(ERROR) << "Auth is already cancelled, don't update";
       return;
     }
+
+    if (http_response.status().code() == 401) {
+      std::string token(auth_token.data(), auth_token.size());
+      oauth_->ClearOAuthToken(token);
+    }
+
     if (http_response.status().code() < 200 ||
         http_response.status().code() >= 300) {
       SetState(State::kUnauthenticated);

@@ -82,6 +82,9 @@ public class NotificationTest {
           public byte[] getAttestationData(String nonce) {
             return null;
           }
+
+          @Override
+          public void clearOAuthToken(String token) {}
         };
     return new KryptonImpl(
         ApplicationProvider.getApplicationContext(),

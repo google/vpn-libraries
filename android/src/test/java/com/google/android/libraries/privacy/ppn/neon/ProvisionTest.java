@@ -63,6 +63,9 @@ public class ProvisionTest {
       public byte[] getAttestationData(String nonce) {
         return null;
       }
+
+      @Override
+      public void clearOAuthToken(String token) {}
     };
   }
 
@@ -70,7 +73,7 @@ public class ProvisionTest {
   public void start_successfulProvision() throws Exception {
     mockZinc.start();
     mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
+    mockZinc.enqueuePositiveJsonAuthResponse();
 
     mockBrass.start();
     mockBrass.enqueuePositiveIkeResponse();
@@ -103,7 +106,7 @@ public class ProvisionTest {
   public void start_failedProvision() throws Exception {
     mockZinc.start();
     mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
+    mockZinc.enqueuePositiveJsonAuthResponse();
 
     mockBrass.start();
     mockBrass.enqueueNegativeResponseWithCode(500, "unavailable");

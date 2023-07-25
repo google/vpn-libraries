@@ -67,8 +67,11 @@ constexpr char kOAuthTokenProviderGetAttestationDataMethod[] =
     "getAttestationData";
 constexpr char kOAuthTokenProviderGetAttestationDataMethodSignature[] =
     "(Ljava/lang/String;)[B";
+constexpr char kOAuthTokenProviderClearOAuthTokenMethod[] = "clearOAuthToken";
+constexpr char kOAuthTokenProviderClearOAuthTokenMethodSignature[] =
+    "(Ljava/lang/String;)V";
 // LINT.ThenChange(
-// //depot/google3/java/com/google/android/libraries/privacy/ppn/internal/http/HttpFetcher.java)
+// //depot/google3/java/com/google/android/libraries/privacy/ppn/krypton/OAuthTokenProvider.java)
 
 // com.google.android.libraries.privacy.ppn.krypton.TimerIdManager
 // LINT.IfChange
@@ -280,6 +283,12 @@ absl::Status JniCache::InitializeOAuthTokenProviderMethods(
       GetMethod(env, oauth_token_provider_interface,
                 kOAuthTokenProviderGetAttestationDataMethod,
                 kOAuthTokenProviderGetAttestationDataMethodSignature));
+
+  PPN_ASSIGN_OR_RETURN(
+      oauth_token_provider_clear_oauth_token_method_,
+      GetMethod(env, oauth_token_provider_interface,
+                kOAuthTokenProviderClearOAuthTokenMethod,
+                kOAuthTokenProviderClearOAuthTokenMethodSignature));
 
   return absl::OkStatus();
 }

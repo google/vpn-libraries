@@ -100,6 +100,9 @@ public class OAuthAccountManager implements PpnAccountManager {
     }
   }
 
+  @Override
+  public void clearOAuthToken(Context context, String token) {}
+
   /**
    * Checks whether the user has already granted OAuth permissions.
    *

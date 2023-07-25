@@ -71,6 +71,10 @@ class JniCache {
     return oauth_token_provider_get_attestation_data_method_;
   }
 
+  jmethodID GetOAuthTokenProviderClearOAuthTokenMethod() const {
+    return oauth_token_provider_clear_oauth_token_method_;
+  }
+
   // com.google.android.libraries.privacy.ppn.krypton.TimerIdManager
   jmethodID GetTimerIdManagerStartTimerMethod() const {
     return timer_id_manager_start_timer_method_;
@@ -170,6 +174,7 @@ class JniCache {
   // privacy.ppn.krypton.OAuthTokenProvider
   jmethodID oauth_token_provider_get_oauth_token_method_ = nullptr;
   jmethodID oauth_token_provider_get_attestation_data_method_ = nullptr;
+  jmethodID oauth_token_provider_clear_oauth_token_method_ = nullptr;
 
   // privacy.ppn.krypton.TimerIdManager
   jmethodID timer_id_manager_start_timer_method_ = nullptr;

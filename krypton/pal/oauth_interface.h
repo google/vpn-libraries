@@ -35,6 +35,9 @@ class OAuthInterface {
 
   virtual absl::StatusOr<privacy::ppn::AttestationData> GetAttestationData(
       const std::string& nonce) = 0;
+
+  // Clears the given token from any cache that may have provided it.
+  virtual void ClearOAuthToken(const std::string& token) {}
 };
 
 }  // namespace krypton

@@ -38,4 +38,7 @@ public interface PpnAccountManager {
    */
   String getOAuthToken(Context context, Account account, String scope, @Nullable Network network)
       throws PpnException;
+
+  /** Clears any cached tokens, so that future fetches will return new tokens. */
+  void clearOAuthToken(Context context, String token);
 }

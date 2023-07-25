@@ -97,6 +97,22 @@ absl::StatusOr<privacy::ppn::AttestationData> OAuth::GetAttestationData(
   return proto;
 }
 
+void OAuth::ClearOAuthToken(const std::string& token) {
+  LOG(INFO) << "Requesting Java clear oauth token";
+
+  auto jni_cache = JniCache::Get();
+  auto env = jni_cache->GetJavaEnv();
+  if (!env) {
+    LOG(ERROR) << "Cannot find JavaEnv to clear oauth token";
+    return;
+  }
+
+  env.value()->CallVoidMethod(
+      oauth_token_provider_instance_->get(),
+      jni_cache->GetOAuthTokenProviderClearOAuthTokenMethod(),
+      JavaString(env.value(), token).get());
+}
+
 }  // namespace jni
 }  // namespace krypton
 }  // namespace privacy

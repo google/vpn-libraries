@@ -52,7 +52,7 @@ public class IkeTest {
   public void provision_successful() throws Exception {
     mockZinc.start();
     mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
+    mockZinc.enqueuePositiveJsonAuthResponse();
 
     mockBrass.start();
     mockBrass.enqueuePositiveIkeResponse();
@@ -72,7 +72,7 @@ public class IkeTest {
   public void start_failedProvision() throws Exception {
     mockZinc.start();
     mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveAuthResponse();
+    mockZinc.enqueuePositiveJsonAuthResponse();
 
     mockBrass.start();
     mockBrass.enqueueNegativeResponseWithCode(500, "unavailable");

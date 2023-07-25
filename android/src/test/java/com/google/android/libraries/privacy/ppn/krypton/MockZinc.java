@@ -77,7 +77,7 @@ public class MockZinc {
   }
 
   /** Returns a MockResponse that simulates Zinc successfully approving authentication. */
-  private static MockResponse buildPositiveAuthResponse() {
+  private static MockResponse buildPositiveJsonAuthResponse() {
     // mock a simple response with the JSON Content
     MockResponse response = new MockResponse();
     JSONObject jsonContent = buildJsonAuthResponse();
@@ -85,7 +85,7 @@ public class MockZinc {
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     return response;
   }
-
+  
   public MockZinc() {
     mockWebServer = new MockWebServer();
   }
@@ -102,8 +102,8 @@ public class MockZinc {
     mockWebServer.enqueue(buildPositivePublicKeyResponse(nonce));
   }
 
-  public void enqueuePositiveAuthResponse() {
-    mockWebServer.enqueue(buildPositiveAuthResponse());
+  public void enqueuePositiveJsonAuthResponse() {
+    mockWebServer.enqueue(buildPositiveJsonAuthResponse());
   }
 
   public void enqueueNegativeResponseWithCode(int code, String body) {

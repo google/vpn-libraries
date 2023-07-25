@@ -31,6 +31,7 @@ class MockOAuth : public OAuthInterface {
   MOCK_METHOD(absl::StatusOr<std::string>, GetOAuthToken, (), (override));
   MOCK_METHOD(absl::StatusOr<privacy::ppn::AttestationData>, GetAttestationData,
               (const std::string&), (override));
+  MOCK_METHOD(void, ClearOAuthToken, (const std::string&), (override));
 };
 
 }  // namespace krypton
