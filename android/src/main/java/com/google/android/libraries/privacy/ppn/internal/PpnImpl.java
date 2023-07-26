@@ -943,8 +943,11 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
               if (krypton != null) {
                 NetworkInfo networkInfo = createNetworkInfo(ppnNetwork);
                 Log.w(TAG, "Setting network on Krypton.");
-                krypton.setNetwork(networkInfo);
-                vpnManager.setNetwork(ppnNetwork);
+                try {
+                  krypton.setNetwork(networkInfo);
+                } finally {
+                  vpnManager.setNetwork(ppnNetwork);
+                }
               }
             }
           } catch (KryptonException e) {
