@@ -110,9 +110,19 @@ public class VpnManager {
     return this.disallowedApplications;
   }
 
-  /** Gets the underlying network for the service. */
-  public PpnNetwork getNetwork() {
+  @Nullable
+  private PpnNetwork getPpnNetwork() {
     return network;
+  }
+
+  /** Gets the underlying network for the service. */
+  @Nullable
+  public Network getNetwork() {
+    PpnNetwork ppnNetwork = getPpnNetwork();
+    if (ppnNetwork == null) {
+      return null;
+    }
+    return ppnNetwork.getNetwork();
   }
 
   /**
@@ -138,7 +148,7 @@ public class VpnManager {
     setVpnServiceParametersFromTunFdData(builder, tunFdData, options);
 
     // If the network was set before the tunnel was established, make sure to set it on the builder.
-    PpnNetwork network = getNetwork();
+    PpnNetwork network = getPpnNetwork();
     if (network != null) {
       Log.w(TAG, "Setting initial underlying network to " + network);
       builder.setUnderlyingNetworks(new Network[] {network.getNetwork()});
@@ -163,7 +173,7 @@ public class VpnManager {
     // There could be a race condition where we set the network between when we set the Builder and
     // when we call establish. Android doesn't track the underlying network until establish is
     // called. So we double check the network here just in case it needs to be changed.
-    PpnNetwork currentNetwork = getNetwork();
+    PpnNetwork currentNetwork = getPpnNetwork();
     if (currentNetwork != null && !currentNetwork.equals(network)) {
       Log.w(TAG, "Updating underlying network to " + currentNetwork);
       if (!service.setUnderlyingNetworks(new Network[] {currentNetwork.getNetwork()})) {

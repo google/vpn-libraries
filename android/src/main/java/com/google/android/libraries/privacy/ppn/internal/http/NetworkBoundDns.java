@@ -17,7 +17,6 @@ package com.google.android.libraries.privacy.ppn.internal.http;
 import android.net.Network;
 import android.util.Log;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
-import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -33,8 +32,8 @@ public class NetworkBoundDns implements Dns {
   private final Network network;
   private final AddressFamily addressFamily;
 
-  NetworkBoundDns(PpnNetwork ppnNetwork, AddressFamily addressFamily) {
-    this.network = ppnNetwork.getNetwork();
+  NetworkBoundDns(Network network, AddressFamily addressFamily) {
+    this.network = network;
     this.addressFamily = addressFamily;
   }
 

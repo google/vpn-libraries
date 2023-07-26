@@ -14,8 +14,8 @@
 
 package com.google.android.libraries.privacy.ppn.internal.service;
 
+import android.net.Network;
 import android.util.Log;
-import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -27,9 +27,9 @@ import javax.net.SocketFactory;
 public class ProtectedSocketFactory extends SocketFactory {
   private static final String TAG = "ProtectedSocketFactory";
   private final VpnManager vpnManager;
-  private final Supplier<PpnNetwork> networkProvider;
+  private final Supplier<Network> networkProvider;
 
-  ProtectedSocketFactory(VpnManager vpnManager, Supplier<PpnNetwork> networkProvider) {
+  ProtectedSocketFactory(VpnManager vpnManager, Supplier<Network> networkProvider) {
     this.vpnManager = vpnManager;
     this.networkProvider = networkProvider;
   }
@@ -69,10 +69,10 @@ public class ProtectedSocketFactory extends SocketFactory {
   private Socket protect(Socket socket) {
     vpnManager.protect(socket);
 
-    PpnNetwork network = networkProvider.get();
+    Network network = networkProvider.get();
     if (network != null) {
       try {
-        network.getNetwork().bindSocket(socket);
+        network.bindSocket(socket);
       } catch (IOException e) {
         Log.e(TAG, "Unable to bind socket to network: " + network, e);
       }

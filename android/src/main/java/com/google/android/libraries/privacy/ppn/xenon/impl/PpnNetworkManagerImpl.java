@@ -610,7 +610,8 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
     if (ppnNetwork.getNetworkType() == NetworkType.WIFI) {
       Log.w(TAG, String.format("Checking WiFi Connectivity for network %s", ppnNetwork));
       boolean pingSuccessful =
-          httpFetcher.checkGet(ppnOptions.getConnectivityCheckUrl(), ppnNetwork, addressFamily);
+          httpFetcher.checkGet(
+              ppnOptions.getConnectivityCheckUrl(), ppnNetwork.getNetwork(), addressFamily);
 
       if (!pingSuccessful) {
         Log.w(

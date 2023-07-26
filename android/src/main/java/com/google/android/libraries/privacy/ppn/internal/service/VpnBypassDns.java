@@ -18,7 +18,6 @@ import android.net.Network;
 import android.util.Log;
 import com.google.android.libraries.privacy.ppn.internal.http.Dns;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
-import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
@@ -46,14 +45,13 @@ public class VpnBypassDns implements Dns {
 
   @Override
   public List<InetAddress> lookup(String host) throws UnknownHostException {
-    PpnNetwork ppnNetwork = vpnManager.getNetwork();
-    if (ppnNetwork == null) {
+    Network network = vpnManager.getNetwork();
+    if (network == null) {
       Log.w(TAG, "Doing DNS lookup on default interface for host: " + host);
       return fallbackDns.lookup(host);
     }
 
-    Log.w(TAG, "Doing DNS lookup on network " + ppnNetwork + " for host: " + host);
-    Network network = ppnNetwork.getNetwork();
+    Log.w(TAG, "Doing DNS lookup on network " + network + " for host: " + host);
     return Arrays.asList(network.getAllByName(host));
   }
 }

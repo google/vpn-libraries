@@ -21,9 +21,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import android.net.Network;
-import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.internal.http.Dns;
-import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import java.net.InetAddress;
 import java.util.Arrays;
 import org.junit.Rule;
@@ -60,8 +58,7 @@ public final class VpnBypassDnsTest {
   @Test
   public void lookup_usesNetworkWhenSet() throws Exception {
     String hostname = "foo.bar.baz";
-    PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.UNKNOWN_TYPE);
-    doReturn(ppnNetwork).when(mockVpnManager).getNetwork();
+    doReturn(mockNetwork).when(mockVpnManager).getNetwork();
     doReturn(new InetAddress[] {address}).when(mockNetwork).getAllByName(hostname);
 
     VpnBypassDns dns = new VpnBypassDns(mockVpnManager, mockSystemDns);

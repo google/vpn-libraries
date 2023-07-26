@@ -14,7 +14,7 @@
 
 package com.google.android.libraries.privacy.ppn.internal.http;
 
-import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
+import android.net.Network;
 import javax.net.SocketFactory;
 
 /** A factory that creates SocketFactory instances that are bound to specific networks. */
@@ -26,5 +26,5 @@ public interface BoundSocketFactoryFactory {
   SocketFactory withCurrentNetwork();
 
   /** Returns a SocketFactory that will bind the socket to the given network. */
-  SocketFactory withNetwork(PpnNetwork ppnNetwork);
+  SocketFactory withNetwork(Network network);
 }

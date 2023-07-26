@@ -16,6 +16,7 @@ package com.google.android.libraries.privacy.ppn.internal.http;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
+import android.net.Network;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import com.google.android.gms.tasks.Task;
@@ -25,7 +26,6 @@ import com.google.android.libraries.privacy.ppn.internal.HttpRequest;
 import com.google.android.libraries.privacy.ppn.internal.HttpResponse;
 import com.google.android.libraries.privacy.ppn.internal.HttpStatus;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
-import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
@@ -167,7 +167,7 @@ public class HttpFetcher {
    * synchronous API and is blocking. The address family used for the check can be controlled with
    * the addressFamily argument.
    */
-  public boolean checkGet(String url, PpnNetwork ppnNetwork, AddressFamily addressFamily) {
+  public boolean checkGet(String url, Network ppnNetwork, AddressFamily addressFamily) {
     Log.w(TAG, "HTTP GET (checkGet) to " + url + " (" + addressFamily.name() + ")");
     Request req;
     try {
@@ -192,7 +192,7 @@ public class HttpFetcher {
    * only checks whether the response was successful or not, aka response code [200, 300). This is a
    * synchronous API and is blocking.
    */
-  public boolean checkGet(String url, PpnNetwork ppnNetwork) {
+  public boolean checkGet(String url, Network ppnNetwork) {
     return checkGet(url, ppnNetwork, AddressFamily.V4V6);
   }
 
@@ -249,7 +249,7 @@ public class HttpFetcher {
       Request request,
       Duration timeout,
       boolean parseJsonBody,
-      Optional<PpnNetwork> network,
+      Optional<Network> network,
       AddressFamily addressFamily) {
     try {
       // Add a higher-level timeout to the await, in case okhttp's timeout fails.
@@ -281,7 +281,7 @@ public class HttpFetcher {
    * @param network optional network to perform the request on. If empty, uses the current network.
    */
   private HttpResponse doRequest(
-      Request request, Duration timeout, boolean parseJsonBody, Optional<PpnNetwork> network) {
+      Request request, Duration timeout, boolean parseJsonBody, Optional<Network> network) {
     return doRequest(request, timeout, parseJsonBody, network, AddressFamily.V4V6);
   }
 
@@ -300,7 +300,7 @@ public class HttpFetcher {
       Request request,
       Duration timeout,
       boolean parseJsonBody,
-      Optional<PpnNetwork> network,
+      Optional<Network> network,
       AddressFamily addressFamily) {
     SocketFactory factory =
         network.isPresent()

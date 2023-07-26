@@ -24,9 +24,7 @@ import android.util.Log;
 import com.google.android.libraries.privacy.ppn.internal.HttpRequest;
 import com.google.android.libraries.privacy.ppn.internal.HttpResponse;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
-import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.internal.json.Json;
-import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.common.net.InetAddresses;
 import com.squareup.okhttp.mockwebserver.MockResponse;
 import com.squareup.okhttp.mockwebserver.MockWebServer;
@@ -491,8 +489,7 @@ public class HttpFetcherTest {
     // Override the multinetwork DNS lookup, since the test framework doesn't support it.
     when(mockNetwork.getAllByName(anyString()))
         .then(invocation -> InetAddress.getAllByName(invocation.getArgument(0)));
-    PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
-    FutureTask<Boolean> future = new FutureTask<>(() -> httpFetcher.checkGet(url, ppnNetwork));
+    FutureTask<Boolean> future = new FutureTask<>(() -> httpFetcher.checkGet(url, mockNetwork));
     new Thread(future).start();
     return future.get();
   }
@@ -506,9 +503,8 @@ public class HttpFetcherTest {
     // Override the multinetwork DNS lookup, since the test framework doesn't support it.
     when(mockNetwork.getAllByName(anyString()))
         .then(invocation -> InetAddress.getAllByName(invocation.getArgument(0)));
-    PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
     FutureTask<Boolean> future =
-        new FutureTask<>(() -> httpFetcher.checkGet(url, ppnNetwork, addressFamily));
+        new FutureTask<>(() -> httpFetcher.checkGet(url, mockNetwork, addressFamily));
     new Thread(future).start();
     return future.get();
   }

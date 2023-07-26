@@ -359,12 +359,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
             @Override
             @Nullable
             public byte[] getAttestationData(String nonce) {
-              Network network = null;
-              PpnNetwork ppnNetwork = vpnManager.getNetwork();
-              if (ppnNetwork != null) {
-                network = ppnNetwork.getNetwork();
-              }
-              return attestationHelper.getAttestationData(nonce, network);
+              return attestationHelper.getAttestationData(nonce, vpnManager.getNetwork());
             }
 
             @Override
@@ -762,11 +757,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
    */
   public String getZincOAuthToken() throws PpnException {
     ensureBackgroundThread();
-    Network network = null;
-    PpnNetwork ppnNetwork = vpnManager.getNetwork();
-    if (ppnNetwork != null) {
-      network = ppnNetwork.getNetwork();
-    }
+    Network network = vpnManager.getNetwork();
 
     Account account = accountCache.getPpnAccount();
     return accountManager.getOAuthToken(context, account, options.getZincOAuthScopes(), network);

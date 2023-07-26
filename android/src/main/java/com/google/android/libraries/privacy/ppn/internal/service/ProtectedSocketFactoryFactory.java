@@ -14,8 +14,8 @@
 
 package com.google.android.libraries.privacy.ppn.internal.service;
 
+import android.net.Network;
 import com.google.android.libraries.privacy.ppn.internal.http.BoundSocketFactoryFactory;
-import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import javax.net.SocketFactory;
 
 /** A BoundSocketFactoryFactory that produces ProtectedSocketFactory instances. */
@@ -34,7 +34,7 @@ public class ProtectedSocketFactoryFactory implements BoundSocketFactoryFactory 
 
   /** Creates a new factory based on this one, but with the given network hard-coded. */
   @Override
-  public SocketFactory withNetwork(PpnNetwork network) {
+  public SocketFactory withNetwork(Network network) {
     return new ProtectedSocketFactory(vpnManager, () -> network);
   }
 }

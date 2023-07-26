@@ -23,8 +23,6 @@ import static org.mockito.Mockito.when;
 import android.net.Network;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
-import com.google.android.libraries.privacy.ppn.internal.NetworkType;
-import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.common.net.InetAddresses;
 import java.net.InetAddress;
 import java.util.List;
@@ -46,8 +44,7 @@ public final class NetworkBoundDnsTest {
 
   @Test
   public void lookup_allAddresses() throws Exception {
-    PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
-    NetworkBoundDns dns = new NetworkBoundDns(ppnNetwork, AddressFamily.V4V6);
+    NetworkBoundDns dns = new NetworkBoundDns(mockNetwork, AddressFamily.V4V6);
 
     when(mockNetwork.getAllByName(any())).thenReturn(addresses);
 
@@ -58,8 +55,7 @@ public final class NetworkBoundDnsTest {
 
   @Test
   public void lookup_onlyIpv4() throws Exception {
-    PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
-    NetworkBoundDns dns = new NetworkBoundDns(ppnNetwork, AddressFamily.V4);
+    NetworkBoundDns dns = new NetworkBoundDns(mockNetwork, AddressFamily.V4);
 
     when(mockNetwork.getAllByName(any())).thenReturn(addresses);
 
@@ -70,8 +66,7 @@ public final class NetworkBoundDnsTest {
 
   @Test
   public void lookup_onlyIpv6() throws Exception {
-    PpnNetwork ppnNetwork = new PpnNetwork(mockNetwork, NetworkType.WIFI);
-    NetworkBoundDns dns = new NetworkBoundDns(ppnNetwork, AddressFamily.V6);
+    NetworkBoundDns dns = new NetworkBoundDns(mockNetwork, AddressFamily.V6);
 
     when(mockNetwork.getAllByName(any())).thenReturn(addresses);
 

@@ -14,8 +14,8 @@
 
 package com.google.android.libraries.privacy.ppn.neon;
 
+import android.net.Network;
 import com.google.android.libraries.privacy.ppn.internal.http.BoundSocketFactoryFactory;
-import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import javax.net.SocketFactory;
 
 /** A BoundSocketFactoryFactory for use with Provision. */
@@ -29,7 +29,7 @@ public class ProvisionSocketFactoryFactory implements BoundSocketFactoryFactory 
 
   /** Creates a new factory based on this one, but with the given network hard-coded. */
   @Override
-  public SocketFactory withNetwork(PpnNetwork network) {
+  public SocketFactory withNetwork(Network network) {
     // TODO: Figure out which network to use.
     return SocketFactory.getDefault();
   }

@@ -131,7 +131,7 @@ public final class PpnNetworkManagerImplTest {
     when(wifiNetworkInfo.isConnected()).thenReturn(true);
     when(cellNetworkInfo.isConnected()).thenReturn(true);
 
-    when(mockHttpFetcher.checkGet(eq(CONNECTIVITY_CHECK_URL), any(PpnNetwork.class), any()))
+    when(mockHttpFetcher.checkGet(eq(CONNECTIVITY_CHECK_URL), any(Network.class), any()))
         .thenReturn(true);
   }
 
@@ -273,9 +273,9 @@ public final class PpnNetworkManagerImplTest {
     assertThat(activeNetwork.getAddressFamily()).isEqualTo(AddressFamily.V4V6);
 
     verify(mockHttpFetcher, times(0))
-        .checkGet(CONNECTIVITY_CHECK_URL, cellularNetwork, AddressFamily.V4);
+        .checkGet(CONNECTIVITY_CHECK_URL, cellAndroidNetwork, AddressFamily.V4);
     verify(mockHttpFetcher, times(0))
-        .checkGet(CONNECTIVITY_CHECK_URL, cellularNetwork, AddressFamily.V6);
+        .checkGet(CONNECTIVITY_CHECK_URL, cellAndroidNetwork, AddressFamily.V6);
   }
 
   @Test
@@ -283,7 +283,7 @@ public final class PpnNetworkManagerImplTest {
     when(mockHttpFetcher.checkGet(any(), any(), eq(AddressFamily.V4))).thenReturn(true);
     when(mockHttpFetcher.checkGet(any(), any(), eq(AddressFamily.V6))).thenReturn(true);
 
-    PpnNetwork wifiNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.WIFI);
+    PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
     assertThat(wifiNetwork.getAddressFamily()).isEqualTo(AddressFamily.V4V6);
     await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
@@ -291,8 +291,8 @@ public final class PpnNetworkManagerImplTest {
     assertThat(activeNetwork).isEqualTo(wifiNetwork);
     assertThat(activeNetwork.getAddressFamily()).isEqualTo(AddressFamily.V4V6);
 
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V4);
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V6);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
   }
 
   @Test
@@ -300,7 +300,7 @@ public final class PpnNetworkManagerImplTest {
     when(mockHttpFetcher.checkGet(any(), any(), eq(AddressFamily.V4))).thenReturn(true);
     when(mockHttpFetcher.checkGet(any(), any(), eq(AddressFamily.V6))).thenReturn(false);
 
-    PpnNetwork wifiNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.WIFI);
+    PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
     assertThat(wifiNetwork.getAddressFamily()).isEqualTo(AddressFamily.V4V6);
     await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
@@ -308,8 +308,8 @@ public final class PpnNetworkManagerImplTest {
     assertThat(activeNetwork).isEqualTo(wifiNetwork);
     assertThat(activeNetwork.getAddressFamily()).isEqualTo(AddressFamily.V4);
 
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V4);
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V6);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
   }
 
   @Test
@@ -317,7 +317,7 @@ public final class PpnNetworkManagerImplTest {
     when(mockHttpFetcher.checkGet(any(), any(), eq(AddressFamily.V4))).thenReturn(false);
     when(mockHttpFetcher.checkGet(any(), any(), eq(AddressFamily.V6))).thenReturn(true);
 
-    PpnNetwork wifiNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.WIFI);
+    PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
     assertThat(wifiNetwork.getAddressFamily()).isEqualTo(AddressFamily.V4V6);
     await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
 
@@ -325,8 +325,8 @@ public final class PpnNetworkManagerImplTest {
     assertThat(activeNetwork).isEqualTo(wifiNetwork);
     assertThat(activeNetwork.getAddressFamily()).isEqualTo(AddressFamily.V6);
 
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V4);
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V6);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
   }
 
   @Test
@@ -404,9 +404,9 @@ public final class PpnNetworkManagerImplTest {
 
     // Mock the connectivity check to be false.
     ConditionVariable checkGetStarted1 = new ConditionVariable(false);
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V4))
+    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4))
         .thenReturn(false);
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V6))
+    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6))
         .thenAnswer(
             invocation -> {
               checkGetStarted1.open();
@@ -417,16 +417,16 @@ public final class PpnNetworkManagerImplTest {
     Task<Boolean> handledTask = ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
     // Verify that we checked the connectivity.
     assertThat(checkGetStarted1.block(1000)).isTrue();
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V4);
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V6);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
     // Verify that it didn't get added to the active network list.
     assertThat(ppnNetworkManager.getAllNetworks()).isEmpty();
 
     // Mock the connectivity check to be true now.
     ConditionVariable checkGetStarted2 = new ConditionVariable(false);
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V4))
+    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4))
         .thenReturn(true);
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V6))
+    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6))
         .thenAnswer(
             invocation -> {
               checkGetStarted2.open();
@@ -437,9 +437,9 @@ public final class PpnNetworkManagerImplTest {
     await(ppnNetworkManager.handleNetworkLinkPropertiesChanged(wifiNetwork, new LinkProperties()));
     assertThat(checkGetStarted2.block(1000)).isTrue();
     verify(mockHttpFetcher, times(2))
-        .checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V4);
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
     verify(mockHttpFetcher, times(2))
-        .checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V6);
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
 
     // The original handleNetworkAvailable is still waiting to retry, so advance time enough for it
     // to notice that the network is no longer pending and stop.
@@ -467,9 +467,9 @@ public final class PpnNetworkManagerImplTest {
 
     // Mock the connectivity check to be false.
     ConditionVariable checkGetStarted1 = new ConditionVariable(false);
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V4))
+    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4))
         .thenReturn(false);
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V6))
+    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6))
         .thenAnswer(
             invocation -> {
               checkGetStarted1.open();
@@ -479,16 +479,16 @@ public final class PpnNetworkManagerImplTest {
     // Make sure the connectivity test fails once.
     Task<Boolean> handleTask = ppnNetworkManager.handleNetworkAvailable(wifiNetwork);
     assertThat(checkGetStarted1.block(1000)).isTrue();
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V4);
-    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V6);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
     // Assert that the network wasn't added to the list.
     assertThat(ppnNetworkManager.getAllNetworks()).isEmpty();
 
     // Mock the connectivity check to be true now.
     Semaphore checkGetStarted2 = new Semaphore(0);
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V4))
+    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4))
         .thenReturn(true);
-    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V6))
+    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6))
         .thenAnswer(
             invocation -> {
               checkGetStarted2.release();
@@ -504,9 +504,9 @@ public final class PpnNetworkManagerImplTest {
     }
     assertThat(success).isTrue();
     verify(mockHttpFetcher, times(2))
-        .checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V4);
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
     verify(mockHttpFetcher, times(2))
-        .checkGet(CONNECTIVITY_CHECK_URL, wifiNetwork, AddressFamily.V6);
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
 
     // Verify that the WifiNetwork is now available.
     await(handleTask);
