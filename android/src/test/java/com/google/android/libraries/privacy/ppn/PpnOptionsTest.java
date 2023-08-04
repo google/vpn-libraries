@@ -609,6 +609,7 @@ public class PpnOptionsTest {
             .setPeriodicHealthCheckUrl("healthCheckUrl")
             .setPeriodicHealthCheckPort(80)
             .setDatapathConnectingTimerEnabled(true)
+            .setDatapathConnectingTimerDuration(Duration.ofSeconds(16))
             .build();
 
     KryptonConfig config = options.createKryptonConfigBuilder().build();
@@ -658,6 +659,8 @@ public class PpnOptionsTest {
     assertThat(config.getPeriodicHealthCheckPort()).isEqualTo(80);
     assertThat(config.hasDatapathConnectingTimerEnabled()).isTrue();
     assertThat(config.getDatapathConnectingTimerEnabled()).isTrue();
+    assertThat(config.hasDatapathConnectingTimerDuration()).isTrue();
+    assertThat(config.getDatapathConnectingTimerDuration().getSeconds()).isEqualTo(16);
   }
 
   @Test
@@ -698,6 +701,7 @@ public class PpnOptionsTest {
     assertThat(config.hasPeriodicHealthCheckUrl()).isFalse();
     assertThat(config.hasPeriodicHealthCheckPort()).isFalse();
     assertThat(config.hasDatapathConnectingTimerEnabled()).isFalse();
+    assertThat(config.hasDatapathConnectingTimerDuration()).isFalse();
   }
 
   @Test
@@ -818,5 +822,24 @@ public class PpnOptionsTest {
   public void setDatapathConnectingTimerEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setDatapathConnectingTimerEnabled(true).build();
     assertThat(options.getDatapathConnectingTimerEnabled().get()).isTrue();
+  }
+
+  @Test
+  public void setDatapathConnectingTimerDuration_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.getDatapathConnectingTimerDuration()).isEmpty();
+  }
+
+  @Test
+  public void setDatapathConnectingTimerDuration_setsValue() {
+    PpnOptions options =
+        new PpnOptions.Builder().setDatapathConnectingTimerDuration(Duration.ofSeconds(30)).build();
+    assertThat(options.getDatapathConnectingTimerDuration().get().toSeconds()).isEqualTo(30);
+  }
+
+  @Test
+  public void setDatapathConnectingTimerDuration_ignoresNull() {
+    PpnOptions options = new PpnOptions.Builder().setDatapathConnectingTimerDuration(null).build();
+    assertThat(options.getDatapathConnectingTimerDuration()).isEmpty();
   }
 }

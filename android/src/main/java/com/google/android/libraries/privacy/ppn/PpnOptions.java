@@ -113,6 +113,7 @@ public class PpnOptions {
   private final Optional<Integer> periodicHealthCheckPort;
 
   private final Optional<Boolean> datapathConnectingTimerEnabled;
+  private final Optional<Duration> datapathConnectingTimerDuration;
 
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
@@ -173,6 +174,7 @@ public class PpnOptions {
     this.periodicHealthCheckPort = builder.periodicHealthCheckPort;
 
     this.datapathConnectingTimerEnabled = builder.datapathConnectingTimerEnabled;
+    this.datapathConnectingTimerDuration = builder.datapathConnectingTimerDuration;
   }
 
   public String getZincUrl() {
@@ -355,6 +357,10 @@ public class PpnOptions {
     return datapathConnectingTimerEnabled;
   }
 
+  public Optional<Duration> getDatapathConnectingTimerDuration() {
+    return datapathConnectingTimerDuration;
+  }
+
   /** Creates a KryptonConfig.Builder using the current options. */
   public KryptonConfig.Builder createKryptonConfigBuilder() {
     ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
@@ -481,6 +487,15 @@ public class PpnOptions {
       builder.setDatapathConnectingTimerEnabled(getDatapathConnectingTimerEnabled().get());
     }
 
+    if (getDatapathConnectingTimerDuration().isPresent()) {
+      Duration datapathConnectingTimerDuration = getDatapathConnectingTimerDuration().get();
+      builder.setDatapathConnectingTimerDuration(
+          com.google.protobuf.Duration.newBuilder()
+              .setSeconds(datapathConnectingTimerDuration.getSeconds())
+              .setNanos(datapathConnectingTimerDuration.getNano())
+              .build());
+    }
+
     return builder;
   }
 
@@ -540,6 +555,7 @@ public class PpnOptions {
     private Optional<Integer> periodicHealthCheckPort = Optional.empty();
 
     private Optional<Boolean> datapathConnectingTimerEnabled = Optional.empty();
+    private Optional<Duration> datapathConnectingTimerDuration = Optional.empty();
 
     public Builder() {}
 
@@ -1007,6 +1023,15 @@ public class PpnOptions {
     @CanIgnoreReturnValue
     public Builder setDatapathConnectingTimerEnabled(boolean enabled) {
       this.datapathConnectingTimerEnabled = Optional.of(enabled);
+      return this;
+    }
+
+    /** Sets the duration for the datapath connecting timer. */
+    @CanIgnoreReturnValue
+    public Builder setDatapathConnectingTimerDuration(Duration interval) {
+      if (interval != null) {
+        this.datapathConnectingTimerDuration = Optional.of(interval);
+      }
       return this;
     }
 
