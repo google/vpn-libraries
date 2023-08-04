@@ -608,6 +608,7 @@ public class PpnOptionsTest {
             .setPeriodicHealthCheckDuration(Duration.ofSeconds(8))
             .setPeriodicHealthCheckUrl("healthCheckUrl")
             .setPeriodicHealthCheckPort(80)
+            .setDatapathConnectingTimerEnabled(true)
             .build();
 
     KryptonConfig config = options.createKryptonConfigBuilder().build();
@@ -655,6 +656,8 @@ public class PpnOptionsTest {
     assertThat(config.getPeriodicHealthCheckUrl()).isEqualTo("healthCheckUrl");
     assertThat(config.hasPeriodicHealthCheckPort()).isTrue();
     assertThat(config.getPeriodicHealthCheckPort()).isEqualTo(80);
+    assertThat(config.hasDatapathConnectingTimerEnabled()).isTrue();
+    assertThat(config.getDatapathConnectingTimerEnabled()).isTrue();
   }
 
   @Test
@@ -694,6 +697,7 @@ public class PpnOptionsTest {
     assertThat(config.hasPeriodicHealthCheckDuration()).isFalse();
     assertThat(config.hasPeriodicHealthCheckUrl()).isFalse();
     assertThat(config.hasPeriodicHealthCheckPort()).isFalse();
+    assertThat(config.hasDatapathConnectingTimerEnabled()).isFalse();
   }
 
   @Test
@@ -802,5 +806,17 @@ public class PpnOptionsTest {
   public void setPeriodicHealthCheckPort_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setPeriodicHealthCheckPort(80).build();
     assertThat(options.getPeriodicHealthCheckPort()).hasValue(80);
+  }
+
+  @Test
+  public void setDatapathConnectingTimerEnabled_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.getDatapathConnectingTimerEnabled()).isEmpty();
+  }
+
+  @Test
+  public void setDatapathConnectingTimerEnabled_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setDatapathConnectingTimerEnabled(true).build();
+    assertThat(options.getDatapathConnectingTimerEnabled().get()).isTrue();
   }
 }

@@ -112,6 +112,8 @@ public class PpnOptions {
   private final Optional<String> periodicHealthCheckUrl;
   private final Optional<Integer> periodicHealthCheckPort;
 
+  private final Optional<Boolean> datapathConnectingTimerEnabled;
+
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
     this.zincPublicSigningKeyUrl = builder.zincPublicSigningKeyUrl;
@@ -169,6 +171,8 @@ public class PpnOptions {
     this.periodicHealthCheckDuration = builder.periodicHealthCheckDuration;
     this.periodicHealthCheckUrl = builder.periodicHealthCheckUrl;
     this.periodicHealthCheckPort = builder.periodicHealthCheckPort;
+
+    this.datapathConnectingTimerEnabled = builder.datapathConnectingTimerEnabled;
   }
 
   public String getZincUrl() {
@@ -347,6 +351,10 @@ public class PpnOptions {
     return periodicHealthCheckPort;
   }
 
+  public Optional<Boolean> getDatapathConnectingTimerEnabled() {
+    return datapathConnectingTimerEnabled;
+  }
+
   /** Creates a KryptonConfig.Builder using the current options. */
   public KryptonConfig.Builder createKryptonConfigBuilder() {
     ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
@@ -469,6 +477,10 @@ public class PpnOptions {
       builder.setPeriodicHealthCheckPort(getPeriodicHealthCheckPort().get());
     }
 
+    if (getDatapathConnectingTimerEnabled().isPresent()) {
+      builder.setDatapathConnectingTimerEnabled(getDatapathConnectingTimerEnabled().get());
+    }
+
     return builder;
   }
 
@@ -527,6 +539,8 @@ public class PpnOptions {
     private Optional<String> periodicHealthCheckUrl = Optional.empty();
     private Optional<Integer> periodicHealthCheckPort = Optional.empty();
 
+    private Optional<Boolean> datapathConnectingTimerEnabled = Optional.empty();
+
     public Builder() {}
 
     /**
@@ -560,6 +574,7 @@ public class PpnOptions {
       }
       return this;
     }
+
     /**
      * Sets the url to use for connecting to the Brass backend, such as
      * "https://autopush.brass.cloud.cupronickel.goog:443/addegress".
@@ -985,6 +1000,13 @@ public class PpnOptions {
     @CanIgnoreReturnValue
     public Builder setPeriodicHealthCheckPort(int port) {
       this.periodicHealthCheckPort = Optional.of(port);
+      return this;
+    }
+
+    /** Sets whether to use the datapath connecting timer. */
+    @CanIgnoreReturnValue
+    public Builder setDatapathConnectingTimerEnabled(boolean enabled) {
+      this.datapathConnectingTimerEnabled = Optional.of(enabled);
       return this;
     }
 
