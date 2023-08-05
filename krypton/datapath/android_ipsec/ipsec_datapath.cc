@@ -75,7 +75,7 @@ absl::Status IpSecDatapath::Start(const AddEgressResponse& egress_response,
 
 void IpSecDatapath::Stop() {
   absl::MutexLock l(&mutex_);
-  ShutdownIpSecPacketForwarder(/*close_network_socket=*/true);
+  ShutDownIpSecPacketForwarder(/*close_network_socket=*/true);
 }
 
 absl::Status IpSecDatapath::SwitchNetwork(
@@ -90,7 +90,7 @@ absl::Status IpSecDatapath::SwitchNetwork(
 
   LOG(INFO) << "Switching Network";
 
-  ShutdownIpSecPacketForwarder(/*close_network_socket=*/true);
+  ShutDownIpSecPacketForwarder(/*close_network_socket=*/true);
 
   auto tunnel = vpn_service_->GetTunnel();
   if (!tunnel.ok()) {
@@ -166,7 +166,7 @@ absl::Status IpSecDatapath::SwitchNetwork(
             << " downlink_spi=" << key_material_->downlink_spi()
             << " endpoint=" + endpoint.ToString();
 
-  PPN_RETURN_IF_ERROR(vpn_service_->ConfigureIpSec(key_material_.value()));
+  PPN_RETURN_IF_ERROR(vpn_service_->ConfigureIpSec(*key_material_));
 
   LOG(INFO) << "Done configuring IpSecManager.";
 
@@ -186,11 +186,62 @@ void IpSecDatapath::PrepareForTunnelSwitch() {
   // Stop the packet forwarder to ensure the tunnel is not being used and can
   // be safely deleted.
   absl::MutexLock l(&mutex_);
-  ShutdownIpSecPacketForwarder(/*close_network_socket=*/false);
+  ShutDownIpSecPacketForwarder(/*close_network_socket=*/false);
 }
 
 void IpSecDatapath::SwitchTunnel() {
   absl::MutexLock l(&mutex_);
+  StartUpIpSecPacketForwarder();
+}
+
+absl::Status IpSecDatapath::SetKeyMaterials(const TransformParams& params) {
+  absl::MutexLock l(&mutex_);
+
+  if (!params.has_ipsec()) {
+    LOG(ERROR) << "Received key material that is not of type IpSec";
+    return absl::InvalidArgumentError(
+        "Received key material that is not of type IPSEC");
+  }
+
+  if (!key_material_.has_value()) {
+    LOG(ERROR) << "key_material_ is not set";
+    return absl::InternalError("key_material_ is not set");
+  }
+
+  // Only overwrite the fields that are updated by the rekey.
+  // The Uplink SPI is the session ID so this never changes during the session.
+  key_material_->set_downlink_spi(params.ipsec().downlink_spi());
+  key_material_->set_uplink_key(params.ipsec().uplink_key());
+  key_material_->set_downlink_key(params.ipsec().downlink_key());
+  key_material_->set_uplink_salt(params.ipsec().uplink_salt());
+  key_material_->set_downlink_salt(params.ipsec().downlink_salt());
+
+  LOG(INFO) << "SetKeyMaterial for IpSec with uplink_spi="
+            << key_material_->uplink_spi()
+            << " downlink_spi=" << key_material_->downlink_spi();
+
+  ShutDownIpSecPacketForwarder(/*close_network_socket=*/false);
+
+  LOG(INFO) << "Configuring IpSecManager with fd="
+            << key_material_->network_fd()
+            << " network=" << key_material_->network_id()
+            << " uplink_spi=" << key_material_->uplink_spi()
+            << " downlink_spi=" << key_material_->downlink_spi()
+            << " destAddr=" << key_material_->destination_address()
+            << " destPort=" << key_material_->destination_port();
+  PPN_RETURN_IF_ERROR(vpn_service_->ConfigureIpSec(*key_material_));
+  LOG(INFO) << "Done configuring IpSecManager.";
+
+  StartUpIpSecPacketForwarder();
+
+  return absl::OkStatus();
+}
+
+void IpSecDatapath::StopInternal() {
+  ShutDownIpSecPacketForwarder(/*close_network_socket=*/true);
+}
+
+void IpSecDatapath::StartUpIpSecPacketForwarder() {
   auto tunnel = vpn_service_->GetTunnel();
   if (!tunnel.ok()) {
     NotifyDatapathPermanentFailure(tunnel.status());
@@ -206,27 +257,7 @@ void IpSecDatapath::SwitchTunnel() {
   forwarder_->Start();
 }
 
-absl::Status IpSecDatapath::SetKeyMaterials(const TransformParams& params) {
-  absl::MutexLock l(&mutex_);
-
-  if (!params.has_ipsec()) {
-    LOG(ERROR) << "Received key material that is not of type IpSec";
-    return absl::InvalidArgumentError(
-        "Received key material that is not of type IPSEC");
-  }
-  key_material_ = params.ipsec();
-  LOG(INFO) << "SetKeyMaterial for IpSec with uplink_spi="
-            << key_material_->uplink_spi()
-            << " downlink_spi=" << key_material_->downlink_spi();
-
-  return absl::OkStatus();
-}
-
-void IpSecDatapath::StopInternal() {
-  ShutdownIpSecPacketForwarder(/*close_network_socket=*/true);
-}
-
-void IpSecDatapath::ShutdownIpSecPacketForwarder(bool close_network_socket) {
+void IpSecDatapath::ShutDownIpSecPacketForwarder(bool close_network_socket) {
   if (forwarder_ != nullptr) {
     LOG(INFO) << "Stopping packet forwarder.";
     forwarder_->Stop();
@@ -299,6 +330,11 @@ void IpSecDatapath::IpSecPacketForwarderPermanentFailure(
 void IpSecDatapath::IpSecPacketForwarderConnected(int packet_forwarder_id) {
   absl::MutexLock l(&mutex_);
   if (!IsForwarderNotificationValid(packet_forwarder_id)) return;
+  // We do not need to report this event more than once per datapath
+  if (datapath_established_) {
+    return;
+  }
+  datapath_established_ = true;
   LOG(WARNING) << "IpSecDatapath packet forwarder connected.";
   health_check_.Start();
   auto* notification = notification_;

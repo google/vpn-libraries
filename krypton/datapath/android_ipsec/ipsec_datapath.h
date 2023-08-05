@@ -32,6 +32,7 @@
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
+#include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
@@ -57,6 +58,7 @@ class IpSecDatapath : public DatapathInterface,
     virtual absl::StatusOr<std::unique_ptr<IpSecSocketInterface>>
     CreateProtectedNetworkSocket(const NetworkInfo& network_info,
                                  const Endpoint& endpoint) = 0;
+
     virtual absl::StatusOr<std::unique_ptr<IpSecSocketInterface>>
     CreateProtectedNetworkSocket(
         const NetworkInfo& network_info, const Endpoint& endpoint,
@@ -79,6 +81,7 @@ class IpSecDatapath : public DatapathInterface,
         vpn_service_(vpn_service),
         ipv4_tcp_mss_endpoint_("", "", 0, IPProtocol::kUnknown),
         ipv6_tcp_mss_endpoint_("", "", 0, IPProtocol::kUnknown),
+        datapath_established_(false),
         looper_("IpSecDatapath Looper"),
         curr_forwarder_id_(0),
         health_check_(config, timer_manager, this, &looper_) {}
@@ -131,7 +134,9 @@ class IpSecDatapath : public DatapathInterface,
  private:
   void StopInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void ShutdownIpSecPacketForwarder(bool close_network_socket)
+  void StartUpIpSecPacketForwarder() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void ShutDownIpSecPacketForwarder(bool close_network_socket)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void CloseNetworkSocket() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -153,6 +158,8 @@ class IpSecDatapath : public DatapathInterface,
 
   Endpoint ipv4_tcp_mss_endpoint_;
   Endpoint ipv6_tcp_mss_endpoint_;
+
+  bool datapath_established_ ABSL_GUARDED_BY(mutex_);
 
   // The looper_ must outlive both network_socket_ and forwarder_. The
   // forwarder_ directly relies on looper_, while the network_socket_ will own

@@ -101,6 +101,7 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
     if (ppnNetwork == null) {
       throw new KryptonException("Unable to fetch network with id " + params.getNetworkId());
     }
+    Log.w(TAG, "Network lookup succeeded: " + ppnNetwork);
 
     InetAddress destinationAddress;
     try {
