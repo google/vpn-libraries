@@ -24,15 +24,31 @@ namespace krypton {
 class TunnelManagerInterface {
  public:
   virtual ~TunnelManagerInterface() = default;
+
   virtual absl::Status Start() = 0;
+
   virtual void Stop() = 0;
-  virtual void SetSafeDisconnectEnabled(bool) = 0;
+
+  virtual void SetSafeDisconnectEnabled(bool enable) = 0;
+
   virtual bool IsSafeDisconnectEnabled() = 0;
 
   virtual void DatapathStarted() = 0;
-  virtual absl::Status EnsureTunnelIsUp(TunFdData) = 0;
-  virtual absl::Status RecreateTunnelIfNeeded() = 0;
-  virtual void DatapathStopped(bool forceFailOpen) = 0;
+
+  // Creates a tunnel using the provided TunFdData. This will not create a
+  // tunnel if one already exists matching the provided TunFdData, unless
+  // force_tunnel_update is set.
+  virtual absl::Status CreateTunnel(TunFdData tunnel_data,
+                                    bool force_tunnel_update) = 0;
+
+  // Creates a tunnel if there is no tunnel and safe disconnect is enabled.
+  virtual absl::Status ResumeTunnel() = 0;
+
+  // Creates a tunnel if there is already a tunnel. The tunnel will be created
+  // using the same TunFdData as the existing tunnel.
+  virtual absl::Status RecreateTunnel() = 0;
+
+  virtual void DatapathStopped(bool force_fail_open) = 0;
 
   virtual bool IsTunnelActive() = 0;
 };

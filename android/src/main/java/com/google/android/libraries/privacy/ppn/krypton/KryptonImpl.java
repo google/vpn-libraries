@@ -58,6 +58,7 @@ public class KryptonImpl implements Krypton, TimerListener {
     Log.i(TAG, "Loading krypton_jni library.");
     System.loadLibrary("krypton_jni");
   }
+
   // Helper for binaries that use Krypton JNI methods without creating an actual Krypton instance.
   // It can be a no-op, because all that needs to happen is for the static block above to run.
   public static void ensureJniIsLoaded() {}
@@ -209,6 +210,9 @@ public class KryptonImpl implements Krypton, TimerListener {
 
   /** Native method for disabling the keepalive in native code. */
   private native void disableKryptonKeepaliveNative() throws KryptonException;
+
+  /** Native method that forces an update of the TUN interface. */
+  private native void forceTunnelUpdateNative() throws KryptonException;
 
   // LINT.ThenChange(//depot/google3/privacy/net/krypton/jni/krypton_jni.cc)
 
@@ -488,5 +492,10 @@ public class KryptonImpl implements Krypton, TimerListener {
   @Override
   public void disableKryptonKeepalive() throws KryptonException {
     disableKryptonKeepaliveNative();
+  }
+
+  @Override
+  public void forceTunnelUpdate() throws KryptonException {
+    forceTunnelUpdateNative();
   }
 }

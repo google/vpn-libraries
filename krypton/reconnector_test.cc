@@ -25,14 +25,17 @@
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
+#include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/session.h"
 #include "privacy/net/krypton/session_manager_interface.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/tunnel_manager_interface.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
+#include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 
@@ -67,6 +70,7 @@ class MockSessionManagerInterface : public SessionManagerInterface {
               (int, TunnelManagerInterface*, std::optional<NetworkInfo>),
               (override));
   MOCK_METHOD(void, TerminateSession, (bool), (override));
+  MOCK_METHOD(void, ForceTunnelUpdate, (), (override));
   MOCK_METHOD(absl::Status, SetNetwork, (std::optional<NetworkInfo>),
               (override));
 };
@@ -78,8 +82,9 @@ class MockTunnelManager : public TunnelManagerInterface {
   MOCK_METHOD(void, SetSafeDisconnectEnabled, (bool), (override));
   MOCK_METHOD(bool, IsSafeDisconnectEnabled, (), (override));
   MOCK_METHOD(void, DatapathStarted, (), (override));
-  MOCK_METHOD(absl::Status, EnsureTunnelIsUp, (TunFdData), (override));
-  MOCK_METHOD(absl::Status, RecreateTunnelIfNeeded, (), (override));
+  MOCK_METHOD(absl::Status, CreateTunnel, (TunFdData, bool), (override));
+  MOCK_METHOD(absl::Status, ResumeTunnel, (), (override));
+  MOCK_METHOD(absl::Status, RecreateTunnel, (), (override));
   MOCK_METHOD(void, DatapathStopped, (bool), (override));
   MOCK_METHOD(bool, IsTunnelActive, (), (override));
 };
@@ -391,7 +396,7 @@ TEST_F(ReconnectorTest, TestResumeWhenTimerNotExpired) {
 
 TEST_F(ReconnectorTest, TestResumeCreateTempTunnelForSafeDisconnect) {
   absl::Duration snooze_duration_mins = absl::Minutes(1);
-  tunnel_manager_.SetSafeDisconnectEnabled(/*enabled=*/true);
+  tunnel_manager_.SetSafeDisconnectEnabled(/*enable=*/true);
   EXPECT_CALL(session_manager_, EstablishSession(
                                     /*restart_count=*/0, &tunnel_manager_, _));
   reconnector_->Start();
@@ -399,7 +404,7 @@ TEST_F(ReconnectorTest, TestResumeCreateTempTunnelForSafeDisconnect) {
   EXPECT_OK(reconnector_->Snooze(snooze_duration_mins));
   EXPECT_CALL(session_manager_, EstablishSession(
                                     /*restart_count=*/1, &tunnel_manager_, _));
-  EXPECT_CALL(tunnel_manager_, RecreateTunnelIfNeeded);
+  EXPECT_CALL(tunnel_manager_, ResumeTunnel());
   EXPECT_OK(reconnector_->Resume());
 }
 

@@ -14,23 +14,36 @@
 
 #include "privacy/net/krypton/session_manager.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 
+#include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/datapath_interface.h"
+#include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/mock_oauth_interface.h"
 #include "privacy/net/krypton/pal/mock_timer_interface.h"
 #include "privacy/net/krypton/pal/mock_vpn_service_interface.h"
+#include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
+#include "privacy/net/krypton/proto/tun_fd_data.proto.h"
+#include "privacy/net/krypton/session.h"
 #include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/tunnel_manager_interface.h"
 #include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/status/status.h"
+#include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/synchronization/notification.h"
+#include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
+#include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -63,8 +76,9 @@ class MockTunnelManager : public TunnelManagerInterface {
   MOCK_METHOD(void, SetSafeDisconnectEnabled, (bool), (override));
   MOCK_METHOD(bool, IsSafeDisconnectEnabled, (), (override));
   MOCK_METHOD(void, DatapathStarted, (), (override));
-  MOCK_METHOD(absl::Status, EnsureTunnelIsUp, (TunFdData), (override));
-  MOCK_METHOD(absl::Status, RecreateTunnelIfNeeded, (), (override));
+  MOCK_METHOD(absl::Status, CreateTunnel, (TunFdData, bool), (override));
+  MOCK_METHOD(absl::Status, ResumeTunnel, (), (override));
+  MOCK_METHOD(absl::Status, RecreateTunnel, (), (override));
   MOCK_METHOD(void, DatapathStopped, (bool), (override));
   MOCK_METHOD(bool, IsTunnelActive, (), (override));
 };
@@ -257,6 +271,41 @@ TEST_F(SessionManagerTest, SecondTerminateSessionClosesTunnel) {
 
   session_manager_->TerminateSession(false);
   session_manager_->TerminateSession(true);
+}
+
+TEST_F(SessionManagerTest, ForceTunnelUpdateWithSession) {
+  // Set up expectations to create the Session and Datapath
+  EXPECT_CALL(mock_vpn_service_, BuildDatapath(_, _, _)).WillOnce([] {
+    return new MockDatapath();
+  });
+
+  absl::Notification started;
+  EXPECT_CALL(mock_tunnel_manager_, DatapathStarted()).WillOnce([&started] {
+    started.Notify();
+  });
+
+  // Set up expectations for tunnel update
+  EXPECT_CALL(mock_tunnel_manager_, IsTunnelActive())
+      .WillRepeatedly(Return(true));
+
+  EXPECT_CALL(mock_tunnel_manager_, CreateTunnel(_, true));
+
+  // Create the session and wait for it to complete
+  session_manager_->EstablishSession(/*restart_count=*/1, &mock_tunnel_manager_,
+                                     NetworkInfo());
+  ASSERT_TRUE(started.WaitForNotificationWithTimeout(absl::Seconds(1)));
+
+  // Force tunnel update with a Session created
+  session_manager_->ForceTunnelUpdate();
+
+  // Clean up after the test
+  session_manager_->TerminateSession(true);
+}
+
+TEST_F(SessionManagerTest, ForceTunnelUpdateWithoutSession) {
+  EXPECT_CALL(mock_tunnel_manager_, RecreateTunnel());
+
+  session_manager_->ForceTunnelUpdate();
 }
 
 TEST_F(SessionManagerTest, SetNetworkWithoutSession) {

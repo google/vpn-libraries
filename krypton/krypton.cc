@@ -28,6 +28,7 @@
 #include "privacy/net/krypton/session_manager.h"
 #include "privacy/net/krypton/tunnel_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
@@ -149,6 +150,16 @@ void Krypton::ExtendSnooze(absl::Duration extendDuration) {
   } else {
     LOG(ERROR) << "Failed to extend krypton snooze";
   }
+}
+
+void Krypton::ForceTunnelUpdate() {
+  LOG(INFO) << "Updating tunnel started";
+  if (session_manager_ == nullptr) {
+    LOG(INFO) << "No SessionManager found, not updating tunnel";
+    return;
+  }
+  session_manager_->ForceTunnelUpdate();
+  LOG(INFO) << "Updating tunnel done";
 }
 
 void Krypton::WaitForTermination() {

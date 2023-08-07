@@ -26,12 +26,15 @@
 #include "privacy/net/krypton/proto/connection_status.proto.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/session_manager_interface.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/tunnel_manager_interface.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/functional/bind_front.h"
+#include "third_party/absl/log/check.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
@@ -119,14 +122,14 @@ void Reconnector::ControlPlaneConnected() {
   }
   absl::MutexLock l(&mutex_);
   // There is a race condition of deadline timer expired and connected events
-  // are called simulateneously and ConnectionDeadlineTimerExpiry won the race.
+  // are called simultaneously and ConnectionDeadlineTimerExpiry won the race.
   if (connection_deadline_timer_id_ == kInvalidTimerId) {
     LOG(INFO) << "Connection moving to connected state after timer expiry, "
                  "Procedures of deadline timers are being run";
     return;
   }
 
-  // Check that statemachine is in the right state.
+  // Check that state machine is in the right state.
   DCHECK(state_ == kWaitingForSessionEstablishment);
   // Ensure that there is no reconnection timer running.
   DCHECK(reconnector_timer_id_ == kInvalidTimerId);
@@ -143,7 +146,7 @@ void Reconnector::ControlPlaneDisconnected(const absl::Status& reason) {
   LOG(INFO) << "Session control plane disconnected.";
   absl::MutexLock l(&mutex_);
   // There is a race condition of deadline timer expired and disconnected
-  // events are called simulateneously and ConnectionDeadlineTimerExpiry won
+  // events are called simultaneously and ConnectionDeadlineTimerExpiry won
   // the race. Also, the session could be moving from Connected to
   // Disconnected and there might be not be any timer running.
   if (connection_deadline_timer_id_ == kInvalidTimerId &&
@@ -510,9 +513,11 @@ absl::Status Reconnector::Resume() {
   // connect to the internet unprotected until a reconnection attempt (which
   // could take a significant amount of time). Thus, here we create a temporary
   // tunnel to block the traffic until EstablishSession() completes.
-  if (!tunnel_manager_->RecreateTunnelIfNeeded().ok()) {
+  auto tunnel_status = tunnel_manager_->ResumeTunnel();
+  if (!tunnel_status.ok()) {
     LOG(ERROR)
-        << "Failed to recreate tunnel to block traffic for safe disconnect.";
+        << "Failed to recreate tunnel to block traffic for safe disconnect: "
+        << tunnel_status;
   }
   auto notification = notification_;
   CancelSnoozeTimer();

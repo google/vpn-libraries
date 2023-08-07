@@ -21,15 +21,23 @@
 
 #include "base/logging.h"
 #include "privacy/net/krypton/auth.h"
+#include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/session.h"
 #include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/tunnel_manager_interface.h"
 #include "privacy/net/krypton/utils/looper.h"
+#include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/log/check.h"
+#include "third_party/absl/log/die_if_null.h"
+#include "third_party/absl/status/status.h"
+#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
@@ -109,6 +117,15 @@ void SessionManager::TerminateSession(bool forceFailOpen) {
   session_created_ = false;
 
   LOG(INFO) << "Session termination done.";
+}
+
+void SessionManager::ForceTunnelUpdate() {
+  absl::MutexLock l(&mutex_);
+  if (session_created_) {
+    session_->ForceTunnelUpdate();
+  } else {
+    PPN_LOG_IF_ERROR(tunnel_manager_->RecreateTunnel());
+  }
 }
 
 absl::Status SessionManager::SetNetwork(

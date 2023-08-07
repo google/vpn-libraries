@@ -86,24 +86,24 @@ public class KryptonTest {
   private static class MockOAuthTokenProvider implements OAuthTokenProvider {
     @Override
     public String getOAuthToken() {
-            return "some_auth_token";
-          }
+      return "some_auth_token";
+    }
 
-          @Override
-          public byte[] getAttestationData(String nonce) {
-            AndroidAttestationData androidAttestationData =
-                AndroidAttestationData.newBuilder().setAttestationToken("foo").build();
+    @Override
+    public byte[] getAttestationData(String nonce) {
+      AndroidAttestationData androidAttestationData =
+          AndroidAttestationData.newBuilder().setAttestationToken("foo").build();
 
-            AttestationData proto =
-                AttestationData.newBuilder()
-                    .setAttestationData(
-                        Any.newBuilder()
-                            .setTypeUrl(AttestationHelper.ANDROID_ATTESTATION_DATA_TYPE_URL)
-                            .setValue(androidAttestationData.toByteString()))
-                    .build();
+      AttestationData proto =
+          AttestationData.newBuilder()
+              .setAttestationData(
+                  Any.newBuilder()
+                      .setTypeUrl(AttestationHelper.ANDROID_ATTESTATION_DATA_TYPE_URL)
+                      .setValue(androidAttestationData.toByteString()))
+              .build();
 
-            return proto.toByteArray();
-          }
+      return proto.toByteArray();
+    }
 
     @Override
     public void clearOAuthToken(String token) {}
@@ -499,6 +499,36 @@ public class KryptonTest {
       assertThat(condition.block(1000)).isTrue();
 
       krypton.disableKryptonKeepalive();
+    } finally {
+      krypton.stop();
+    }
+  }
+
+  @Test
+  public void forceTunnelUpdate_successfullyCallsNativeMethod() throws Exception {
+    Krypton krypton = createKrypton();
+    final ConditionVariable condition = new ConditionVariable(false);
+
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+    mockAuthServer.enqueuePositiveJsonAuthResponse();
+    mockEgressServer.enqueuePositiveResponse();
+
+    doReturn(0xbeef).when(kryptonListener).onKryptonNeedsTunFd(any(TunFdData.class));
+
+    doAnswer(
+            invocation -> {
+              condition.open();
+              return null;
+            })
+        .when(kryptonListener)
+        .onKryptonControlPlaneConnected();
+
+    try {
+      krypton.start(createConfig().build());
+      assertThat(condition.block(1000)).isTrue();
+
+      // Verify this does not throw an exception from calling native method
+      krypton.forceTunnelUpdate();
     } finally {
       krypton.stop();
     }

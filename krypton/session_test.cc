@@ -743,7 +743,7 @@ TEST_F(SessionTest, TestSetKeyMaterials) {
   EXPECT_EQ(debug_info.mutable_session()->successful_rekeys(), 1);
 }
 
-TEST_F(SessionTest, UplinkMtuUpdateHandler) {
+TEST_F(SessionTest, UplinkMtuUpdateHandlerSuccess) {
   BringDatapathToConnected();
 
   EXPECT_CALL(*datapath_, PrepareForTunnelSwitch());
@@ -754,6 +754,19 @@ TEST_F(SessionTest, UplinkMtuUpdateHandler) {
 
   EXPECT_EQ(session_->GetUplinkMtuTestOnly(), 123);
   EXPECT_EQ(session_->GetTunnelMtuTestOnly(), 456);
+}
+
+TEST_F(SessionTest, UplinkMtuUpdateHandlerFailureCreatingTunnel) {
+  BringDatapathToConnected();
+
+  EXPECT_CALL(*datapath_, PrepareForTunnelSwitch());
+  EXPECT_CALL(vpn_service_, CreateTunnel(_))
+      .WillOnce(Return(absl::InternalError("Error")));
+  EXPECT_CALL(*datapath_, SwitchTunnel()).Times(0);
+  EXPECT_CALL(notification_, ControlPlaneDisconnected(StatusIs(
+                                 absl::StatusCode::kInternal, "Error")));
+
+  session_->DoUplinkMtuUpdate(/*uplink_mtu=*/123, /*tunnel_mtu=*/456);
 }
 
 TEST_F(SessionTest, UplinkMtuUpdateHandlerSessionDisconnected) {
@@ -842,6 +855,15 @@ TEST_F(SessionTest, DownlinkMtuUpdateHandlerHttpStatusBadRequest) {
 
   ASSERT_TRUE(
       notification_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+}
+
+TEST_F(SessionTest, ForceTunnelUpdate) {
+  BringDatapathToConnected();
+
+  EXPECT_CALL(vpn_service_,
+              CreateTunnel(EqualsProto(GetTunFdData())));
+
+  session_->ForceTunnelUpdate();
 }
 
 TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonDefaultValues) {

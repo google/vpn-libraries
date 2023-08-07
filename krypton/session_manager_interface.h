@@ -35,6 +35,8 @@ class SessionManagerInterface {
   // Terminates the session.
   virtual void TerminateSession(bool forceFailOpen) = 0;
 
+  virtual void ForceTunnelUpdate() = 0;
+
   virtual absl::Status SetNetwork(std::optional<NetworkInfo> network_info) = 0;
 };
 }  // namespace krypton

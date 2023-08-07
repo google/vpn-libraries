@@ -43,9 +43,13 @@ class TunnelManager : public TunnelManagerInterface {
   };
 
   void DatapathStarted() override ABSL_LOCKS_EXCLUDED(mutex_);
-  absl::Status EnsureTunnelIsUp(TunFdData) override ABSL_LOCKS_EXCLUDED(mutex_);
-  absl::Status RecreateTunnelIfNeeded() override ABSL_LOCKS_EXCLUDED(mutex_);
-  void DatapathStopped(bool forceFailOpen) override ABSL_LOCKS_EXCLUDED(mutex_);
+  absl::Status CreateTunnel(TunFdData tunnel_data,
+                            bool force_tunnel_update) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+  absl::Status ResumeTunnel() override ABSL_LOCKS_EXCLUDED(mutex_);
+  absl::Status RecreateTunnel() override ABSL_LOCKS_EXCLUDED(mutex_);
+  void DatapathStopped(bool force_fail_open) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool IsTunnelActive() override ABSL_LOCKS_EXCLUDED(mutex_);
 

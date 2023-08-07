@@ -88,10 +88,24 @@ public interface Krypton {
   /** Puts Krypton in a horrible wedged state, for testing app bypass, etc. */
   void setSimulatedNetworkFailure(boolean simulatedNetworkFailure) throws KryptonException;
 
-  /** Collect telemetry data from Krypton, and resets it. */
+  /** Collects telemetry data from Krypton, and resets it. */
   KryptonTelemetry collectTelemetry() throws KryptonException;
 
+  /** Collects debug info from Krypton. */
   JSONObject getDebugJson() throws KryptonException;
 
+  /** Disables the keepalive being used in the native library. */
   void disableKryptonKeepalive() throws KryptonException;
+
+  /**
+   * Creates a new tunnel to be used by Krypton, if one already exists. If there is no tunnel
+   * already this will not create one.
+   *
+   * <p>When settings are updated in VpnManager the updates are not applied to the existing tunnel.
+   * Applying these settings requires the creation of a new tunnel. The settings in VpnManager that
+   * require a tunnel update to take effect are the list of disallow applications and allowBypass.
+   * After these settings are changed in VpnManager this function can be called to create a tunnel
+   * with the new values.
+   */
+  void forceTunnelUpdate() throws KryptonException;
 }

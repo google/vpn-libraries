@@ -15,9 +15,7 @@
 #ifndef PRIVACY_NET_KRYPTON_KRYPTON_H_
 #define PRIVACY_NET_KRYPTON_KRYPTON_H_
 
-#include <atomic>
 #include <memory>
-#include <string>
 
 #include "privacy/net/common/proto/ppn_options.proto.h"
 #include "privacy/net/krypton/krypton_clock.h"
@@ -35,10 +33,8 @@
 #include "privacy/net/krypton/tunnel_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/time.h"
-#include "third_party/absl/types/optional.h"
 
 namespace privacy {
 namespace krypton {
@@ -74,6 +70,9 @@ class Krypton {
   void Resume();
 
   void ExtendSnooze(absl::Duration extendDuration);
+
+  // Updates the TUN interface.
+  void ForceTunnelUpdate();
 
   // Utility method for caller to block till krypton exits. Please do not use
   // this for JNI.

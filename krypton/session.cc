@@ -326,6 +326,11 @@ void Session::Stop(bool forceFailOpen) {
   tunnel_manager_->DatapathStopped(forceFailOpen);
 }
 
+void Session::ForceTunnelUpdate() {
+  absl::MutexLock l(&mutex_);
+  UpdateTunnelIfNeeded(/*force_tunnel_update=*/true);
+}
+
 absl::Status Session::BuildTunFdData(TunFdData* tun_fd_data) const {
   if (!add_egress_response_) {
     return absl::FailedPreconditionError(
@@ -363,7 +368,7 @@ absl::Status Session::BuildTunFdData(TunFdData* tun_fd_data) const {
   return absl::OkStatus();
 }
 
-absl::Status Session::CreateTunnel() {
+absl::Status Session::CreateTunnel(bool force_tunnel_update) {
   TunFdData tun_fd_data;
   auto active_network_info = active_network_info_;
   DCHECK(active_network_info);
@@ -376,15 +381,23 @@ absl::Status Session::CreateTunnel() {
   // If bringing up the tunnel fails, assume there is no tunnel. Technically,
   // the tunnel manager may leave the tunnel up even if there's an error with
   // the new one, but it won't hurt to request it again later.
-  return tunnel_manager_->EnsureTunnelIsUp(tun_fd_data);
+  return tunnel_manager_->CreateTunnel(tun_fd_data, force_tunnel_update);
 }
 
-absl::Status Session::UpdateTunnelIfNeeded() {
+void Session::UpdateTunnelIfNeeded(bool force_tunnel_update) {
   if (!tunnel_manager_->IsTunnelActive()) {
-    return absl::InternalError("No active tunnel to update.");
+    LOG(INFO) << "No active tunnel to update";
+    return;
   }
 
-  return CreateTunnel();
+  datapath_->PrepareForTunnelSwitch();
+  auto tunnel_status = CreateTunnel(force_tunnel_update);
+  if (!tunnel_status.ok()) {
+    datapath_->Stop();
+    SetState(State::kSessionError, tunnel_status);
+    return;
+  }
+  datapath_->SwitchTunnel();
 }
 
 absl::Status Session::CreateTunnelIfNeeded() {
@@ -393,7 +406,7 @@ absl::Status Session::CreateTunnelIfNeeded() {
     return absl::OkStatus();
   }
 
-  return CreateTunnel();
+  return CreateTunnel(/*force_tunnel_update=*/false);
 }
 
 void Session::RekeyDatapath() {
@@ -761,16 +774,9 @@ void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
     LOG(INFO) << "Updating tunnel MTU from " << tunnel_mtu_ << " to "
               << tunnel_mtu;
     tunnel_mtu_ = tunnel_mtu;
-    datapath_->PrepareForTunnelSwitch();
-    auto tunnel_status = UpdateTunnelIfNeeded();
-    if (!tunnel_status.ok()) {
-      LOG(ERROR) << "Tunnel creation for MTU update failed with status "
-                 << tunnel_status;
-      datapath_->Stop();
-      SetState(State::kSessionError, tunnel_status);
-      return;
-    }
-    datapath_->SwitchTunnel();
+    LOG(INFO) << "Performing tunnel update";
+    UpdateTunnelIfNeeded(/*force_tunnel_update=*/false);
+    LOG(INFO) << "Forced tunnel update done";
   }
   if (uplink_mtu != uplink_mtu_) {
     LOG(INFO) << "Updating uplink MTU from " << uplink_mtu_ << " to "
@@ -872,7 +878,7 @@ void Session::HandleDatapathFailure(const absl::Status& status) {
 void Session::NotifyDatapathDisconnected(const NetworkInfo& network_info,
                                          const absl::Status& status) {
   CancelDatapathConnectingTimerIfRunning();
-  tunnel_manager_->DatapathStopped(/*forceFailOpen=*/false);
+  tunnel_manager_->DatapathStopped(/*force_fail_open=*/false);
   auto* notification = notification_;
   notification_thread_->Post([notification, status, network_info] {
     notification->DatapathDisconnected(network_info, status);

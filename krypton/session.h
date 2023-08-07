@@ -116,6 +116,8 @@ class Session : public DatapathInterface::NotificationInterface,
   // Stops a session.
   void Stop(bool forceFailOpen) ABSL_LOCKS_EXCLUDED(mutex_);
 
+  void ForceTunnelUpdate() ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Override methods from the interface.
   void DatapathEstablished() override ABSL_LOCKS_EXCLUDED(mutex_);
   void DatapathFailed(const absl::Status& status) override
@@ -207,12 +209,15 @@ class Session : public DatapathInterface::NotificationInterface,
   void StartDatapathReattemptTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void StartDatapathConnectingTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  absl::Status CreateTunnel() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  absl::Status CreateTunnel(bool force_tunnel_update)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Attempts to update an existing tunnel with new parameters.
-  absl::Status UpdateTunnelIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void UpdateTunnelIfNeeded(bool force_tunnel_update)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   absl::Status CreateTunnelIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   void ResetAllDatapathReattempts() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void Rekey() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -248,9 +253,9 @@ class Session : public DatapathInterface::NotificationInterface,
   int datapath_reattempt_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int datapath_connecting_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
 
-  NotificationInterface* notification_;  // Not owned.
-  VpnServiceInterface* vpn_service_;     // Not owned.
-  TimerManager* timer_manager_;          // Not owned.
+  NotificationInterface* notification_;       // Not owned.
+  VpnServiceInterface* vpn_service_;          // Not owned.
+  TimerManager* timer_manager_;               // Not owned.
   utils::LooperThread* notification_thread_;  // Not owned.
   TunnelManagerInterface* tunnel_manager_;    // Not owned.
 

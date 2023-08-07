@@ -19,6 +19,7 @@
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/utils/proto_comparison.h"
 #include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/log/die_if_null.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/types/optional.h"
@@ -72,12 +73,14 @@ void TunnelManager::DatapathStarted() {
   LOG(INFO) << "TunnelManager registered an active datapath";
 }
 
-absl::Status TunnelManager::EnsureTunnelIsUp(TunFdData tunnel_data) {
+absl::Status TunnelManager::CreateTunnel(TunFdData tunnel_data,
+                                         bool force_tunnel_update) {
   // When Session is active, it can only change its tunnel by calling this
   // method and switching networks.
   absl::MutexLock l(&mutex_);
   if (tunnel_is_up_ && active_tunnel_data_.has_value() &&
-      utils::TunFdDataEquiv(tunnel_data, active_tunnel_data_.value())) {
+      utils::TunFdDataEquiv(tunnel_data, active_tunnel_data_.value()) &&
+      !force_tunnel_update) {
     LOG(INFO) << "TunnelManager not resetting tunnel";
     return absl::OkStatus();
   }
@@ -88,7 +91,7 @@ absl::Status TunnelManager::EnsureTunnelIsUp(TunFdData tunnel_data) {
   return absl::OkStatus();
 }
 
-absl::Status TunnelManager::RecreateTunnelIfNeeded() {
+absl::Status TunnelManager::ResumeTunnel() {
   absl::MutexLock l(&mutex_);
   if (!safe_disconnect_enabled_) {
     LOG(INFO) << "Safe disconnect not enabled so will not recreate tunnel.";
@@ -106,11 +109,26 @@ absl::Status TunnelManager::RecreateTunnelIfNeeded() {
   return absl::OkStatus();
 }
 
-void TunnelManager::DatapathStopped(bool forceFailOpen) {
+absl::Status TunnelManager::RecreateTunnel() {
+  absl::MutexLock l(&mutex_);
+  if (!tunnel_is_up_) {
+    LOG(INFO) << "Tunnel not up.";
+    return absl::OkStatus();
+  }
+  if (!active_tunnel_data_.has_value()) {
+    LOG(ERROR) << "Missing tunnel data to recreate.";
+    return absl::InternalError("Missing tunnel data to recreate.");
+  }
+  LOG(INFO) << "Recreating tunnel.";
+  PPN_RETURN_IF_ERROR(vpn_service_->CreateTunnel(*active_tunnel_data_));
+  return absl::OkStatus();
+}
+
+void TunnelManager::DatapathStopped(bool force_fail_open) {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "TunnelManager registered terminating session, Safe Disconnect: "
             << safe_disconnect_enabled_ << ", Tunnel Is Up: " << tunnel_is_up_;
-  if (tunnel_is_up_ && (forceFailOpen || !safe_disconnect_enabled_)) {
+  if (tunnel_is_up_ && (force_fail_open || !safe_disconnect_enabled_)) {
     LOG(INFO) << "TunnelManager closing active tunnel";
     vpn_service_->CloseTunnel();
     tunnel_is_up_ = false;
