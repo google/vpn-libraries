@@ -717,9 +717,9 @@ void Session::CollectTelemetry(KryptonTelemetry* telemetry) {
   telemetry->set_successful_rekeys(number_of_rekeys_.load());
   number_of_rekeys_ = 0;
   auto delta_network_switches =
-      network_switches_count_ - last_repoted_network_switches_;
+      network_switches_count_ - network_switches_count_last_collection_;
   telemetry->set_network_switches(delta_network_switches);
-  last_repoted_network_switches_ = delta_network_switches;
+  network_switches_count_last_collection_  = network_switches_count_.load();
 
   provision_->CollectTelemetry(telemetry);
 }
@@ -735,8 +735,10 @@ void Session::GetDebugInfo(KryptonDebugInfo* debug_info) {
         active_network_info_.value());
   }
   session_debug_info->set_successful_rekeys(number_of_rekeys_.load());
+
+  // delta since the last telemetry collection event.
   auto delta_network_switches =
-      network_switches_count_ - last_repoted_network_switches_;
+      network_switches_count_ - network_switches_count_last_collection_;
   session_debug_info->set_network_switches(delta_network_switches);
 
   provision_->GetDebugInfo(debug_info);

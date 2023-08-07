@@ -280,8 +280,8 @@ class Session : public DatapathInterface::NotificationInterface,
 
   std::atomic_bool datapath_connected_ ABSL_GUARDED_BY(mutex_) = false;
   absl::Time last_rekey_time_ ABSL_GUARDED_BY(mutex_);
-  // Keep track of the last reported network switches.
-  std::atomic_int last_repoted_network_switches_ = 0;
+  // Keep track of the network switches count at last telemetry collection.
+  int network_switches_count_last_collection_ ABSL_GUARDED_BY(mutex_) = 0;
   std::atomic_int number_of_rekeys_ = 0;
 
   utils::LooperThread looper_;

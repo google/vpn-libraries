@@ -690,6 +690,32 @@ TEST_F(SessionTest, CollectTelemetry) {
   EXPECT_EQ(telemetry.egress_latency_size(), 1);
 }
 
+TEST_F(SessionTest, CalculateNetworkSwitchesDeltaForTelemetry) {
+  BringDatapathToConnected();
+
+  KryptonTelemetry telemetry;
+  session_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.network_switches(), 2);
+
+  // Second telemetry collection event.
+  session_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.network_switches(), 0);
+
+  // One network switch in next telemetry collection event indicates
+  // network switches delta properly calculated.
+  NetworkInfo network_info;
+  network_info.set_network_id(124);
+  network_info.set_network_type(NetworkType::WIFI);
+  EXPECT_CALL(*datapath_,
+              SwitchNetwork(123, _, NetworkInfoEquals(network_info), _))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_OK(session_->SetNetwork(network_info));
+
+  // Third telemetry collection event.
+  session_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.network_switches(), 1);
+}
+
 TEST_F(SessionTest, DatapathPermanentFailure) {
   BringDatapathToConnected();
 
