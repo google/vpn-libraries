@@ -356,11 +356,10 @@ absl::Status Session::BuildTunFdData(TunFdData* tun_fd_data) const {
   PPN_ASSIGN_OR_RETURN(auto ppn_info,
                        add_egress_response_->ppn_dataplane_response());
 
-  if (ppn_info.user_private_ip_size() == 0) {
-    return absl::InvalidArgumentError("missing user_private_ip");
+  if (user_private_ip_.empty()) {
+    return absl::InvalidArgumentError("missing user_private_ip_");
   }
-  auto ip_ranges = ppn_info.user_private_ip();
-  for (const auto& ip : ip_ranges) {
+  for (const auto& ip : user_private_ip_) {
     PPN_ASSIGN_OR_RETURN(auto proto_ip_range, ToTunFdIpRange(ip));
     *(tun_fd_data->add_tunnel_ip_addresses()) = proto_ip_range;
   }
@@ -732,7 +731,7 @@ void Session::CollectTelemetry(KryptonTelemetry* telemetry) {
   auto delta_network_switches =
       network_switches_count_ - network_switches_count_last_collection_;
   telemetry->set_network_switches(delta_network_switches);
-  network_switches_count_last_collection_  = network_switches_count_.load();
+  network_switches_count_last_collection_ = network_switches_count_.load();
 
   provision_->CollectTelemetry(telemetry);
 }
@@ -822,10 +821,15 @@ void Session::Provisioned(const AddEgressResponse& egress_response,
 
   // Session start handling.
   if (!is_rekey) {
-    auto* egress_nodes = ppn_dataplane->mutable_egress_point_sock_addr();
+    const auto& egress_nodes = ppn_dataplane->egress_point_sock_addr();
     egress_node_sock_addresses_.clear();
-    std::copy(egress_nodes->begin(), egress_nodes->end(),
+    std::copy(egress_nodes.begin(), egress_nodes.end(),
               std::back_inserter(egress_node_sock_addresses_));
+
+    const auto& user_private_ip = ppn_dataplane->user_private_ip();
+    user_private_ip_.clear();
+    std::copy(user_private_ip.begin(), user_private_ip.end(),
+              std::back_inserter(user_private_ip_));
 
     SetState(State::kEgressSessionCreated, absl::OkStatus());
     ResetAllDatapathReattempts();

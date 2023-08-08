@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/common/proto/update_path_info.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
@@ -263,6 +264,7 @@ class Session : public DatapathInterface::NotificationInterface,
   std::optional<AddEgressResponse> add_egress_response_ ABSL_GUARDED_BY(mutex_);
   uint32_t uplink_spi_ ABSL_GUARDED_BY(mutex_);
   std::vector<std::string> egress_node_sock_addresses_ ABSL_GUARDED_BY(mutex_);
+  std::vector<ppn::IpRange> user_private_ip_ ABSL_GUARDED_BY(mutex_);
 
   State state_ ABSL_GUARDED_BY(mutex_) = State::kInitialized;
   absl::Status latest_status_ ABSL_GUARDED_BY(mutex_) = absl::OkStatus();
