@@ -54,7 +54,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import org.json.JSONObject;
 
 /**
@@ -134,7 +133,7 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
   }
 
   @Override
-  public List<PpnNetwork> getAllNetworks() {
+  public ImmutableList<PpnNetwork> getAllNetworks() {
     synchronized (lock) {
       return ImmutableList.copyOf(availableNetworks);
     }
@@ -301,10 +300,7 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
           // We do not have the RSSI from NetworkCapabilities. Hence, we will have to rely on
           // getting the RSSI from the appropriate Android Network Manager (Wifi or Telephony)
           newConnectionQuality =
-              this.ppnNetworkSelector.getConnectionQuality(
-                  activeNetwork,
-                  /** rssi= */
-                  0);
+              this.ppnNetworkSelector.getConnectionQuality(activeNetwork, /* rssi= */ 0);
         }
         if (connectionQuality != newConnectionQuality) {
           Log.w(
@@ -901,7 +897,7 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
   }
 
   @VisibleForTesting
-  List<PpnNetwork> getPendingNetworks() {
+  ImmutableList<PpnNetwork> getPendingNetworks() {
     synchronized (lock) {
       return ImmutableList.copyOf(pendingNetworks);
     }

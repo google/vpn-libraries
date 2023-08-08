@@ -29,6 +29,9 @@ import java.util.List;
  */
 public final class NetMath {
 
+  // Making class non-instantiable since it is a utility class with only static methods
+  private NetMath() {}
+
   /**
    * Returns a minimal, sorted list of ranges in {@code outer} that are *not* in the excluded
    * ranges.

@@ -133,12 +133,8 @@ public class HttpFetcher {
     return reqBuilder.build();
   }
 
-  /**
-   * Builds the GET request based on the parameters that is used for checkGet.
-   *
-   * @throws JSONException if any JSON Strings are malformed.
-   */
-  static Request buildCheckGetRequest(String url) throws JSONException {
+  /** Builds the GET request based on the parameters that is used for checkGet. */
+  static Request buildCheckGetRequest(String url) {
     HttpRequest proto = HttpRequest.newBuilder().setUrl(url).build();
 
     Request.Builder reqBuilder = getGenericRequestBuilder(proto);
@@ -169,14 +165,7 @@ public class HttpFetcher {
    */
   public boolean checkGet(String url, Network ppnNetwork, AddressFamily addressFamily) {
     Log.w(TAG, "HTTP GET (checkGet) to " + url + " (" + addressFamily.name() + ")");
-    Request req;
-    try {
-      req = buildCheckGetRequest(url);
-    } catch (JSONException e) {
-      // The malformed headers could have sensitive info, so don't log the Exception itself.
-      Log.w(TAG, "GET (checkGet) has malformed headers; returning false.");
-      return false;
-    }
+    Request req = buildCheckGetRequest(url);
 
     // Set the timeout to be a very short time period for checkGet calls.
     HttpResponse response =
