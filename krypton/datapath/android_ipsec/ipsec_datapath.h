@@ -81,6 +81,7 @@ class IpSecDatapath : public DatapathInterface,
         vpn_service_(vpn_service),
         ipv4_tcp_mss_endpoint_("", "", 0, IPProtocol::kUnknown),
         ipv6_tcp_mss_endpoint_("", "", 0, IPProtocol::kUnknown),
+        rekey_needed_(false),
         datapath_established_(false),
         looper_("IpSecDatapath Looper"),
         curr_forwarder_id_(0),
@@ -159,6 +160,7 @@ class IpSecDatapath : public DatapathInterface,
   Endpoint ipv4_tcp_mss_endpoint_;
   Endpoint ipv6_tcp_mss_endpoint_;
 
+  bool rekey_needed_ ABSL_GUARDED_BY(mutex_);
   bool datapath_established_ ABSL_GUARDED_BY(mutex_);
 
   // The looper_ must outlive both network_socket_ and forwarder_. The

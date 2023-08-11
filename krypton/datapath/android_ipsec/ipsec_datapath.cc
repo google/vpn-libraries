@@ -179,6 +179,16 @@ absl::Status IpSecDatapath::SwitchNetwork(
 
   health_check_.IncrementNetworkSwitchCounter();
 
+  // TODO: Make the rekey process smoother for network switches
+  // Rekey is not necessary for the initial network switch.
+  if (rekey_needed_) {
+    // Start a rekey because the IPsec sequence number has been reset by the
+    // network switch.
+    auto notification = notification_;
+    notification_thread_->Post([notification]() { notification->DoRekey(); });
+  }
+  rekey_needed_ = true;
+
   return absl::OkStatus();
 }
 
