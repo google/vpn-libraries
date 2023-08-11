@@ -74,7 +74,6 @@ using ::testing::AnyNumber;
 using ::testing::DoAll;
 using ::testing::Eq;
 using ::testing::EqualsProto;
-using ::testing::HasSubstr;
 using ::testing::Invoke;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
@@ -395,8 +394,8 @@ class SessionTest : public ::testing::Test {
             ::private_membership::anonymous_tokens::RSABlindSignaturePublicKey>
       key_pair_;
 
-    utils::LooperThread looper_{"SessionTest Looper"};
-    std::unique_ptr<Session> session_;
+  utils::LooperThread looper_{"SessionTest Looper"};
+  std::unique_ptr<Session> session_;
 };
 
 TEST_F(SessionTest, DatapathInitFailure) {
@@ -845,23 +844,15 @@ TEST_F(SessionTest, DownlinkMtuUpdateHandlerHttpStatusBadRequest) {
         return http_response;
       });
 
-  absl::Notification notification_done;
-  EXPECT_CALL(notification_, ControlPlaneDisconnected(
-                                 StatusIs(absl::StatusCode::kInvalidArgument,
-                                          HasSubstr("Bad Request"))))
-      .WillOnce([&notification_done] { notification_done.Notify(); });
+  EXPECT_CALL(notification_, ControlPlaneDisconnected(_)).Times(0);
 
   session_->DoDownlinkMtuUpdate(/*downlink_mtu=*/123);
-
-  ASSERT_TRUE(
-      notification_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
 }
 
 TEST_F(SessionTest, ForceTunnelUpdate) {
   BringDatapathToConnected();
 
-  EXPECT_CALL(vpn_service_,
-              CreateTunnel(EqualsProto(GetTunFdData())));
+  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())));
 
   session_->ForceTunnelUpdate();
 }

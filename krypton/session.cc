@@ -246,6 +246,7 @@ absl::Status Session::SendUpdatePathInfoRequest() {
       absl::StrCat("path_info;", update_path_info_request.session_id(), ";",
                    update_path_info_request.uplink_mtu(), ";",
                    update_path_info_request.downlink_mtu());
+  // TODO: This creates a race condition with rekey
   PPN_ASSIGN_OR_RETURN(auto signature,
                        provision_->GenerateSignature(signed_data));
   update_path_info_request.set_mtu_update_signature(signature);
@@ -273,8 +274,7 @@ void Session::HandleUpdatePathInfoResponse(const HttpResponse& response) {
   } else {
     auto status = utils::GetStatusForHttpStatus(response.status().code(),
                                                 response.status().message());
-    absl::MutexLock l(&mutex_);
-    SetState(State::kSessionError, status);
+    LOG(ERROR) << "Updating path info failed with status: " << status;
   }
 }
 

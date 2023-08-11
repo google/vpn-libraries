@@ -120,22 +120,6 @@ void Provision::Rekey() {
                    false);
     return;
   }
-  // Generate the rekey parameters that are needed and generate a signature
-  // from the old crypto keys.
-  auto new_key_material = crypto::SessionCrypto::Create(config_);
-  if (!new_key_material.ok()) {
-    FailWithStatus(new_key_material.status(), false);
-    return;
-  }
-  auto signature =
-      key_material_->GenerateSignature((*new_key_material)->public_value());
-  if (!signature.ok()) {
-    FailWithStatus(signature.status(), false);
-    return;
-  }
-  (*new_key_material)->SetSignature(*signature);
-  key_material_.reset();
-  key_material_ = *std::move(new_key_material);
   auth_->Start(/*is_rekey=*/true);
 }
 
@@ -309,6 +293,23 @@ void Provision::AuthSuccessful(bool is_rekey) {
 
   absl::MutexLock l(&mutex_);
   if (is_rekey) {
+    // Generate the rekey parameters that are needed and generate a signature
+    // from the old crypto keys.
+    auto new_key_material = crypto::SessionCrypto::Create(config_);
+    if (!new_key_material.ok()) {
+      FailWithStatus(new_key_material.status(), false);
+      return;
+    }
+    auto signature =
+        key_material_->GenerateSignature((*new_key_material)->public_value());
+    if (!signature.ok()) {
+      FailWithStatus(signature.status(), false);
+      return;
+    }
+    (*new_key_material)->SetSignature(*signature);
+    key_material_.reset();
+    key_material_ = *std::move(new_key_material);
+
     if (config_.datapath_protocol() == KryptonConfig::BRIDGE ||
         config_.datapath_protocol() == KryptonConfig::IPSEC) {
       PpnDataplaneRequest(/*rekey=*/true);
