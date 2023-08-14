@@ -14,7 +14,17 @@
 
 #include "privacy/net/krypton/datapath/ipsec/ipsec_encryptor.h"
 
+#include <cstddef>
+#include <cstring>
+#include <limits>
+
+#include "privacy/net/krypton/datapath/ipsec/ipsec.h"
+#include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/log/check.h"
+#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/string_view.h"
+#include "third_party/openssl/aead.h"
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -36,7 +46,6 @@
 #include "privacy/net/krypton/datapath/ipsec/ipsec_packet_pool.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/strings/escaping.h"
 
 #undef htobe32
 
@@ -105,6 +114,14 @@ absl::Status IpSecEncryptor::Encrypt(absl::string_view input,
   const auto input_data = reinterpret_cast<const uint8_t*>(input.begin());
 
   // Assign nonce for encryption.
+  if (sequence_number_ == std::numeric_limits<uint32_t>::max()) {
+    // Even though we use random IVs, after 2^32 invocations the probability of
+    // nonce reuse becomes concerning, so we should fail safe.
+    // copybara:strip_begin(internal link)
+    // See http://yaqs/2961540066972794880#a1 for ise-crypto recommendation.
+    // copybara:strip_end
+    return absl::InternalError("Encryptor expired before rekey occurred");
+  }
   auto initialization_vector = crypto::CreateSecureRandomString(kIVLen);
   char nonce[kSaltLen + kIVLen];
 
