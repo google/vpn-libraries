@@ -5,10 +5,20 @@
 #include "google/protobuf/timestamp.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/ascii.h"
+#include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/time/time.h"
+#include "third_party/anonymous_tokens/cpp/privacy_pass/token_encodings.h"
 
 namespace privacy::ppn {
+
+using private_membership::anonymous_tokens::DebugMode;
+using private_membership::anonymous_tokens::ExpirationTimestamp;
+using private_membership::anonymous_tokens::Extensions;
+using private_membership::anonymous_tokens::GeoHint;
+using private_membership::anonymous_tokens::ServiceType;
 
 BinaryPublicMetadata PublicMetadataProtoToStruct(
     const PublicMetadata& metadata) {
@@ -83,17 +93,109 @@ absl::Status ValidateBinaryPublicMetadataCardinality(
   return absl::OkStatus();
 }
 
-// TODO: describe
-std::string Serialize(const privacy::ppn::BinaryPublicMetadata& /*metadata*/) {
-  // To be implemented.
-  return "";
+absl::StatusOr<std::string> Serialize(
+    const privacy::ppn::BinaryPublicMetadata& metadata) {
+  Extensions extensions;
+  ExpirationTimestamp expiration_timestamp;
+  if (!metadata.expiration_epoch_seconds.has_value()) {
+    return absl::InvalidArgumentError("missing expiration");
+  }
+  expiration_timestamp.timestamp = metadata.expiration_epoch_seconds.value();
+  expiration_timestamp.timestamp_precision = 900;  // 15 minute granularity
+  auto expiration_ext = expiration_timestamp.AsExtension();
+  if (!expiration_ext.ok()) {
+    return expiration_ext.status();
+  }
+  extensions.extensions.push_back(expiration_ext.value());
+
+  GeoHint geo_hint;
+  if (!metadata.country.has_value()) {
+    return absl::InvalidArgumentError("missing country in geo information");
+  }
+  geo_hint.geo_hint =
+      absl::StrCat(metadata.country.value(), ",", metadata.region.value(), ",",
+                   metadata.city.value());
+  auto geo_ext = geo_hint.AsExtension();
+  if (!geo_ext.ok()) {
+    return geo_ext.status();
+  }
+  extensions.extensions.push_back(geo_ext.value());
+
+  ServiceType service_type;
+  if (!metadata.service_type.has_value()) {
+    return absl::InvalidArgumentError("missing service type");
+  }
+  if (metadata.service_type.value() == "chromeipblinding") {
+    service_type.service_type_id = ServiceType::kChromeIpBlinding;
+  } else {
+    return absl::InvalidArgumentError("unsupported service type");
+  }
+  auto service_type_ext = service_type.AsExtension();
+  if (!service_type_ext.ok()) {
+    return service_type_ext.status();
+  }
+  extensions.extensions.push_back(service_type_ext.value());
+
+  DebugMode debug_mode;
+  if (metadata.debug_mode == 1) {
+    debug_mode.mode = DebugMode::kDebug;
+  } else if (metadata.debug_mode == 0) {
+    debug_mode.mode = DebugMode::kProd;
+  }
+  auto debug_mode_ext = debug_mode.AsExtension();
+  if (!debug_mode_ext.ok()) {
+    return debug_mode_ext.status();
+  }
+  extensions.extensions.push_back(debug_mode_ext.value());
+
+  return private_membership::anonymous_tokens::EncodeExtensions(extensions);
 }
 
 // Deserialize a BinaryPublicMetadata extension into a struct.
-privacy::ppn::BinaryPublicMetadata Deserialize(
-    absl::string_view /*serialized_metadata*/) {
-  // To be implemented.
-  return {};
+absl::StatusOr<privacy::ppn::BinaryPublicMetadata> Deserialize(
+    absl::string_view encoded_extensions) {
+  const auto extensions =
+      private_membership::anonymous_tokens::DecodeExtensions(
+          encoded_extensions);
+  if (!extensions.ok()) {
+    return extensions.status();
+  }
+  if (extensions->extensions.size() != 4) {
+    return absl::InvalidArgumentError("Wrong number of extensions");
+  }
+  auto expiration =
+      ExpirationTimestamp::FromExtension(extensions->extensions[0]);
+  if (!expiration.ok()) {
+    return expiration.status();
+  }
+  if (expiration.value().timestamp_precision != 900) {
+    return absl::InvalidArgumentError("Invalid timestamp_precision");
+  }
+  auto geo_hint = GeoHint::FromExtension(extensions->extensions[1]);
+  if (!geo_hint.ok()) {
+    return geo_hint.status();
+  }
+  auto service_type = ServiceType::FromExtension(extensions->extensions[2]);
+  if (!service_type.ok()) {
+    return service_type.status();
+  }
+  if (service_type->service_type != "chromeipblinding") {
+    return absl::InvalidArgumentError("Unsupported service type");
+  }
+  auto debug_mode = DebugMode::FromExtension(extensions->extensions[3]);
+  if (!debug_mode.ok()) {
+    return debug_mode.status();
+  }
+
+  BinaryPublicMetadata metadata;
+  metadata.version = 1;
+  metadata.expiration_epoch_seconds = expiration.value().timestamp;
+  metadata.country = geo_hint->country_code;
+  metadata.region = geo_hint->region;
+  metadata.city = geo_hint->city;
+  metadata.debug_mode = debug_mode->mode;
+  metadata.service_type = service_type->service_type;
+  return metadata;
 }
 
 }  // namespace privacy::ppn

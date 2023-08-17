@@ -15,6 +15,7 @@
 
 namespace privacy::ppn {
 
+// TODO: This should use the token_encodings directly.
 struct BinaryPublicMetadata {
   // Incrememented with each version of this struct to allow for safe evolution
   // of the struct.
@@ -48,11 +49,12 @@ absl::Status ValidateBinaryPublicMetadataCardinality(
 // Serialize a BinaryPublicMetadata struct into
 // draft-wood-privacypass-extensible-token format.
 // TODO: document extensions in more detail
-std::string Serialize(const privacy::ppn::BinaryPublicMetadata& metadata);
+absl::StatusOr<std::string> Serialize(
+    const privacy::ppn::BinaryPublicMetadata& metadata);
 
 // Deserialize a draft-wood-privacypass-extensible-token format into a struct.
-privacy::ppn::BinaryPublicMetadata Deserialize(
-    absl::string_view serialized_metadata);
+absl::StatusOr<privacy::ppn::BinaryPublicMetadata> Deserialize(
+    absl::string_view encoded_extensions);
 
 }  // namespace privacy::ppn
 

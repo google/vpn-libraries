@@ -4,9 +4,14 @@
 %include "base/swig/google.swig"
 %include "net/proto/swig/go/protofunc.swig"
 %include "strings/strings.swig"
+%import "util/task/go/status.swig"
 
 %{
 #include "privacy/net/common/cpp/public_metadata/public_metadata.h"
+#include "third_party/absl/status/statusor.h"
+#include "third_party/anonymous_tokens/cpp/privacy_pass/token_encodings.h"
+#include "util/task/status.h"
+#include "util/task/status.proto.h"
 %}
 
 PROTO_INPUT(privacy::ppn::PublicMetadata,
@@ -30,8 +35,38 @@ OPTIONAL_TYPEMAP(uint64_t, uint64, uint64, Uint64Optional)
 
 %unignore privacy::ppn::PublicMetadataProtoToStruct(const privacy::ppn::PublicMetadata&);
 
-%unignore privacy::ppn::Serialize(const privacy::ppn::BinaryPublicMetadata&);
-%unignore privacy::ppn::Deserialize(absl::string_view);
-
 %include "privacy/net/common/cpp/public_metadata/public_metadata.h"
 %unignoreall
+
+%inline %{
+struct StatusOrExtensionsString {
+  absl::Status status;
+  std::string extensions_str;
+};
+
+StatusOrExtensionsString SerializeExtensionsWrapped(privacy::ppn::BinaryPublicMetadata& metadata) {
+  auto statusor = privacy::ppn::Serialize(metadata);
+  StatusOrExtensionsString resp;
+  resp.status = statusor.status();
+  if (statusor.ok()) {
+    resp.extensions_str = statusor.value();
+  }
+  return resp;
+}
+
+struct StatusOrExtensions {
+  absl::Status status;
+  privacy::ppn::BinaryPublicMetadata extensions;
+};
+
+StatusOrExtensions DeserializeExtensionsWrapped(std::string extensions_str) {
+  auto statusor = privacy::ppn::Deserialize(extensions_str);
+  StatusOrExtensions resp;
+  resp.status = statusor.status();
+  if (statusor.ok()) {
+    resp.extensions = statusor.value();
+  }
+  return resp;
+}
+%}
+

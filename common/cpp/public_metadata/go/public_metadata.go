@@ -2,6 +2,12 @@
 package binarymetadata
 
 import (
+	"fmt"
+
+	"google3/third_party/golang/protobuf/v2/proto/proto"
+	"google3/util/task/go/status"
+	stpb "google3/util/task/status_go_proto"
+
 	tpb "google3/google/protobuf/timestamp_go_proto"
 	wrap "google3/privacy/net/common/cpp/public_metadata/go/wrap_public_metadata"
 	pmpb "google3/privacy/net/common/proto/public_metadata_go_proto"
@@ -60,6 +66,9 @@ type NewBinaryFields struct {
 	ServiceType string
 	Expiration  *tpb.Timestamp
 	DebugMode   pmpb.PublicMetadata_DebugMode
+	// PublicMetadata_Location cannot safely encode Region/City on its own without storing a full geoid -> city/region table.
+	Region string
+	City   string
 }
 
 // New returns a new BinaryStruct.
@@ -67,6 +76,8 @@ func New(fields *NewBinaryFields) *BinaryStruct {
 	metadata := wrap.NewBinaryPublicMetadata()
 	metadata.SetVersion(uint(fields.Version))
 	metadata.SetCountry(wrap.NewStringOptional(fields.Loc.GetCountry()))
+	metadata.SetRegion(wrap.NewStringOptional(fields.Region))
+	metadata.SetCity(wrap.NewStringOptional(fields.City))
 	metadata.SetService_type(wrap.NewStringOptional(fields.ServiceType))
 	metadata.SetExpiration_epoch_seconds(wrap.NewUint64Optional(uint64(fields.Expiration.GetSeconds())))
 	metadata.SetDebug_mode(uint(fields.DebugMode.Number()))
@@ -79,14 +90,45 @@ func (bs *BinaryStruct) Free() {
 	bs.metadata = nil
 }
 
+func unmarshalStatusToErr(serializedProto []byte) error {
+	// Taken from google3/privacy/net/boq/common/tokens/token_types.go.
+	var sp stpb.StatusProto
+	if err := proto.Unmarshal(serializedProto, &sp); err != nil {
+		return fmt.Errorf("proto.Unmarshal(%v): %w", serializedProto, err)
+	}
+	return status.FromProto(&sp).Err()
+}
+
 // Serialize the binary public metadata to bytes in a string. When this call returns, the caller
 // should ensure to call bs.Free()
 func Serialize(bs *BinaryStruct) ([]byte, error) {
-	return []byte(wrap.Serialize(bs.metadata)), nil
+	st := wrap.SerializeExtensionsWrapped(bs.metadata)
+	defer wrap.DeleteStatusOrExtensionsString(st)
+	if err := unmarshalStatusToErr(st.GetStatus()); err != nil {
+		return nil, err
+	}
+	return []byte(st.GetExtensions_str()), nil
 }
 
 // Deserialize bytes to binary public metadata.
 func Deserialize(in []byte) (*BinaryStruct, error) {
-	md := wrap.Deserialize(string(in[:]))
-	return &BinaryStruct{metadata: md}, nil
+	inStr := string(in)
+	st := wrap.DeserializeExtensionsWrapped(inStr)
+	defer wrap.DeleteStatusOrExtensions(st)
+	if err := unmarshalStatusToErr(st.GetStatus()); err != nil {
+		return nil, err
+	}
+	// st.GetExtensions is allocated and should be deleted within this func, so we make a new copy below.
+	bs := &BinaryStruct{}
+	bs.metadata = wrap.NewBinaryPublicMetadata()
+	bs.metadata.SetVersion(st.GetExtensions().GetVersion())
+	bs.metadata.SetService_type(st.GetExtensions().GetService_type())
+	bs.metadata.SetCountry(st.GetExtensions().GetCountry())
+	bs.metadata.SetRegion(st.GetExtensions().GetRegion())
+	bs.metadata.SetCity(st.GetExtensions().GetCity())
+	bs.metadata.SetDebug_mode(st.GetExtensions().GetDebug_mode())
+	if st.GetExtensions().GetExpiration_epoch_seconds().HasValue() {
+		bs.metadata.SetExpiration_epoch_seconds(wrap.NewUint64Optional(uint64(st.GetExtensions().GetExpiration_epoch_seconds().Value())))
+	}
+	return bs, nil
 }
