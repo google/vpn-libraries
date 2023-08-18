@@ -70,6 +70,7 @@ import com.google.android.libraries.privacy.ppn.xenon.Xenon;
 import com.google.android.libraries.privacy.ppn.xenon.impl.XenonImpl;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import java.time.Duration;
 import java.util.Collections;
@@ -427,6 +428,12 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   }
 
   @Override
+  public void setAccount(Account account) {
+    Log.w(TAG, "Setting account on PPN.");
+    accountCache.setAccount(account);
+  }
+
+  @Override
   public void stop() {
     // Stopping Krypton requires getting the Krypton lock and waiting for Krypton's threads to be
     // joined, so we kick it off to the background Executor.
@@ -700,13 +707,23 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     }
   }
 
+  @Override
+  public void onServiceStarted(VpnService vpnService) {
+    onStartService(vpnService);
+  }
+
+  @Override
+  public void onServiceStopped() {
+    onStopService();
+  }
+
   /**
    * Handles any PPN logic that needs to occur when the Service is started, such as permanent
    * notification management.
    *
    * @return a Task that will be resolved once all of the async startup work is complete.
    */
-  @ResultIgnorabilityUnspecified
+  @CanIgnoreReturnValue
   public Task<Void> onStartService(VpnService service) {
     Log.w(TAG, "PPN Service is starting.");
 

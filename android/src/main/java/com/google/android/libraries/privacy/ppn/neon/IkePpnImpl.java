@@ -206,6 +206,12 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
   }
 
   @Override
+  public void setAccount(Account account) {
+    Log.i(TAG, "Setting account on ppn.");
+    accountCache.setAccount(account);
+  }
+
+  @Override
   public void stop() {
     Log.i(TAG, "Stopping ppn.");
     vpnManager.stopProvisionedVpnProfile();

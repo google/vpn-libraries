@@ -16,6 +16,7 @@ package com.google.android.libraries.privacy.ppn;
 
 import android.accounts.Account;
 import android.app.Notification;
+import android.net.VpnService;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.time.Duration;
@@ -45,6 +46,12 @@ public interface Ppn {
   void start(Account account) throws PpnException;
 
   /**
+   * Sets the account to use the next time the PPN Service is started, but does not start or restart
+   * the VPN. The new account will take effect the next time PPN authenticates.
+   */
+  void setAccount(Account account);
+
+  /**
    * Stops the VPN service, if it is running. If the user has turned on the "Always on" VPN feature
    * in the Android system settings, then Android may try to restart the service at any time.
    *
@@ -61,6 +68,29 @@ public interface Ppn {
    * <p>This method is asynchronous, and can be called from any thread.
    */
   ListenableFuture<Void> restart();
+
+  /**
+   * Handles any PPN logic that needs to occur when the Service is started.
+   *
+   * <p>This method is for clients that do not use {@link PpnVpnService}. Such clients have a
+   * separate {@link VpnService} lifecycle that isn't dependent on calling {@link #start(Account)},
+   * as {@link PpnVpnService} does this automatically.
+   *
+   * <p>Note: When using the IKE version of PPN, this method is a no-op, as that datapath uses
+   * {@link android.net.VpnManager}, which does not require a {@link VpnService}.
+   */
+  default void onServiceStarted(VpnService vpnService) {}
+
+  /**
+   * Handles any PPN logic that needs to occur when the Service is stopped.
+   *
+   * <p>This method is for clients that do not use {@link PpnVpnService}, as {@link PpnVpnService}
+   * does this automatically.
+   *
+   * <p>Note: When using the IKE version of PPN, this method is a no-op, as that datapath uses
+   * {@link android.net.VpnManager}, which does not require a {@link VpnService}.
+   */
+  default void onServiceStopped() {}
 
   /**
    * Temporarily disconnects PPN and closes the VPN tunnel, if it is running.
