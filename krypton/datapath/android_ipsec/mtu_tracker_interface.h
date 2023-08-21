@@ -15,8 +15,6 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MTU_TRACKER_INTERFACE_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MTU_TRACKER_INTERFACE_H_
 
-#include "privacy/net/krypton/utils/looper.h"
-
 namespace privacy {
 namespace krypton {
 namespace datapath {
@@ -46,10 +44,6 @@ class MtuTrackerInterface {
   virtual void UpdateDownlinkMtu(int downlink_mtu) = 0;
 
   virtual int GetTunnelMtu() const = 0;
-
-  virtual void RegisterNotificationHandler(
-      NotificationInterface* notification,
-      utils::LooperThread* notification_thread) = 0;
 };
 
 }  // namespace android

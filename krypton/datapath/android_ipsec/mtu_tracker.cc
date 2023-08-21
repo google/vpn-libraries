@@ -14,9 +14,9 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker.h"
 
-#include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker_interface.h"
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/utils/looper.h"
+#include "third_party/absl/log/die_if_null.h"
 #include "third_party/absl/log/log.h"
 
 namespace privacy {
@@ -39,18 +39,31 @@ constexpr int kGenericEspOverheadMaxV6 = 50;
 constexpr int kMaxIpv4Overhead = kAesGcm128Overhead + kGenericEspOverheadMaxV4;
 constexpr int kMaxIpv6Overhead = kAesGcm128Overhead + kGenericEspOverheadMaxV6;
 
-MtuTracker::MtuTracker(IPProtocol dest_ip_protocol)
-    : MtuTracker(dest_ip_protocol, kDefaultMtu) {}
+MtuTracker::MtuTracker(IPProtocol dest_ip_protocol,
+                       NotificationInterface* notification,
+                       utils::LooperThread* notification_thread)
+    : MtuTracker(dest_ip_protocol, kDefaultMtu, notification,
+                 notification_thread) {}
 
-MtuTracker::MtuTracker(IPProtocol dest_ip_protocol, int initial_path_mtu)
+MtuTracker::MtuTracker(IPProtocol dest_ip_protocol, int initial_path_mtu,
+                       NotificationInterface* notification,
+                       utils::LooperThread* notification_thread)
     : tunnel_overhead_(dest_ip_protocol == IPProtocol::kIPv6
                            ? kMaxIpv6Overhead
                            : kMaxIpv4Overhead),
       uplink_mtu_(initial_path_mtu),
       tunnel_mtu_(uplink_mtu_ - tunnel_overhead_),
       downlink_mtu_(initial_path_mtu),
-      notification_(nullptr),
-      notification_thread_(nullptr) {}
+      notification_(ABSL_DIE_IF_NULL(notification)),
+      notification_thread_(ABSL_DIE_IF_NULL(notification_thread)) {
+  // Send the current values to the new NotificationHandler
+  notification_thread_->Post([notification, downlink_mtu = downlink_mtu_,
+                              uplink_mtu = uplink_mtu_,
+                              tunnel_mtu = tunnel_mtu_] {
+    notification->DownlinkMtuUpdated(downlink_mtu);
+    notification->UplinkMtuUpdated(uplink_mtu, tunnel_mtu);
+  });
+}
 
 void MtuTracker::UpdateUplinkMtu(int uplink_mtu) {
   if (uplink_mtu < uplink_mtu_) {
@@ -62,9 +75,6 @@ void MtuTracker::UpdateUplinkMtu(int uplink_mtu) {
               << tunnel_mtu;
     tunnel_mtu_ = tunnel_mtu;
 
-    if (notification_ == nullptr || notification_thread_ == nullptr) {
-      return;
-    }
     auto notification = notification_;
     notification_thread_->Post([notification, uplink_mtu, tunnel_mtu] {
       notification->UplinkMtuUpdated(uplink_mtu, tunnel_mtu);
@@ -76,9 +86,6 @@ void MtuTracker::UpdateDownlinkMtu(int downlink_mtu) {
   if (downlink_mtu < downlink_mtu_) {
     downlink_mtu_ = downlink_mtu;
 
-    if (notification_ == nullptr || notification_thread_ == nullptr) {
-      return;
-    }
     auto notification = notification_;
     notification_thread_->Post([notification, downlink_mtu] {
       notification->DownlinkMtuUpdated(downlink_mtu);
@@ -87,24 +94,6 @@ void MtuTracker::UpdateDownlinkMtu(int downlink_mtu) {
 }
 
 int MtuTracker::GetTunnelMtu() const { return tunnel_mtu_; }
-
-void MtuTracker::RegisterNotificationHandler(
-    NotificationInterface* notification,
-    utils::LooperThread* notification_thread) {
-  notification_ = notification;
-  notification_thread_ = notification_thread;
-
-  // Send the current values to the new NotificationHandler
-  if (notification_ == nullptr || notification_thread_ == nullptr) {
-    return;
-  }
-  notification_thread_->Post([notification, downlink_mtu = downlink_mtu_,
-                              uplink_mtu = uplink_mtu_,
-                              tunnel_mtu = tunnel_mtu_] {
-    notification->DownlinkMtuUpdated(downlink_mtu);
-    notification->UplinkMtuUpdated(uplink_mtu, tunnel_mtu);
-  });
-}
 
 }  // namespace android
 }  // namespace datapath

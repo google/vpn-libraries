@@ -28,6 +28,8 @@ namespace datapath {
 namespace android {
 namespace {
 
+using ::testing::_;
+
 class MockNotification : public MtuTrackerInterface::NotificationInterface {
  public:
   MOCK_METHOD(void, UplinkMtuUpdated, (int, int), (override));
@@ -43,132 +45,147 @@ class MtuTrackerTest : public ::testing::Test {
 };
 
 TEST_F(MtuTrackerTest, TestCreateMtuTrackerIPv4) {
-  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
-  EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 1395);
+  absl::Notification uplink_mtu_updated;
+  absl::Notification downlink_mtu_updated;
+  int notification_uplink_mtu;
+  int notification_tunnel_mtu;
+  EXPECT_CALL(notification_, UplinkMtuUpdated(_, _))
+      .WillOnce([&uplink_mtu_updated, &notification_uplink_mtu,
+                 &notification_tunnel_mtu](int uplink_mtu, int tunnel_mtu) {
+        notification_uplink_mtu = uplink_mtu;
+        notification_tunnel_mtu = tunnel_mtu;
+        uplink_mtu_updated.Notify();
+      });
+  EXPECT_CALL(notification_, DownlinkMtuUpdated(_))
+      .WillOnce([&downlink_mtu_updated] { downlink_mtu_updated.Notify(); });
+
+  MtuTracker mtu_tracker =
+      MtuTracker(IPProtocol::kIPv4, &notification_, &looper_);
+
+  uplink_mtu_updated.WaitForNotification();
+  downlink_mtu_updated.WaitForNotification();
+
+  // Verify that tunnel MTU is accounting for overhead
+  EXPECT_GT(notification_uplink_mtu, notification_tunnel_mtu);
 }
 
 TEST_F(MtuTrackerTest, TestCreateMtuTrackerIPv6) {
-  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv6);
-  EXPECT_EQ(mtu_tracker.GetTunnelMtu(), 1423);
-}
-
-TEST_F(MtuTrackerTest, TestSetNotificationHandlerIPv4) {
   absl::Notification uplink_mtu_updated;
   absl::Notification downlink_mtu_updated;
-  EXPECT_CALL(notification_, UplinkMtuUpdated(1500, 1395))
-      .WillOnce([&uplink_mtu_updated] { uplink_mtu_updated.Notify(); });
-  EXPECT_CALL(notification_, DownlinkMtuUpdated(1500))
+  int notification_uplink_mtu;
+  int notification_tunnel_mtu;
+  EXPECT_CALL(notification_, UplinkMtuUpdated(_, _))
+      .WillOnce([&uplink_mtu_updated, &notification_uplink_mtu,
+                 &notification_tunnel_mtu](int uplink_mtu, int tunnel_mtu) {
+        notification_uplink_mtu = uplink_mtu;
+        notification_tunnel_mtu = tunnel_mtu;
+        uplink_mtu_updated.Notify();
+      });
+  EXPECT_CALL(notification_, DownlinkMtuUpdated(_))
       .WillOnce([&downlink_mtu_updated] { downlink_mtu_updated.Notify(); });
 
-  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
-  mtu_tracker.RegisterNotificationHandler(&notification_, &looper_);
+  MtuTracker mtu_tracker =
+      MtuTracker(IPProtocol::kIPv6, &notification_, &looper_);
 
-  EXPECT_TRUE(uplink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
-  EXPECT_TRUE(downlink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
-}
+  uplink_mtu_updated.WaitForNotification();
+  downlink_mtu_updated.WaitForNotification();
 
-TEST_F(MtuTrackerTest, TestSetNotificationHandlerIPv6) {
-  absl::Notification uplink_mtu_updated;
-  absl::Notification downlink_mtu_updated;
-  EXPECT_CALL(notification_, UplinkMtuUpdated(1500, 1423))
-      .WillOnce([&uplink_mtu_updated] { uplink_mtu_updated.Notify(); });
-  EXPECT_CALL(notification_, DownlinkMtuUpdated(1500))
-      .WillOnce([&downlink_mtu_updated] { downlink_mtu_updated.Notify(); });
-
-  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv6);
-  mtu_tracker.RegisterNotificationHandler(&notification_, &looper_);
-
-  EXPECT_TRUE(uplink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
-  EXPECT_TRUE(downlink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
+  // Verify that tunnel MTU is accounting for overhead
+  EXPECT_GT(notification_uplink_mtu, notification_tunnel_mtu);
 }
 
 TEST_F(MtuTrackerTest, TestCreateWithInitialMtuIPv4) {
   absl::Notification uplink_mtu_updated;
   absl::Notification downlink_mtu_updated;
-  EXPECT_CALL(notification_, UplinkMtuUpdated(2000, 1895))
-      .WillOnce([&uplink_mtu_updated] { uplink_mtu_updated.Notify(); });
+  int notification_tunnel_mtu;
+  EXPECT_CALL(notification_, UplinkMtuUpdated(2000, _))
+      .WillOnce([&uplink_mtu_updated, &notification_tunnel_mtu](
+                    int /*uplink_mtu*/, int tunnel_mtu) {
+        notification_tunnel_mtu = tunnel_mtu;
+        uplink_mtu_updated.Notify();
+      });
   EXPECT_CALL(notification_, DownlinkMtuUpdated(2000))
       .WillOnce([&downlink_mtu_updated] { downlink_mtu_updated.Notify(); });
 
-  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4, 2000);
-  mtu_tracker.RegisterNotificationHandler(&notification_, &looper_);
+  MtuTracker mtu_tracker =
+      MtuTracker(IPProtocol::kIPv4, 2000, &notification_, &looper_);
 
-  EXPECT_TRUE(uplink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
-  EXPECT_TRUE(downlink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
+  uplink_mtu_updated.WaitForNotification();
+  downlink_mtu_updated.WaitForNotification();
+
+  // Verify that tunnel MTU is accounting for overhead
+  EXPECT_GT(2000, notification_tunnel_mtu);
 }
 
 TEST_F(MtuTrackerTest, TestCreateWithInitialMtuIPv6) {
   absl::Notification uplink_mtu_updated;
   absl::Notification downlink_mtu_updated;
-  EXPECT_CALL(notification_, UplinkMtuUpdated(2000, 1923))
-      .WillOnce([&uplink_mtu_updated] { uplink_mtu_updated.Notify(); });
+  int notification_tunnel_mtu;
+  EXPECT_CALL(notification_, UplinkMtuUpdated(2000, _))
+      .WillOnce([&uplink_mtu_updated, &notification_tunnel_mtu](
+                    int /*uplink_mtu*/, int tunnel_mtu) {
+        notification_tunnel_mtu = tunnel_mtu;
+        uplink_mtu_updated.Notify();
+      });
   EXPECT_CALL(notification_, DownlinkMtuUpdated(2000))
       .WillOnce([&downlink_mtu_updated] { downlink_mtu_updated.Notify(); });
 
-  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv6, 2000);
-  mtu_tracker.RegisterNotificationHandler(&notification_, &looper_);
+  MtuTracker mtu_tracker =
+      MtuTracker(IPProtocol::kIPv6, 2000, &notification_, &looper_);
 
-  EXPECT_TRUE(uplink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
-  EXPECT_TRUE(downlink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
+  uplink_mtu_updated.WaitForNotification();
+  downlink_mtu_updated.WaitForNotification();
+
+  // Verify that tunnel MTU is accounting for overhead
+  EXPECT_GT(2000, notification_tunnel_mtu);
 }
 
 TEST_F(MtuTrackerTest, TestSetLowerUplinkMtu) {
-  EXPECT_CALL(notification_, UplinkMtuUpdated(1500, 1395)).Times(1);
+  EXPECT_CALL(notification_, UplinkMtuUpdated(1500, _));
 
   absl::Notification uplink_mtu_updated;
-  EXPECT_CALL(notification_, UplinkMtuUpdated(1499, 1394))
+  EXPECT_CALL(notification_, UplinkMtuUpdated(1499, _))
       .WillOnce([&uplink_mtu_updated] { uplink_mtu_updated.Notify(); });
 
-  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
-  mtu_tracker.RegisterNotificationHandler(&notification_, &looper_);
+  MtuTracker mtu_tracker =
+      MtuTracker(IPProtocol::kIPv4, 1500, &notification_, &looper_);
   mtu_tracker.UpdateUplinkMtu(1499);
 
-  EXPECT_TRUE(uplink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
+  uplink_mtu_updated.WaitForNotification();
 }
 
 TEST_F(MtuTrackerTest, TestSetHigherUplinkMtu) {
-  EXPECT_CALL(notification_, UplinkMtuUpdated(1501, 1396)).Times(0);
-  EXPECT_CALL(notification_, UplinkMtuUpdated(1500, 1395)).Times(1);
+  EXPECT_CALL(notification_, UplinkMtuUpdated(1501, _)).Times(0);
+  EXPECT_CALL(notification_, UplinkMtuUpdated(1500, _));
 
   absl::Notification uplink_mtu_updated;
-  EXPECT_CALL(notification_, UplinkMtuUpdated(1499, 1394))
+  EXPECT_CALL(notification_, UplinkMtuUpdated(1499, _))
       .WillOnce([&uplink_mtu_updated] { uplink_mtu_updated.Notify(); });
 
-  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
-  mtu_tracker.RegisterNotificationHandler(&notification_, &looper_);
+  MtuTracker mtu_tracker =
+      MtuTracker(IPProtocol::kIPv4, 1500, &notification_, &looper_);
   mtu_tracker.UpdateUplinkMtu(1501);
   mtu_tracker.UpdateUplinkMtu(1499);
 
-  EXPECT_TRUE(uplink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
+  uplink_mtu_updated.WaitForNotification();
 }
 
 TEST_F(MtuTrackerTest, TestSetLowerDownlinkMtu) {
-  EXPECT_CALL(notification_, DownlinkMtuUpdated(1500)).Times(1);
+  EXPECT_CALL(notification_, DownlinkMtuUpdated(1500));
 
   absl::Notification downlink_mtu_updated;
   EXPECT_CALL(notification_, DownlinkMtuUpdated(1499))
       .WillOnce([&downlink_mtu_updated] { downlink_mtu_updated.Notify(); });
 
-  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
-  mtu_tracker.RegisterNotificationHandler(&notification_, &looper_);
+  MtuTracker mtu_tracker =
+      MtuTracker(IPProtocol::kIPv4, 1500, &notification_, &looper_);
   mtu_tracker.UpdateDownlinkMtu(1499);
 
-  EXPECT_TRUE(downlink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
+  downlink_mtu_updated.WaitForNotification();
 }
 
 TEST_F(MtuTrackerTest, TestSetHigherDownlinkMtu) {
-  EXPECT_CALL(notification_, DownlinkMtuUpdated(1500)).Times(1);
+  EXPECT_CALL(notification_, DownlinkMtuUpdated(1500));
 
   EXPECT_CALL(notification_, DownlinkMtuUpdated(1501)).Times(0);
 
@@ -176,13 +193,31 @@ TEST_F(MtuTrackerTest, TestSetHigherDownlinkMtu) {
   EXPECT_CALL(notification_, DownlinkMtuUpdated(1499))
       .WillOnce([&downlink_mtu_updated] { downlink_mtu_updated.Notify(); });
 
-  MtuTracker mtu_tracker = MtuTracker(IPProtocol::kIPv4);
-  mtu_tracker.RegisterNotificationHandler(&notification_, &looper_);
+  MtuTracker mtu_tracker =
+      MtuTracker(IPProtocol::kIPv4, 1500, &notification_, &looper_);
   mtu_tracker.UpdateDownlinkMtu(1501);
   mtu_tracker.UpdateDownlinkMtu(1499);
 
-  EXPECT_TRUE(downlink_mtu_updated.WaitForNotificationWithTimeout(
-      absl::Milliseconds(100)));
+  downlink_mtu_updated.WaitForNotification();
+}
+
+TEST_F(MtuTrackerTest, TestGetTunnelMtu) {
+  absl::Notification uplink_mtu_updated;
+  int notification_tunnel_mtu;
+  EXPECT_CALL(notification_, UplinkMtuUpdated(_, _))
+      .WillOnce([&uplink_mtu_updated, &notification_tunnel_mtu](
+                    int /*uplink_mtu*/, int tunnel_mtu) {
+        notification_tunnel_mtu = tunnel_mtu;
+        uplink_mtu_updated.Notify();
+      });
+
+  MtuTracker mtu_tracker =
+      MtuTracker(IPProtocol::kIPv4, &notification_, &looper_);
+
+  uplink_mtu_updated.WaitForNotification();
+
+  // Verify that tunnel MTU is accounting for overhead
+  EXPECT_EQ(mtu_tracker.GetTunnelMtu(), notification_tunnel_mtu);
 }
 
 }  // namespace

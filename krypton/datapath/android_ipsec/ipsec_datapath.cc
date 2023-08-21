@@ -111,12 +111,12 @@ absl::Status IpSecDatapath::SwitchNetwork(
   if (config_.dynamic_mtu_enabled()) {
     std::unique_ptr<MtuTracker> mtu_tracker;
     if (network_info->has_mtu()) {
-      mtu_tracker = std::make_unique<MtuTracker>(endpoint.ip_protocol(),
-                                                 network_info->mtu());
+      mtu_tracker = std::make_unique<MtuTracker>(
+          endpoint.ip_protocol(), network_info->mtu(), this, &looper_);
     } else {
-      mtu_tracker = std::make_unique<MtuTracker>(endpoint.ip_protocol());
+      mtu_tracker =
+          std::make_unique<MtuTracker>(endpoint.ip_protocol(), this, &looper_);
     }
-    mtu_tracker->RegisterNotificationHandler(this, &looper_);
     auto mss_mtu_detection_endpoint =
         endpoint.ip_protocol() == IPProtocol::kIPv4 ? ipv4_tcp_mss_endpoint_
                                                     : ipv6_tcp_mss_endpoint_;

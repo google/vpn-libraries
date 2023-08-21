@@ -26,18 +26,18 @@ namespace android {
 
 class MtuTracker : public MtuTrackerInterface {
  public:
-  explicit MtuTracker(IPProtocol dest_ip_protocol);
-  MtuTracker(IPProtocol dest_ip_protocol, int initial_path_mtu);
+  explicit MtuTracker(IPProtocol dest_ip_protocol,
+                      NotificationInterface* notification,
+                      utils::LooperThread* notification_thread);
+  MtuTracker(IPProtocol dest_ip_protocol, int initial_path_mtu,
+             NotificationInterface* notification,
+             utils::LooperThread* notification_thread);
 
   void UpdateUplinkMtu(int uplink_mtu) override;
 
   void UpdateDownlinkMtu(int downlink_mtu) override;
 
   int GetTunnelMtu() const override;
-
-  void RegisterNotificationHandler(
-      NotificationInterface* notification,
-      utils::LooperThread* notification_thread) override;
 
  private:
   int tunnel_overhead_;
