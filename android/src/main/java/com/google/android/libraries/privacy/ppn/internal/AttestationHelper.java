@@ -89,6 +89,7 @@ public class AttestationHelper {
    */
   @Nullable
   public byte[] getAttestationData(String nonce, @Nullable Network network) {
+    Log.w(TAG, "Getting attestation data with network: " + network);
     AndroidAttestationData.Builder data = AndroidAttestationData.newBuilder();
     String integrityToken;
     try {
@@ -122,7 +123,7 @@ public class AttestationHelper {
     return attestationData.toByteArray();
   }
 
-  private String getIntegrityToken(String nonce, @Nullable Network unusedNetwork)
+  private String getIntegrityToken(String nonce, @Nullable Network network)
       throws AttestationException {
     // Requests the integrity token by providing a nonce.
     try {
@@ -131,7 +132,9 @@ public class AttestationHelper {
       if (!options.getAttestationCloudProjectNumber().isEmpty()) {
         tokenRequestBuilder.setCloudProjectNumber(options.getAttestationCloudProjectNumber().get());
       }
-      // TODO: Pass in the network here.
+      if (network != null && options.isAttestationNetworkOverrideEnabled()) {
+        tokenRequestBuilder.setNetwork(network);
+      }
       Task<IntegrityTokenResponse> task =
           integrityManager.requestIntegrityToken(tokenRequestBuilder.build());
       IntegrityTokenResponse token = Tasks.await(task, INTEGRITY_TIMEOUT.getSeconds(), SECONDS);

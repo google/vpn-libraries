@@ -573,6 +573,31 @@ public class PpnOptionsTest {
   }
 
   @Test
+  public void setAttestationNetworkOverrideEnabled_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.isAttestationNetworkOverrideEnabled()).isFalse();
+  }
+
+  @Test
+  public void setAttestationNetworkOverrideEnabled_setsValue() {
+    PpnOptions options =
+        new PpnOptions.Builder().setAttestationNetworkOverrideEnabled(true).build();
+    assertThat(options.isAttestationNetworkOverrideEnabled()).isTrue();
+  }
+
+  @Test
+  public void setForceAllowPlayStoreToBypassVpn_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.shouldForceDisallowPlayStoreForAttestation()).isFalse();
+  }
+
+  @Test
+  public void setForceAllowPlayStoreToBypassVpn_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setForceAllowPlayStoreToBypassVpn(true).build();
+    assertThat(options.shouldForceDisallowPlayStoreForAttestation()).isTrue();
+  }
+
+  @Test
   public void createKryptonConfig_setsValues() {
     PpnOptions options =
         new PpnOptions.Builder()

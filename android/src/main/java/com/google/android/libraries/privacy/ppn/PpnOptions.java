@@ -115,6 +115,9 @@ public class PpnOptions {
   private final Optional<Boolean> datapathConnectingTimerEnabled;
   private final Optional<Duration> datapathConnectingTimerDuration;
 
+  private final boolean attestationNetworkOverrideEnabled;
+  private final boolean forceDisallowPlayStoreForAttestation;
+
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
     this.zincPublicSigningKeyUrl = builder.zincPublicSigningKeyUrl;
@@ -175,6 +178,9 @@ public class PpnOptions {
 
     this.datapathConnectingTimerEnabled = builder.datapathConnectingTimerEnabled;
     this.datapathConnectingTimerDuration = builder.datapathConnectingTimerDuration;
+
+    this.attestationNetworkOverrideEnabled = builder.attestationNetworkOverrideEnabled;
+    this.forceDisallowPlayStoreForAttestation = builder.forceDisallowPlayStoreForAttestation;
   }
 
   public String getZincUrl() {
@@ -359,6 +365,14 @@ public class PpnOptions {
 
   public Optional<Duration> getDatapathConnectingTimerDuration() {
     return datapathConnectingTimerDuration;
+  }
+
+  public boolean isAttestationNetworkOverrideEnabled() {
+    return attestationNetworkOverrideEnabled;
+  }
+
+  public boolean shouldForceDisallowPlayStoreForAttestation() {
+    return forceDisallowPlayStoreForAttestation;
   }
 
   /** Creates a KryptonConfig.Builder using the current options. */
@@ -556,6 +570,9 @@ public class PpnOptions {
 
     private Optional<Boolean> datapathConnectingTimerEnabled = Optional.empty();
     private Optional<Duration> datapathConnectingTimerDuration = Optional.empty();
+
+    private boolean attestationNetworkOverrideEnabled = false;
+    private boolean forceDisallowPlayStoreForAttestation = false;
 
     public Builder() {}
 
@@ -1032,6 +1049,28 @@ public class PpnOptions {
       if (interval != null) {
         this.datapathConnectingTimerDuration = Optional.of(interval);
       }
+      return this;
+    }
+
+    /**
+     * Whether to pass in a Network override when doing attestation. Once this code path is well
+     * tested in production, the option will be removed, and this feature will always be used.
+     */
+    @CanIgnoreReturnValue
+    public Builder setAttestationNetworkOverrideEnabled(boolean enabled) {
+      this.attestationNetworkOverrideEnabled = enabled;
+      return this;
+    }
+
+    /**
+     * Whether to automatically force the Play Store to bypass the VPN by adding it to the
+     * "disallowed apps" list when attestation is enabled. This is necessary because the Play Store
+     * makes calls to retrieve an integrity token, and if the VPN is not connected, it will be
+     * blocked, which causes the VPN to become wedged.
+     */
+    @CanIgnoreReturnValue
+    public Builder setForceAllowPlayStoreToBypassVpn(boolean enabled) {
+      this.forceDisallowPlayStoreForAttestation = enabled;
       return this;
     }
 
