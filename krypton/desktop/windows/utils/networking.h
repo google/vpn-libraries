@@ -87,6 +87,12 @@ absl::Status SetInterfaceMtu(NET_LUID luid, int mtu);
 // Checks whether a network interface can connect to a remote address.
 absl::Status InterfaceConnectivityCheck(int interface_index, int family);
 
+// Adds HonestDNS as a network interface's DNS server.
+absl::Status AddDnsServersToInterface(NET_LUID luid, ADDRESS_FAMILY family);
+
+// Adds HonestDNS as DNS server for all network interfaces.
+absl::Status AddDnsToAllInterfaces();
+
 }  // namespace utils
 }  // namespace windows
 }  // namespace krypton

@@ -82,6 +82,10 @@ absl::Status VpnService::CreateTunnel(const TunFdData& /*tun_fd_data*/) {
   LOG(INFO) << "Set default route to Wintun adapter";
   tunnel_interface_luid_ = wintun_luid;
   tunnel_interface_index_ = wintun_if_index;
+
+  // Add DNS routes to all network interfaces.
+  PPN_RETURN_IF_ERROR(utils::AddDnsToAllInterfaces());
+  LOG(INFO) << "Added DNS routes to all network interfaces";
   return absl::OkStatus();
 }
 

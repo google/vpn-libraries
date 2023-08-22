@@ -22,6 +22,7 @@
 #include <mstcpip.h>
 #include <netioapi.h>
 #include <ip2string.h>
+#include <guiddef.h>
 // clang-format on
 
 #include <memory>
@@ -467,6 +468,56 @@ absl::Status InterfaceConnectivityCheck(int interface_index, int family) {
   }
   LOG(INFO) << "Connectivity check succeeded on interface " << interface_index
             << " for family " << family;
+  return absl::OkStatus();
+}
+
+absl::Status AddDnsServersToInterface(NET_LUID luid, ADDRESS_FAMILY family) {
+  const wchar_t *v4_name_servers = L"8.8.4.4, 8.8.8.8";
+  const wchar_t *v6_name_servers =
+      L"2001:4860:4860::8888, 2001:4860:4860::8844";
+  GUID guid = {};
+  DWORD result = ConvertInterfaceLuidToGuid(&luid, &guid);
+  if (result != NO_ERROR) {
+    return GetStatusForError("ConvertInterfaceLuidToGuid", result);
+  }
+
+  DNS_INTERFACE_SETTINGS settings = {};
+  settings.Version = DNS_INTERFACE_SETTINGS_VERSION1;
+  if (family == AF_INET) {
+    settings.Flags = DNS_SETTING_NAMESERVER;
+    settings.NameServer = const_cast<wchar_t *>(v4_name_servers);
+    result = SetInterfaceDnsSettings(guid, &settings);
+    if (result != NO_ERROR) {
+      return GetStatusForError("SetInterfaceDnsSettings", result);
+    }
+  } else if (family == AF_INET6) {
+    settings.Flags = DNS_SETTING_NAMESERVER | DNS_SETTING_IPV6;
+    settings.NameServer = const_cast<wchar_t *>(v6_name_servers);
+    result = SetInterfaceDnsSettings(guid, &settings);
+    if (result != NO_ERROR) {
+      return GetStatusForError("SetInterfaceDnsSettings", result);
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status AddDnsToAllInterfaces() {
+  PMIB_IPINTERFACE_TABLE table = nullptr;
+  DWORD result = GetIpInterfaceTable(AF_UNSPEC, &table);
+  if (result != NO_ERROR) {
+    return GetStatusForError("GetIpInterfaceTable", result);
+  }
+  auto table_cleanup = absl::MakeCleanup([table]() { FreeMibTable(table); });
+
+  for (int i = 0; i < table->NumEntries; i++) {
+    if (table->Table[i].Family == AF_INET) {
+      PPN_RETURN_IF_ERROR(
+          AddDnsServersToInterface(table->Table[i].InterfaceLuid, AF_INET));
+    } else if (table->Table[i].Family == AF_INET6) {
+      PPN_RETURN_IF_ERROR(
+          AddDnsServersToInterface(table->Table[i].InterfaceLuid, AF_INET6));
+    }
+  }
   return absl::OkStatus();
 }
 
