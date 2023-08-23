@@ -116,7 +116,7 @@ public class PpnOptions {
   private final Optional<Duration> datapathConnectingTimerDuration;
 
   private final boolean attestationNetworkOverrideEnabled;
-  private final boolean forceDisallowPlayStoreForAttestation;
+  private final boolean forceDisallowPlayStoreForAttestationEnabled;
 
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
@@ -180,7 +180,8 @@ public class PpnOptions {
     this.datapathConnectingTimerDuration = builder.datapathConnectingTimerDuration;
 
     this.attestationNetworkOverrideEnabled = builder.attestationNetworkOverrideEnabled;
-    this.forceDisallowPlayStoreForAttestation = builder.forceDisallowPlayStoreForAttestation;
+    this.forceDisallowPlayStoreForAttestationEnabled =
+        builder.forceDisallowPlayStoreForAttestationEnabled;
   }
 
   public String getZincUrl() {
@@ -371,8 +372,8 @@ public class PpnOptions {
     return attestationNetworkOverrideEnabled;
   }
 
-  public boolean shouldForceDisallowPlayStoreForAttestation() {
-    return forceDisallowPlayStoreForAttestation;
+  public boolean isForceDisallowPlayStoreForAttestationEnabled() {
+    return forceDisallowPlayStoreForAttestationEnabled;
   }
 
   /** Creates a KryptonConfig.Builder using the current options. */
@@ -572,7 +573,7 @@ public class PpnOptions {
     private Optional<Duration> datapathConnectingTimerDuration = Optional.empty();
 
     private boolean attestationNetworkOverrideEnabled = false;
-    private boolean forceDisallowPlayStoreForAttestation = false;
+    private boolean forceDisallowPlayStoreForAttestationEnabled = false;
 
     public Builder() {}
 
@@ -1069,8 +1070,8 @@ public class PpnOptions {
      * blocked, which causes the VPN to become wedged.
      */
     @CanIgnoreReturnValue
-    public Builder setForceAllowPlayStoreToBypassVpn(boolean enabled) {
-      this.forceDisallowPlayStoreForAttestation = enabled;
+    public Builder setForceDisallowPlayStoreForAttestationEnabled(boolean enabled) {
+      this.forceDisallowPlayStoreForAttestationEnabled = enabled;
       return this;
     }
 

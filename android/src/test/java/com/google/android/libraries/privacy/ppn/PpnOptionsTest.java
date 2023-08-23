@@ -586,15 +586,16 @@ public class PpnOptionsTest {
   }
 
   @Test
-  public void setForceAllowPlayStoreToBypassVpn_defaultValue() {
+  public void setForceDisallowPlayStoreForAttestationEnabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
-    assertThat(options.shouldForceDisallowPlayStoreForAttestation()).isFalse();
+    assertThat(options.isForceDisallowPlayStoreForAttestationEnabled()).isFalse();
   }
 
   @Test
-  public void setForceAllowPlayStoreToBypassVpn_setsValue() {
-    PpnOptions options = new PpnOptions.Builder().setForceAllowPlayStoreToBypassVpn(true).build();
-    assertThat(options.shouldForceDisallowPlayStoreForAttestation()).isTrue();
+  public void setForceDisallowPlayStoreForAttestationEnabled_setsValue() {
+    PpnOptions options =
+        new PpnOptions.Builder().setForceDisallowPlayStoreForAttestationEnabled(true).build();
+    assertThat(options.isForceDisallowPlayStoreForAttestationEnabled()).isTrue();
   }
 
   @Test

@@ -187,7 +187,7 @@ public class VpnManager {
   private void setVpnServiceParametersForDisallowedApplications(
       VpnService.Builder builder, Set<String> disallowedApplications) {
     if (options.isIntegrityAttestationEnabled()
-        && options.shouldForceDisallowPlayStoreForAttestation()
+        && options.isForceDisallowPlayStoreForAttestationEnabled()
         && options.isAttestationNetworkOverrideEnabled()) {
       // Attestation depends on the Play Integrity APIs provided by the Play Store app. On some
       // devices, Play Store may not have permission to bypass the VPN, so in order to be able to
