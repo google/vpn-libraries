@@ -232,6 +232,12 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
     synchronized (lock) {
       Log.w(TAG, String.format("Network Lost with network: %s", ppnNetwork));
 
+      // If the lost network is pending, remove it.
+      if (pendingNetworks.contains(ppnNetwork)) {
+        pendingNetworks.remove(ppnNetwork);
+        return;
+      }
+
       // If lost network is not tracked, ignore.
       if (!containsPpnNetwork(ppnNetwork)) {
         return;
