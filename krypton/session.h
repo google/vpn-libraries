@@ -202,7 +202,7 @@ class Session : public DatapathInterface::NotificationInterface,
 
   void UpdateActiveNetworkInfo(std::optional<NetworkInfo> network_info)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  absl::Status SwitchDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  absl::Status ConnectDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   absl::Status BuildTunFdData(TunFdData* tun_fd_data) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

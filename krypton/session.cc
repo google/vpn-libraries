@@ -479,7 +479,7 @@ void Session::StartDatapath() {
     return;
   }
   LOG(INFO) << "Active network is available, switching the network";
-  auto status = SwitchDatapath();
+  auto status = ConnectDatapath();
   if (!status.ok()) {
     LOG(ERROR) << "Switching datapath failed with status: " << status;
   }
@@ -597,10 +597,10 @@ void Session::AttemptDatapathReconnect() {
     return;
   }
 
-  // Everything looks good as we got a new network fd, switch datapath.
-  auto status = SwitchDatapath();
+  // Everything looks good as we got a new network fd, connect datapath.
+  auto status = ConnectDatapath();
   if (!status.ok()) {
-    LOG(ERROR) << "Switch datapath failed with status:" << status;
+    LOG(ERROR) << "ConnectDatapath failed with status:" << status;
   }
 }
 
@@ -656,15 +656,15 @@ absl::Status Session::SetNetwork(std::optional<NetworkInfo> network_info) {
     return absl::OkStatus();
   }
 
-  return SwitchDatapath();
+  return ConnectDatapath();
 }
 
-absl::Status Session::SwitchDatapath() {
+absl::Status Session::ConnectDatapath() {
   if (active_network_info_) {
     LOG(INFO) << "Switching Network to network of type "
               << active_network_info_->network_type();
   } else {
-    LOG(INFO) << "Removing all networks in SwitchDatapath";
+    LOG(INFO) << "Removing all networks in ConnectDatapath";
   }
 
   if (datapath_ == nullptr) {
@@ -694,10 +694,10 @@ absl::Status Session::SwitchDatapath() {
 
   auto current_restart_counter = network_switches_count_.fetch_add(1);
   if (active_network_info_) {
-    LOG(INFO) << "SwitchDatapath Counter " << current_restart_counter
+    LOG(INFO) << "ConnectDatapath Counter " << current_restart_counter
               << " for network type " << active_network_info_->network_type();
   } else {
-    LOG(INFO) << "SwitchDatapath removing all networks";
+    LOG(INFO) << "ConnectDatapath removing all networks";
   }
 
   auto ip = datapath_address_selector_.SelectDatapathAddress();
@@ -710,17 +710,17 @@ absl::Status Session::SwitchDatapath() {
   if (datapath_connecting_timer_enabled_) {
     StartDatapathConnectingTimer();
   }
-  auto switch_data_status = datapath_->SwitchNetwork(
+  auto connect_data_status = datapath_->SwitchNetwork(
       uplink_spi_, *ip, active_network_info_, current_restart_counter);
 
-  if (!switch_data_status.ok()) {
-    LOG(ERROR) << "Switching networks failed: " << switch_data_status;
+  if (!connect_data_status.ok()) {
+    LOG(ERROR) << "Switching networks failed: " << connect_data_status;
     auto network_info =
         active_network_info_ ? active_network_info_.value() : NetworkInfo();
-    NotifyDatapathDisconnected(network_info, switch_data_status);
+    NotifyDatapathDisconnected(network_info, connect_data_status);
   }
 
-  return switch_data_status;
+  return connect_data_status;
 }
 
 void Session::CollectTelemetry(KryptonTelemetry* telemetry) {
