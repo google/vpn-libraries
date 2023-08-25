@@ -25,7 +25,10 @@ import com.google.android.libraries.privacy.ppn.PpnException;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.internal.AttestationHelper;
+import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
+import com.google.android.libraries.privacy.ppn.internal.http.Dns;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
+import com.google.android.libraries.privacy.ppn.internal.http.NetworkBoundDns;
 import com.google.android.libraries.privacy.ppn.krypton.OAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.proto.PpnIkeResponse;
 
@@ -52,7 +55,12 @@ public class Ike {
    */
   public static Task<ProvisionResponse> provision(
       Context context, PpnOptions options, String oauthToken, @Nullable Network network) {
-    HttpFetcher httpFetcher = new HttpFetcher(new ProvisionSocketFactoryFactory());
+    // If a network was specified, use it for DNS and bind the HTTP socket to it.
+    Dns dns = HttpFetcher.DEFAULT_DNS;
+    if (network != null) {
+      dns = new NetworkBoundDns(network, AddressFamily.V4V6);
+    }
+    HttpFetcher httpFetcher = new HttpFetcher(new ProvisionSocketFactoryFactory(network), dns);
 
     final OAuthTokenProvider tokenProvider;
     if (options.isHardwareAttestationEnabled()) {

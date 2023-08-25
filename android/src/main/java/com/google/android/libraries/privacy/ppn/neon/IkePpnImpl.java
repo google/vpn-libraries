@@ -75,7 +75,8 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
   public IkePpnImpl(Context context, PpnOptions options) {
     this.context = context.getApplicationContext();
     this.options = options;
-    httpFetcher = new HttpFetcher(new ProvisionSocketFactoryFactory());
+    // Implementing this will require creating some class to track usable non-VPN networks.
+    httpFetcher = new HttpFetcher(new ProvisionSocketFactoryFactory(null));
     backgroundExecutor = options.getBackgroundExecutor();
     vpnManager = (VpnManager) context.getSystemService(Context.VPN_MANAGEMENT_SERVICE);
 

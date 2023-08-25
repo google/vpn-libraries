@@ -16,8 +16,15 @@ package com.google.android.libraries.privacy.ppn.neon;
 
 import static com.google.common.truth.Truth.assertThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.robolectric.Shadows.shadowOf;
 
+import android.net.Network;
 import android.os.Looper;
 import androidx.test.core.app.ApplicationProvider;
 import com.google.android.gms.tasks.Task;
@@ -28,14 +35,24 @@ import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.krypton.MockBrass;
 import com.google.android.libraries.privacy.ppn.krypton.MockZinc;
 import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
+import java.net.InetAddress;
+import java.net.Socket;
+import okhttp3.Dns;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.robolectric.RobolectricTestRunner;
 
 @RunWith(RobolectricTestRunner.class)
 public class IkeTest {
   private final MockZinc mockZinc = new MockZinc();
   private final MockBrass mockBrass = new MockBrass();
+
+  @Rule public final MockitoRule mockito = MockitoJUnit.rule();
+  @Mock private Network mockNetwork;
 
   private PpnOptions createOptions() {
     return new PpnOptions.Builder()
@@ -96,6 +113,40 @@ public class IkeTest {
                 });
 
     await(task);
+  }
+
+  @Test
+  public void provision_successfulWithNetworkOverride() throws Exception {
+    mockZinc.start();
+    mockZinc.enqueuePositivePublicKeyResponse();
+    mockZinc.enqueuePositiveJsonAuthResponse();
+
+    mockBrass.start();
+    mockBrass.enqueuePositiveIkeResponse();
+
+    doAnswer(invocation -> Dns.SYSTEM.lookup(invocation.getArgument(0)).toArray(new InetAddress[0]))
+        .when(mockNetwork)
+        .getAllByName(anyString());
+
+    Task<ProvisionResponse> task =
+        Ike.provision(
+            ApplicationProvider.getApplicationContext(),
+            createOptions(),
+            "some token",
+            mockNetwork);
+
+    await(task);
+
+    ProvisionResponse response = task.getResult();
+    assertThat(response.getServerAddress()).isEqualTo("server");
+    assertThat(response.getClientId()).isEqualTo("client".getBytes(UTF_8));
+    assertThat(response.getSharedSecret()).isEqualTo("secret".getBytes(UTF_8));
+
+    // It should have used the network for 2 phosphor/zinc calls and 1 brass/beryllium call.
+    // Additionally, there is one DNS lookup of the copper hostname.
+    verify(mockNetwork, times(4)).getAllByName(anyString());
+    verify(mockNetwork, times(3)).bindSocket(any(Socket.class));
+    verifyNoMoreInteractions(mockNetwork);
   }
 
   /**

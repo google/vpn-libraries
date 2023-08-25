@@ -32,7 +32,7 @@ public class NetworkBoundDns implements Dns {
   private final Network network;
   private final AddressFamily addressFamily;
 
-  NetworkBoundDns(Network network, AddressFamily addressFamily) {
+  public NetworkBoundDns(Network network, AddressFamily addressFamily) {
     this.network = network;
     this.addressFamily = addressFamily;
   }

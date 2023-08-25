@@ -251,11 +251,11 @@ public class HttpFetcher {
       Log.w(TAG, "http request timed out.");
       return buildHttpResponse(504, "request timed out");
     } catch (InterruptedException e) {
-      Log.w(TAG, "Unable to enqueue http request.");
+      Log.w(TAG, "http request was interrupted.");
       return buildHttpResponse(500, "http request was interrupted");
     } catch (Exception e) {
       // This should ideally not happen, but it's a catch-all in case we missed some exception.
-      Log.w(TAG, "Unable to enqueue http request.");
+      Log.w(TAG, "Unable to enqueue http request.", e);
       return buildHttpResponse(500, "http request failed");
     }
   }

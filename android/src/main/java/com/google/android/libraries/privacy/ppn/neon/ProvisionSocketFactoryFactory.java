@@ -15,22 +15,27 @@
 package com.google.android.libraries.privacy.ppn.neon;
 
 import android.net.Network;
+import androidx.annotation.Nullable;
 import com.google.android.libraries.privacy.ppn.internal.http.BoundSocketFactoryFactory;
 import javax.net.SocketFactory;
 
 /** A BoundSocketFactoryFactory for use with Provision. */
 public class ProvisionSocketFactoryFactory implements BoundSocketFactoryFactory {
+  @Nullable private final Network network;
+
+  public ProvisionSocketFactoryFactory(@Nullable Network network) {
+    this.network = network;
+  }
+
   /** Creates a new factory based on this one, but with the current network at time of use. */
   @Override
   public SocketFactory withCurrentNetwork() {
-    // TODO: Figure out which network to use.
-    return SocketFactory.getDefault();
+    return new ProvisionSocketFactory(network);
   }
 
   /** Creates a new factory based on this one, but with the given network hard-coded. */
   @Override
-  public SocketFactory withNetwork(Network network) {
-    // TODO: Figure out which network to use.
-    return SocketFactory.getDefault();
+  public SocketFactory withNetwork(Network otherNetwork) {
+    return new ProvisionSocketFactory(otherNetwork);
   }
 }

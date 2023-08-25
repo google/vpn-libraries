@@ -15,9 +15,15 @@
 package com.google.android.libraries.privacy.ppn.neon;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.robolectric.Shadows.shadowOf;
 
+import android.net.Network;
 import android.os.Looper;
+import androidx.annotation.Nullable;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
@@ -28,14 +34,22 @@ import com.google.android.libraries.privacy.ppn.krypton.MockBrass;
 import com.google.android.libraries.privacy.ppn.krypton.MockZinc;
 import com.google.android.libraries.privacy.ppn.krypton.OAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.proto.PpnIkeResponse;
+import java.net.Socket;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.robolectric.RobolectricTestRunner;
 
 @RunWith(RobolectricTestRunner.class)
 public class ProvisionTest {
   private final MockZinc mockZinc = new MockZinc();
   private final MockBrass mockBrass = new MockBrass();
+
+  @Rule public final MockitoRule mockito = MockitoJUnit.rule();
+  @Mock private Network mockNetwork;
 
   private PpnOptions createOptions() {
     return new PpnOptions.Builder()
@@ -48,8 +62,8 @@ public class ProvisionTest {
         .build();
   }
 
-  private HttpFetcher createHttpFetcher() {
-    return new HttpFetcher(new ProvisionSocketFactoryFactory());
+  private HttpFetcher createHttpFetcher(@Nullable Network network) {
+    return new HttpFetcher(new ProvisionSocketFactoryFactory(network));
   }
 
   private OAuthTokenProvider createTokenProvider() {
@@ -83,7 +97,7 @@ public class ProvisionTest {
     Provision provision =
         new Provision(
             createOptions(),
-            createHttpFetcher(),
+            createHttpFetcher(null),
             createTokenProvider(),
             new Provision.Listener() {
               @Override
@@ -116,7 +130,7 @@ public class ProvisionTest {
     Provision provision =
         new Provision(
             createOptions(),
-            createHttpFetcher(),
+            createHttpFetcher(null),
             createTokenProvider(),
             new Provision.Listener() {
               @Override
@@ -140,6 +154,43 @@ public class ProvisionTest {
     provision.start();
 
     await(tcs.getTask());
+  }
+
+  @Test
+  public void start_successfulProvisionWithNetworkOverride() throws Exception {
+    mockZinc.start();
+    mockZinc.enqueuePositivePublicKeyResponse();
+    mockZinc.enqueuePositiveJsonAuthResponse();
+
+    mockBrass.start();
+    mockBrass.enqueuePositiveIkeResponse();
+
+    TaskCompletionSource<Void> tcs = new TaskCompletionSource<>();
+
+    Provision provision =
+        new Provision(
+            createOptions(),
+            createHttpFetcher(mockNetwork),
+            createTokenProvider(),
+            new Provision.Listener() {
+              @Override
+              public void onProvisioned(PpnIkeResponse response) {
+                tcs.trySetResult(null);
+              }
+
+              @Override
+              public void onProvisioningFailure(PpnStatus status, boolean permanent) {
+                tcs.trySetException(new RuntimeException("failed"));
+              }
+            });
+
+    provision.start();
+
+    await(tcs.getTask());
+
+    // It should have used the network for 2 phosphor/zinc calls and 1 brass/beryllium call.
+    verify(mockNetwork, times(3)).bindSocket(any(Socket.class));
+    verifyNoMoreInteractions(mockNetwork);
   }
 
   /**
