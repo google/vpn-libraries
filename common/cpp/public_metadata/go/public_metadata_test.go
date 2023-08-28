@@ -10,7 +10,7 @@ import (
 func TestRoundTrip(t *testing.T) {
 	bs := New(&NewBinaryFields{
 		Version:     0,
-		Loc:         pmpb.PublicMetadata_Location_builder{Country: "US"}.Build(),
+		Country:     "US",
 		Region:      "US-CA",
 		City:        "SUNNYVALE",
 		ServiceType: "chromeipblinding",

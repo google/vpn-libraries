@@ -4,6 +4,7 @@ package binarymetadata
 import (
 	"fmt"
 
+	"google3/privacy/net/boq/common/tokens/tokentypes"
 	"google3/third_party/golang/protobuf/v2/proto/proto"
 	"google3/util/task/go/status"
 	stpb "google3/util/task/status_go_proto"
@@ -39,15 +40,7 @@ func (bs *BinaryStruct) GetServiceType() string {
 
 // GetExitLocation converts the country, region, city into a Location struct
 func (bs *BinaryStruct) GetExitLocation() *pmpb.PublicMetadata_Location {
-	el := &pmpb.PublicMetadata_Location_builder{}
-	country := bs.metadata.GetCountry()
-	if country == nil || !country.HasValue() {
-		return el.Build()
-	}
-	el.Country = country.Value()
-	// TODO: b/285899811 - figure out how to reconcile external and internal representations of city
-	// geos.
-	return el.Build()
+	return nil
 }
 
 // GetDebugMode gets the debug mode
@@ -59,23 +52,48 @@ func (bs *BinaryStruct) GetDebugMode() pmpb.PublicMetadata_DebugMode {
 	return pmpb.PublicMetadata_DebugMode(value)
 }
 
+// GetGeoHint gets the GeoHint (country, region, city) tuple.
+func (bs *BinaryStruct) GetGeoHint() *tokentypes.GeoHint {
+	country := bs.metadata.GetCountry()
+	if country == nil || !country.HasValue() {
+		return &tokentypes.GeoHint{}
+	}
+	region := bs.metadata.GetRegion()
+	if region == nil || !region.HasValue() {
+		return &tokentypes.GeoHint{
+			Country: country.Value(),
+		}
+	}
+	city := bs.metadata.GetCity()
+	if city == nil || !city.HasValue() {
+		return &tokentypes.GeoHint{
+			Country: country.Value(),
+			Region:  region.Value(),
+		}
+	}
+	return &tokentypes.GeoHint{
+		Country: country.Value(),
+		Region:  region.Value(),
+		City:    city.Value(),
+	}
+}
+
 // NewBinaryFields contains all the data for creating a binary representation for public metadata.
 type NewBinaryFields struct {
 	Version     int32
-	Loc         *pmpb.PublicMetadata_Location
 	ServiceType string
 	Expiration  *tpb.Timestamp
 	DebugMode   pmpb.PublicMetadata_DebugMode
-	// PublicMetadata_Location cannot safely encode Region/City on its own without storing a full geoid -> city/region table.
-	Region string
-	City   string
+	Country     string
+	Region      string
+	City        string
 }
 
 // New returns a new BinaryStruct.
 func New(fields *NewBinaryFields) *BinaryStruct {
 	metadata := wrap.NewBinaryPublicMetadata()
 	metadata.SetVersion(uint(fields.Version))
-	metadata.SetCountry(wrap.NewStringOptional(fields.Loc.GetCountry()))
+	metadata.SetCountry(wrap.NewStringOptional(fields.Country))
 	metadata.SetRegion(wrap.NewStringOptional(fields.Region))
 	metadata.SetCity(wrap.NewStringOptional(fields.City))
 	metadata.SetService_type(wrap.NewStringOptional(fields.ServiceType))
