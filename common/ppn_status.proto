@@ -25,6 +25,8 @@ option java_multiple_files = true;
 // Extra optional metadata that can be attached to an absl::Status / PpnStatus.
 // Details the error sent by PPN nodes.
 message PpnStatusDetails {
+  reserved 2;
+
   enum DetailedErrorCode {
     // Default value, use when no other error known.
     ERROR_CODE_UNKNOWN = 0;
@@ -41,8 +43,7 @@ message PpnStatusDetails {
   // UNKNOWN, but can be set to specific values for errors we want to propagate
   // up to the user with a detailed message.
   DetailedErrorCode detailed_error_code = 1;
-
-  // A debug string to add more information than the error code. Only used for
-  // logging and debugging.
-  string debug_details = 2;
+  // An internal error code from Auth. Do not use to guide any behavior.
+  // Please refer to auth error code list to understand what the code means.
+  uint64 auth_internal_error_code = 3;
 }
