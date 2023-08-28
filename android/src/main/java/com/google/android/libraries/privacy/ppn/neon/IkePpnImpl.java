@@ -161,7 +161,6 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
         new IkeSessionParams.Builder()
             .setServerHostname(ikeResponse.getServerAddress())
             .setLocalIdentification(new IkeKeyIdIdentification(clientId))
-            // TODO: Move this into PpnOptions.
             .setRemoteIdentification(new IkeKeyIdIdentification("wormhole-server".getBytes()))
             .setAuthPsk(ikeResponse.getSharedSecret().toByteArray())
             .addIkeSaProposal(ikeProposal)

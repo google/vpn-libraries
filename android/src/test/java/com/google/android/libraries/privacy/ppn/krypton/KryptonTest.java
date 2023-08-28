@@ -436,6 +436,36 @@ public class KryptonTest {
   }
 
   @Test
+  public void start_usesIpGeoLevelFromConfig() throws Exception {
+    Krypton krypton = createKrypton();
+    final ConditionVariable condition = new ConditionVariable(false);
+
+    doAnswer(
+            invocation -> {
+              condition.open();
+              return null;
+            })
+        .when(kryptonListener)
+        .onKryptonControlPlaneConnected();
+
+    // Set up responses to successfully establish control plane
+    mockPublicKeyServer.enqueuePositivePublicKeyResponse();
+    mockAuthServer.enqueuePositiveJsonAuthResponse();
+    mockEgressServer.enqueuePositiveResponse();
+
+    try {
+      // Overwrite the default value of IpGeoLevel in the config
+      krypton.start(createConfig().setIpGeoLevel(IpGeoLevel.CITY).build());
+      condition.block();
+
+      // Verify that the value from the config was used by Krypton
+      assertThat(krypton.getIpGeoLevel()).isEqualTo(IpGeoLevel.CITY);
+    } finally {
+      krypton.stop();
+    }
+  }
+
+  @Test
   public void start_passesIpGeoLevel() throws Exception {
     Krypton krypton = createKrypton();
     final ConditionVariable condition = new ConditionVariable(false);
@@ -456,7 +486,6 @@ public class KryptonTest {
       krypton.start(createConfig().build());
       assertThat(condition.block(1000)).isTrue();
 
-      // TODO: Change this to test a value passed in using PpnOptions.
       assertThat(krypton.getIpGeoLevel()).isEqualTo(IpGeoLevel.COUNTRY);
 
       condition.close();
