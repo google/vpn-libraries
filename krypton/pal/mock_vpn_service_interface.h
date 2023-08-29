@@ -15,11 +15,14 @@
 #ifndef PRIVACY_NET_KRYPTON_PAL_MOCK_VPN_SERVICE_INTERFACE_H_
 #define PRIVACY_NET_KRYPTON_PAL_MOCK_VPN_SERVICE_INTERFACE_H_
 
-#include <memory>
-
+#include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/pal/vpn_service_interface.h"
+#include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
+#include "privacy/net/krypton/timer_manager.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
+#include "third_party/absl/status/status.h"
 
 namespace privacy {
 namespace krypton {

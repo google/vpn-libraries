@@ -25,6 +25,7 @@
 
 #include "google/protobuf/duration.proto.h"
 #include "privacy/net/brass/rpc/brass.proto.h"
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/common/proto/update_path_info.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
@@ -383,6 +384,12 @@ absl::Status Session::CreateTunnel(bool force_tunnel_update) {
   return tunnel_manager_->CreateTunnel(tun_fd_data, force_tunnel_update);
 }
 
+bool Session::IsTunnelCreationErrorPermanent(const absl::Status& status) {
+  ppn::PpnStatusDetails details = utils::GetPpnStatusDetails(status);
+  return details.detailed_error_code() ==
+         ppn::PpnStatusDetails::VPN_PERMISSION_REVOKED;
+}
+
 void Session::UpdateTunnelIfNeeded(bool force_tunnel_update) {
   if (!tunnel_manager_->IsTunnelActive()) {
     LOG(INFO) << "No active tunnel to update";
@@ -393,7 +400,11 @@ void Session::UpdateTunnelIfNeeded(bool force_tunnel_update) {
   auto tunnel_status = CreateTunnel(force_tunnel_update);
   if (!tunnel_status.ok()) {
     datapath_->Stop();
-    SetState(State::kSessionError, tunnel_status);
+    if (IsTunnelCreationErrorPermanent(tunnel_status)) {
+      SetState(State::kPermanentError, tunnel_status);
+    } else {
+      SetState(State::kSessionError, tunnel_status);
+    }
     return;
   }
   datapath_->SwitchTunnel();
@@ -687,7 +698,11 @@ absl::Status Session::ConnectDatapath() {
   auto tunnel_status = CreateTunnelIfNeeded();
   if (!tunnel_status.ok()) {
     LOG(ERROR) << "Tunnel creation failed with status " << tunnel_status;
-    SetState(State::kSessionError, tunnel_status);
+    if (IsTunnelCreationErrorPermanent(tunnel_status)) {
+      SetState(State::kPermanentError, tunnel_status);
+    } else {
+      SetState(State::kSessionError, tunnel_status);
+    }
     return tunnel_status;
   }
   LOG(INFO) << "Got tunnel";

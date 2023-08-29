@@ -22,6 +22,7 @@
 #include <string>
 #include <utility>
 
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/datapath/android_ipsec/datagram_socket.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
@@ -106,8 +107,17 @@ absl::Status VpnService::CreateTunnel(const TunFdData& tun_fd_data) {
       JavaByteArray(env.value(), tun_fd_bytes).get());
 
   if (fd < 0) {
-    return absl::Status(absl::StatusCode::kUnavailable,
-                        absl::StrCat("Unable to create TUN fd: ", fd));
+    // Currently, all errors from the Java createTunFd method are permanent,
+    // because the only known failure mode is that the VPN permission was
+    // revoked. If that ever becomes untrue, we will need to push the detailed
+    // error handling down into Java.
+    ppn::PpnStatusDetails details;
+    details.set_detailed_error_code(
+        ppn::PpnStatusDetails::VPN_PERMISSION_REVOKED);
+    auto status = absl::FailedPreconditionError(
+        absl::StrCat("Unable to create TUN fd: ", fd));
+    utils::SetPpnStatusDetails(&status, details);
+    return status;
   }
 
   absl::MutexLock l(&mutex_);

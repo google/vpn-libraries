@@ -24,6 +24,7 @@
 #include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/common/proto/auth_and_sign.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/common/proto/update_path_info.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
@@ -47,6 +48,7 @@
 #include "privacy/net/krypton/tunnel_manager.h"
 #include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/looper.h"
+#include "privacy/net/krypton/utils/status.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/cleanup/cleanup.h"
@@ -359,6 +361,15 @@ class SessionTest : public ::testing::Test {
 
     EXPECT_CALL(notification_, DatapathConnected());
     session_->DatapathEstablished();
+  }
+
+  absl::Status CreateVpnRevokedError() {
+    ppn::PpnStatusDetails details;
+    details.set_detailed_error_code(
+        ppn::PpnStatusDetails::VPN_PERMISSION_REVOKED);
+    auto status = absl::FailedPreconditionError("vpn permission revoked");
+    utils::SetPpnStatusDetails(&status, details);
+    return status;
   }
 
   KryptonConfig config_{ParseTextProtoOrDie(
@@ -857,6 +868,67 @@ TEST_F(SessionTest, ForceTunnelUpdate) {
   session_->ForceTunnelUpdate();
 }
 
+TEST_F(SessionTest, ForceTunnelUpdatePermanentFailure) {
+  BringDatapathToConnected();
+
+  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())))
+      .WillOnce(Return(CreateVpnRevokedError()));
+
+  EXPECT_CALL(
+      notification_,
+      PermanentFailure(StatusIs(absl::StatusCode::kFailedPrecondition)));
+
+  session_->ForceTunnelUpdate();
+}
+
+TEST_F(SessionTest, CreateTunnelFailure) {
+  ExpectSuccessfulDatapathInit();
+
+  session_->Start();
+
+  WaitForDatapathStart();
+  EXPECT_THAT(session_->LatestStatusTestOnly(), IsOk());
+
+  EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kConnected);
+
+  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())))
+      .WillOnce(
+          Return(absl::FailedPreconditionError("unable to create tunnel")));
+
+  EXPECT_CALL(notification_, ControlPlaneDisconnected(StatusIs(
+                                 absl::StatusCode::kFailedPrecondition)));
+
+  NetworkInfo network_info;
+  network_info.set_network_id(123);
+  network_info.set_network_type(NetworkType::CELLULAR);
+  EXPECT_THAT(session_->SetNetwork(network_info),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_F(SessionTest, CreateTunnelPermanentFailure) {
+  ExpectSuccessfulDatapathInit();
+
+  session_->Start();
+
+  WaitForDatapathStart();
+  EXPECT_THAT(session_->LatestStatusTestOnly(), IsOk());
+
+  EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kConnected);
+
+  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())))
+      .WillOnce(Return(CreateVpnRevokedError()));
+
+  EXPECT_CALL(
+      notification_,
+      PermanentFailure(StatusIs(absl::StatusCode::kFailedPrecondition)));
+
+  NetworkInfo network_info;
+  network_info.set_network_id(123);
+  network_info.set_network_type(NetworkType::CELLULAR);
+  EXPECT_THAT(session_->SetNetwork(network_info),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
 TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonDefaultValues) {
   ppn::UpdatePathInfoRequest update_path_info;
   auto json_str = ProtoToJsonString(update_path_info);
@@ -897,6 +969,7 @@ TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonNonDefaultValues) {
   absl::StrReplaceAll({{"\n", ""}, {" ", ""}}, &expected);
   EXPECT_EQ(json_str, expected);
 }
+
 }  // namespace
 }  // namespace krypton
 }  // namespace privacy

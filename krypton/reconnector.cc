@@ -515,6 +515,9 @@ absl::Status Reconnector::Resume() {
   // tunnel to block the traffic until EstablishSession() completes.
   auto tunnel_status = tunnel_manager_->ResumeTunnel();
   if (!tunnel_status.ok()) {
+    // If there's an error creating the tunnel after snooze, then we won't
+    // immediately start blocking traffic, but the best thing we can do is
+    // continue anyway. If we return an error here, the VPN won't resume at all.
     LOG(ERROR)
         << "Failed to recreate tunnel to block traffic for safe disconnect: "
         << tunnel_status;

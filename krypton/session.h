@@ -219,6 +219,10 @@ class Session : public DatapathInterface::NotificationInterface,
 
   absl::Status CreateTunnelIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  // Returns true if the given status indicates that a status returned from
+  // CreateTunnel should be considered "permanent".
+  bool IsTunnelCreationErrorPermanent(const absl::Status& status);
+
   void ResetAllDatapathReattempts() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void Rekey() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);

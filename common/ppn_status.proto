@@ -36,6 +36,8 @@ message PpnStatusDetails {
     LIBRARY_NOT_FOUND = 2;
     // Client side use only. Do not use on PPN servers. Never sent from servers.
     IPC_FAILURE = 3;
+    // Indicates that the app no longer has the VPN permission.
+    VPN_PERMISSION_REVOKED = 4;
   }
 
   // An optional error code giving a more specific error condition than the
