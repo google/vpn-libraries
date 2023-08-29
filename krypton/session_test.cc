@@ -939,8 +939,7 @@ TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonDefaultValues) {
     "downlink_mtu":0,
     "mtu_update_signature":"",
     "session_id":0,
-    "uplink_mtu":0,
-    "verification_key":""
+    "uplink_mtu":0
   })string";
   absl::StrReplaceAll({{"\n", ""}, {" ", ""}}, &expected);
   EXPECT_EQ(json_str, expected);
@@ -951,7 +950,6 @@ TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonNonDefaultValues) {
   update_path_info.set_session_id(1);
   update_path_info.set_uplink_mtu(2);
   update_path_info.set_downlink_mtu(3);
-  update_path_info.set_verification_key("foo");
   update_path_info.set_mtu_update_signature("bar");
   update_path_info.set_control_plane_sock_addr("192.168.1.1:1234");
   update_path_info.set_apn_type("ppn");
@@ -963,8 +961,7 @@ TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonNonDefaultValues) {
     "downlink_mtu":3,
     "mtu_update_signature":"YmFy",
     "session_id":1,
-    "uplink_mtu":2,
-    "verification_key":"Zm9v"
+    "uplink_mtu":2
   })string";
   absl::StrReplaceAll({{"\n", ""}, {" ", ""}}, &expected);
   EXPECT_EQ(json_str, expected);

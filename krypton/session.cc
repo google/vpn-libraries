@@ -215,10 +215,7 @@ void Session::CancelDatapathConnectingTimerIfRunning() {
 
 std::string ProtoToJsonString(
     const ppn::UpdatePathInfoRequest& update_path_info_request) {
-  std::string verification_key_encoded;
   std::string mtu_update_signature_encoded;
-  absl::Base64Escape(update_path_info_request.verification_key(),
-                     &verification_key_encoded);
   absl::Base64Escape(update_path_info_request.mtu_update_signature(),
                      &mtu_update_signature_encoded);
 
@@ -226,7 +223,6 @@ std::string ProtoToJsonString(
   json_obj[JsonKeys::kSessionId] = update_path_info_request.session_id();
   json_obj[JsonKeys::kUplinkMtu] = update_path_info_request.uplink_mtu();
   json_obj[JsonKeys::kDownlinkMtu] = update_path_info_request.downlink_mtu();
-  json_obj[JsonKeys::kVerificationKey] = verification_key_encoded;
   json_obj[JsonKeys::kMtuUpdateSignature] = mtu_update_signature_encoded;
   json_obj[JsonKeys::kApnType] = update_path_info_request.apn_type();
   json_obj[JsonKeys::kControlPlaneSockAddr] =
