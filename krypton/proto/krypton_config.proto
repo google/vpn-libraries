@@ -85,7 +85,7 @@ message KryptonConfig {
 
   // Whether or not periodic health check is enabled.
   optional bool periodic_health_check_enabled = 18;
-  // Duration between periodic health check. Defaulted to 1 hour.
+  // Duration between periodic health check.
   optional google.protobuf.Duration periodic_health_check_duration = 19;
   // Where to connect to perform the health check
   optional string periodic_health_check_url = 35;
