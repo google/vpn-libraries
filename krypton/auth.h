@@ -134,9 +134,13 @@ class Auth {
   void HandleInitialDataResponse(bool is_rekey, absl::string_view auth_token,
                                  const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
-  static void RecordLatency(absl::Time start,
+
+  // Calculate and records the latency value. The start variable is reset to
+  // absl::InfinitePast before it is returned.
+  static void RecordLatency(absl::Time& start,
                             std::vector<google::protobuf::Duration>* latencies,
-                            const std::string& latency_type);
+                            std::string_view latency_type);
+
   void RaiseAuthFailureNotification(absl::Status status)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   // Unblinds AT token provided in AuthAndSign response.
@@ -173,8 +177,8 @@ class Auth {
       ABSL_GUARDED_BY(mutex_);
   std::vector<google::protobuf::Duration> zinc_latencies_
       ABSL_GUARDED_BY(mutex_);
-  absl::Time request_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
-  absl::Time auth_call_time_ ABSL_GUARDED_BY(mutex_) = ::absl::InfinitePast();
+  absl::Time request_time_ ABSL_GUARDED_BY(mutex_) = absl::InfinitePast();
+  absl::Time zinc_request_time_ ABSL_GUARDED_BY(mutex_) = absl::InfinitePast();
 
   utils::LooperThread looper_;
   HttpFetcher http_fetcher_;

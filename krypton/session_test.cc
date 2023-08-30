@@ -697,6 +697,8 @@ TEST_F(SessionTest, CollectTelemetry) {
   EXPECT_EQ(telemetry.network_switches(), 2);
   EXPECT_EQ(telemetry.successful_rekeys(), 0);
   EXPECT_EQ(telemetry.auth_latency_size(), 1);
+  EXPECT_EQ(telemetry.oauth_latency_size(), 1);
+  EXPECT_EQ(telemetry.zinc_latency_size(), 1);
   EXPECT_EQ(telemetry.egress_latency_size(), 1);
 }
 

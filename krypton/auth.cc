@@ -149,9 +149,7 @@ Auth::~Auth() {
 void Auth::HandleAuthAndSignResponse(bool is_rekey,
                                      const HttpResponse& http_response) {
   absl::MutexLock l(&mutex_);
-  RecordLatency(request_time_, &latencies_, "auth");
-  RecordLatency(auth_call_time_, &zinc_latencies_, "zinc");
-  request_time_ = ::absl::InfinitePast();
+  RecordLatency(zinc_request_time_, &zinc_latencies_, "zinc");
 
   LOG(INFO) << "Got Authentication Response. Rekey: "
             << (is_rekey ? "True" : "False")
@@ -217,17 +215,7 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
   std::optional<std::string> nonce = std::nullopt;
   {
     absl::MutexLock l(&mutex_);
-    google::protobuf::Duration latency;
-    const auto latency_status =
-        utils::ToProtoDuration(absl::Now() - request_time_, &latency);
-    if (!latency_status.ok()) {
-      LOG(ERROR) << "Unable to calculate latency with status:"
-                 << latency_status;
-    } else {
-      latencies_.emplace_back(latency);
-    }
-
-    request_time_ = ::absl::InfinitePast();
+    RecordLatency(request_time_, &latencies_, "PublicKey");
 
     LOG(INFO) << "Got PublicKeyResponse Response.";
     if (stopped_) {
@@ -273,9 +261,7 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
   {
     absl::MutexLock l(&mutex_);
     // TODO
-    RecordLatency(request_time_, &latencies_, "auth");
-
-    request_time_ = ::absl::InfinitePast();
+    RecordLatency(request_time_, &latencies_, "GetInitialData");
 
     LOG(INFO) << "Received GetInitialData Response.";
     if (stopped_) {
@@ -420,8 +406,8 @@ void Auth::RequestKeyForBlindSigning(bool is_rekey) {
 
 void Auth::RequestForInitialData(bool is_rekey) {
   absl::MutexLock l(&mutex_);
-  request_time_ = absl::Now();
 
+  auto oauth_request_time = absl::Now();
   auto auth_token = oauth_->GetOAuthToken();
   if (!auth_token.ok()) {
     LOG(ERROR) << "Error fetching oauth token: " << auth_token.status();
@@ -430,7 +416,7 @@ void Auth::RequestForInitialData(bool is_rekey) {
         absl::InternalError("Error fetching oauth token"));
     return;
   }
-  RecordLatency(request_time_, &oauth_latencies_, "oauth");
+  RecordLatency(oauth_request_time, &oauth_latencies_, "oauth");
 
   std::string token = *auth_token;
   auto use_attestation = config_.integrity_attestation_enabled();
@@ -446,6 +432,7 @@ void Auth::RequestForInitialData(bool is_rekey) {
       [this, is_rekey, token](const HttpResponse& response) {
         HandleInitialDataResponse(is_rekey, token, response);
       };
+  request_time_ = absl::Now();
   http_fetcher_.PostJsonAsync(get_initial_data_proto, callback);
 }
 
@@ -463,7 +450,8 @@ void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
     }
     attestation_data = data.value();
   }
-  request_time_ = absl::Now();
+
+  auto oauth_request_time = absl::Now();
   auto auth_token = oauth_->GetOAuthToken();
   if (!auth_token.ok()) {
     LOG(ERROR) << "Error fetching oauth token: " << auth_token.status();
@@ -472,7 +460,8 @@ void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
         absl::InternalError("Error fetching oauth token"));
     return;
   }
-  RecordLatency(request_time_, &oauth_latencies_, "oauth");
+  RecordLatency(oauth_request_time, &oauth_latencies_, "oauth");
+
   AuthAndSignRequest sign_request(
       *auth_token, config_.service_type(), std::string(),
       config_.enable_blind_signing() ? key_material_->GetZincBlindToken()
@@ -493,7 +482,7 @@ void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
 
   // TODO: Clean up name of zinc_url.
   auth_http_request->set_url(config_.zinc_url());
-  auth_call_time_ = absl::Now();
+  zinc_request_time_ = absl::Now();
   http_fetcher_.PostJsonAsync(
       auth_http_request.value(),
       absl::bind_front(&Auth::HandleAuthAndSignResponse, this, is_rekey));
@@ -546,7 +535,7 @@ void Auth::AuthenticatePublicMetadata(bool is_rekey,
 
   // TODO: Clean up name of zinc_url.
   auth_http_request.set_url(config_.zinc_url());
-  auth_call_time_ = absl::Now();
+  zinc_request_time_ = absl::Now();
   http_fetcher_.PostJsonAsync(
       auth_http_request,
       absl::bind_front(&Auth::HandleAuthAndSignResponse, this, is_rekey));
@@ -663,14 +652,15 @@ void Auth::GetDebugInfo(AuthDebugInfo* debug_info) {
   absl::MutexLock l(&mutex_);
   debug_info->set_state(StateString(state_));
   debug_info->set_status(latest_status_.ToString());
+  // TODO: Add new latency collections to DebugInfo
   for (const auto& latency : latencies_) {
     *debug_info->add_latency() = latency;
   }
 }
 
-void Auth::RecordLatency(absl::Time start,
+void Auth::RecordLatency(absl::Time& start,
                          std::vector<google::protobuf::Duration>* latencies,
-                         const std::string& latency_type) {
+                         std::string_view latency_type) {
   google::protobuf::Duration latency;
   absl::Duration latency_durition = absl::Now() - start;
   auto latency_status = utils::ToProtoDuration(latency_durition, &latency);
@@ -686,6 +676,7 @@ void Auth::RecordLatency(absl::Time start,
     return;
   }
   latencies->emplace_back(latency);
+  start = absl::InfinitePast();
 }
 
 }  // namespace krypton
