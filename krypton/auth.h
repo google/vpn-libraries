@@ -106,10 +106,10 @@ class Auth {
   std::optional<std::string> GetBrassUnblindedToken(
       absl::string_view zinc_blind_signature) const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Returns a token signed in UnblindATToken().
+  // Returns an Anonymous Token signed in Auth::UnblindAnonymousToken().
   absl::StatusOr<std::vector<
       private_membership::anonymous_tokens::RSABlindSignatureTokenWithInput>>
-  GetUnblindedATToken() const ABSL_LOCKS_EXCLUDED(mutex_);
+  GetUnblindedAnonymousToken() const ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   void RequestKeyForBlindSigning(bool is_rekey) ABSL_LOCKS_EXCLUDED(mutex_);
@@ -143,10 +143,10 @@ class Auth {
 
   void RaiseAuthFailureNotification(absl::Status status)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  // Unblinds AT token provided in AuthAndSign response.
+  // Unblinds ATs provided in AuthAndSign response.
   virtual absl::StatusOr<std::vector<
       private_membership::anonymous_tokens::RSABlindSignatureTokenWithInput>>
-  UnblindATToken() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  UnblindAnonymousToken() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   KryptonConfig config_;
   absl::Duration expiry_increments_ = absl::Minutes(15);

@@ -184,7 +184,7 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
   }
   auth_and_sign_response_ = *auth_and_sign_response;
   if (config_.public_metadata_enabled()) {
-    signed_tokens_ = UnblindATToken();
+    signed_tokens_ = UnblindAnonymousToken();
     if (!signed_tokens_.ok()) {
       SetState(State::kUnauthenticated);
       RaiseAuthFailureNotification(signed_tokens_.status());
@@ -542,7 +542,7 @@ void Auth::AuthenticatePublicMetadata(bool is_rekey,
 }
 
 absl::StatusOr<std::vector<RSABlindSignatureTokenWithInput>>
-Auth::UnblindATToken() {
+Auth::UnblindAnonymousToken() {
   if (!config_.public_metadata_enabled()) {
     LOG(ERROR)
         << "AT token unblinding only possible when public metadata is enabled";
@@ -600,7 +600,7 @@ Auth::UnblindATToken() {
 }
 
 absl::StatusOr<std::vector<RSABlindSignatureTokenWithInput>>
-Auth::GetUnblindedATToken() const {
+Auth::GetUnblindedAnonymousToken() const {
   absl::MutexLock l(&mutex_);
   return signed_tokens_;
 }

@@ -225,7 +225,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
     // set unblinded_token_signature
     if (config_.public_metadata_enabled()) {
       // TODO Add tests covering this if statement.
-      auto signed_tokens = auth_->GetUnblindedATToken();
+      auto signed_tokens = auth_->GetUnblindedAnonymousToken();
       if (!signed_tokens.ok()) {
         LOG(ERROR) << "No unblinded token signatures found";
         FailWithStatus(signed_tokens.status(), false);
