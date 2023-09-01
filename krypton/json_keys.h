@@ -53,6 +53,7 @@ class JsonKeys {
   static const char kBlindedTokenSignature[];
   static const char kCopperControllerHostname[];
   static const char kPublicKeyHash[];
+  static const char kDoNotUseRsaPublicExponent[];
 
   // IKE
   static const char kIkeDataplane[];

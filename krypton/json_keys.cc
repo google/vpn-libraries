@@ -49,6 +49,8 @@ const char JsonKeys::kPem[] = "pem";
 const char JsonKeys::kBlindedTokenSignature[] = "blinded_token_signature";
 const char JsonKeys::kCopperControllerHostname[] = "copper_controller_hostname";
 const char JsonKeys::kPublicKeyHash[] = "public_key_hash";
+const char JsonKeys::kDoNotUseRsaPublicExponent[] =
+    "do_not_use_rsa_public_exponent";
 
 // IKE
 const char JsonKeys::kIkeDataplane[] = "ike";

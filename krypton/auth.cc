@@ -525,6 +525,8 @@ void Auth::AuthenticatePublicMetadata(bool is_rekey,
   if (attestation_data.has_value()) {
     *sign_request.mutable_attestation() = *attestation_data;
   }
+  // TODO: deprecate this option after AT server defaults to it
+  sign_request.set_do_not_use_rsa_public_exponent(true);
 
   HttpRequest auth_http_request;
   auth_http_request.set_proto_body(sign_request.SerializeAsString());
@@ -580,6 +582,7 @@ Auth::UnblindAnonymousToken() {
     *anon_token_proto.mutable_serialized_blinded_message() =
         at_sign_request_.blinded_tokens(i).serialized_token();
     *anon_token_proto.mutable_serialized_token() = blinded_token;
+    anon_token_proto.set_do_not_use_rsa_public_exponent(true);
     at_sign_response.add_anonymous_tokens()->Swap(&anon_token_proto);
   }
 
