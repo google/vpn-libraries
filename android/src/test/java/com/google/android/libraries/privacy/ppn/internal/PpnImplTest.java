@@ -34,6 +34,7 @@ import androidx.work.testing.WorkManagerTestInitHelper;
 import com.google.android.gms.auth.GoogleAuthUtil;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
+import com.google.android.libraries.privacy.ppn.BypassOptions;
 import com.google.android.libraries.privacy.ppn.IpGeoLevel;
 import com.google.android.libraries.privacy.ppn.PpnAccountManager;
 import com.google.android.libraries.privacy.ppn.PpnConnectionStatus;
@@ -50,6 +51,7 @@ import com.google.android.libraries.privacy.ppn.krypton.KryptonException;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener.NetworkUnavailableReason;
 import com.google.android.libraries.privacy.ppn.xenon.Xenon;
+import com.google.common.collect.ImmutableSet;
 import com.google.testing.mockito.Mocks;
 import java.time.Duration;
 import java.util.Arrays;
@@ -117,7 +119,7 @@ public class PpnImplTest {
 
     // Check that PPN gets the initial set of elements from the options and passes it on.
     ppn.start(account);
-    assertThat(vpnManager.getDisallowApplications()).containsExactlyElementsIn(initialApps);
+    assertThat(vpnManager.disallowedApplications()).containsExactlyElementsIn(initialApps);
 
     // Set up krypton
     TaskCompletionSource<Void> ppnStarted = new TaskCompletionSource<>();
@@ -134,11 +136,11 @@ public class PpnImplTest {
 
     // Check that changing the set while PPN is running does not take effect immediately.
     ppn.setDisallowedApplications(changedApps);
-    assertThat(vpnManager.getDisallowApplications()).containsExactlyElementsIn(initialApps);
+    assertThat(vpnManager.disallowedApplications()).containsExactlyElementsIn(initialApps);
 
     // Check that it does take effect when restarting PPN.
     ppn.restart().get();
-    assertThat(vpnManager.getDisallowApplications()).containsExactlyElementsIn(changedApps);
+    assertThat(vpnManager.disallowedApplications()).containsExactlyElementsIn(changedApps);
 
     ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
     ppn.onStopService();
@@ -622,6 +624,133 @@ public class PpnImplTest {
     ppn.onStopService();
     ppn.setIpGeoLevel(IpGeoLevel.CITY).get();
     assertThat(ppn.getIpGeoLevel()).hasValue(IpGeoLevel.CITY);
+  }
+
+  @Test
+  public void setBypassOptions_valueFromOptionsIsUsed() throws Exception {
+    ImmutableSet<String> disallowedApplications = ImmutableSet.of("foo", "bar");
+
+    PpnOptions options =
+        new PpnOptions.Builder()
+            .setAllowBypass(true)
+            .setExcludeLocalAddresses(false)
+            .setDisallowedApplications(disallowedApplications)
+            .build();
+
+    PpnImpl ppn = createPpn(options);
+
+    VpnManager vpnManager = ppn.getVpnManager();
+    assertThat(vpnManager.allowBypass()).isTrue();
+    assertThat(vpnManager.excludeLocalAddresses()).isFalse();
+    assertThat(vpnManager.disallowedApplications())
+        .containsExactlyElementsIn(disallowedApplications);
+  }
+
+  @Test
+  public void setBypassOptions_updatesWhilePpnStopped() throws Exception {
+    ImmutableSet<String> disallowedApplications = ImmutableSet.of("foo", "bar");
+
+    PpnImpl ppn = createPpn();
+    VpnManager vpnManager = ppn.getVpnManager();
+    assertThat(vpnManager.allowBypass()).isFalse();
+
+    BypassOptions bypassOptions =
+        BypassOptions.builder()
+            .setAllowBypass(true)
+            .setExcludeLocalAddresses(false)
+            .setDisallowedApplications(disallowedApplications)
+            .build();
+    ppn.setBypassOptions(bypassOptions);
+
+    assertThat(vpnManager.allowBypass()).isTrue();
+    assertThat(vpnManager.excludeLocalAddresses()).isFalse();
+    assertThat(vpnManager.disallowedApplications())
+        .containsExactlyElementsIn(disallowedApplications);
+  }
+
+  @Test
+  public void setBypassOptions_updatesWhilePpnRunning() throws Exception {
+    ImmutableSet<String> disallowedApplications = ImmutableSet.of("foo", "bar");
+
+    PpnImpl ppn = createPpn();
+    VpnManager vpnManager = ppn.getVpnManager();
+    ppn.start(account);
+
+    // Set up krypton
+    TaskCompletionSource<Void> ppnStarted = new TaskCompletionSource<>();
+    doAnswer(
+            invocation -> {
+              ppnStarted.trySetResult(null);
+              return null;
+            })
+        .when(mockKrypton)
+        .start(any());
+
+    // Start the service, then wait for Krypton to get called.
+    await(ppn.onStartService(service));
+    await(ppnStarted.getTask());
+
+    // Check that changing allowBypass while PPN is running takes effect immediately.
+    BypassOptions bypassOptions =
+        BypassOptions.builder()
+            .setAllowBypass(true)
+            .setExcludeLocalAddresses(false)
+            .setDisallowedApplications(disallowedApplications)
+            .build();
+    ppn.setBypassOptions(bypassOptions);
+    assertThat(vpnManager.allowBypass()).isTrue();
+    assertThat(vpnManager.excludeLocalAddresses()).isFalse();
+    assertThat(vpnManager.disallowedApplications())
+        .containsExactlyElementsIn(disallowedApplications);
+    verify(mockKrypton).forceTunnelUpdate();
+
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+    ppn.onStopService();
+  }
+
+  @Test
+  public void setBypassOptions_overwritesValueFromSetDisallowedApplications() throws Exception {
+    ImmutableSet<String> disallowedApps1 = ImmutableSet.of("foo", "bar");
+    ImmutableSet<String> disallowedApps2 = ImmutableSet.of("baz", "quz");
+
+    PpnOptions options = new PpnOptions.Builder().build();
+    PpnImpl ppn = createPpn(options);
+    VpnManager vpnManager = ppn.getVpnManager();
+
+    // Check that PPN gets the initial set of elements from the options and passes it on.
+    ppn.start(account);
+    assertThat(vpnManager.disallowedApplications()).isEmpty();
+
+    // Set up krypton
+    TaskCompletionSource<Void> ppnStarted = new TaskCompletionSource<>();
+    doAnswer(
+            invocation -> {
+              ppnStarted.trySetResult(null);
+              return null;
+            })
+        .when(mockKrypton)
+        .start(any());
+    // Start the service, then wait for Krypton to get called.
+    await(ppn.onStartService(service));
+    await(ppnStarted.getTask());
+
+    // Check that changing the set while PPN is running does not take effect immediately.
+    ppn.setDisallowedApplications(disallowedApps1);
+    assertThat(vpnManager.disallowedApplications()).isEmpty();
+
+    ppn.setBypassOptions(
+        BypassOptions.builder()
+            .setAllowBypass(false)
+            .setExcludeLocalAddresses(true)
+            .setDisallowedApplications(disallowedApps2)
+            .build());
+
+    // Check that the value from setDisallowedApplications is not used
+    ppn.restart().get();
+    assertThat(vpnManager.disallowedApplications()).containsExactlyElementsIn(disallowedApps2);
+
+    ppn.stopKryptonAndService(PpnStatus.STATUS_OK);
+    ppn.onStopService();
   }
 
   @Test

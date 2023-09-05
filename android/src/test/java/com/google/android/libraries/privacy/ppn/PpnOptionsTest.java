@@ -509,6 +509,30 @@ public class PpnOptionsTest {
   }
 
   @Test
+  public void allowBypass_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.allowBypass()).isFalse();
+  }
+
+  @Test
+  public void allowBypass_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setAllowBypass(true).build();
+    assertThat(options.allowBypass()).isTrue();
+  }
+
+  @Test
+  public void excludeLocalAddresses_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    assertThat(options.excludeLocalAddresses()).isTrue();
+  }
+
+  @Test
+  public void excludeLocalAddresses_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setExcludeLocalAddresses(false).build();
+    assertThat(options.excludeLocalAddresses()).isFalse();
+  }
+
+  @Test
   public void setDnsCacheEnabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
     assertThat(options.isDnsCacheEnabled()).isTrue();

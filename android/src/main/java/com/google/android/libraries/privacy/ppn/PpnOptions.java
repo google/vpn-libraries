@@ -88,6 +88,8 @@ public class PpnOptions {
   private Optional<IpGeoLevel> ipGeoLevel;
 
   private final Set<String> disallowedApplications;
+  private final boolean allowBypass;
+  private final boolean excludeLocalAddresses;
 
   private final boolean dnsCacheEnabled;
   private final ExecutorService backgroundExecutor;
@@ -150,6 +152,8 @@ public class PpnOptions {
     this.dynamicMtuEnabled = builder.dynamicMtuEnabled;
 
     this.disallowedApplications = Collections.unmodifiableSet(builder.disallowedApplications);
+    this.allowBypass = builder.allowBypass;
+    this.excludeLocalAddresses = builder.excludeLocalAddresses;
 
     this.dnsCacheEnabled = builder.dnsCacheEnabled;
     this.backgroundExecutor =
@@ -290,6 +294,14 @@ public class PpnOptions {
 
   public Set<String> getDisallowedApplications() {
     return disallowedApplications;
+  }
+
+  public boolean allowBypass() {
+    return allowBypass;
+  }
+
+  public boolean excludeLocalAddresses() {
+    return excludeLocalAddresses;
   }
 
   public boolean isDnsCacheEnabled() {
@@ -545,6 +557,8 @@ public class PpnOptions {
     private boolean dynamicMtuEnabled = false;
 
     private Set<String> disallowedApplications = Collections.emptySet();
+    private boolean allowBypass = false;
+    private boolean excludeLocalAddresses = true;
 
     private boolean dnsCacheEnabled = true;
     private Optional<ExecutorService> backgroundExecutor = Optional.empty();
@@ -876,6 +890,18 @@ public class PpnOptions {
         copy.add(packageName);
       }
       this.disallowedApplications = Collections.unmodifiableSet(copy);
+      return this;
+    }
+
+    @CanIgnoreReturnValue
+    public Builder setAllowBypass(boolean allowBypass) {
+      this.allowBypass = allowBypass;
+      return this;
+    }
+
+    @CanIgnoreReturnValue
+    public Builder setExcludeLocalAddresses(boolean excludeLocalAddresses) {
+      this.excludeLocalAddresses = excludeLocalAddresses;
       return this;
     }
 

@@ -16,7 +16,7 @@ package com.google.android.libraries.privacy.ppn.internal.service;
 
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
@@ -37,18 +37,34 @@ public class RouteManagerTest {
   @Mock private VpnService.Builder mockBuilder;
 
   @Test
-  public void addIpv4Routes_addsRoutes() {
-    RouteManager.addIpv4Routes(mockBuilder);
+  public void addIpv4Routes_addsSingleRoute() {
+    RouteManager.addIpv4Routes(mockBuilder, /* excludeLocalAddresses= */ false);
 
-    verify(mockBuilder, atLeastOnce()).addRoute(anyString(), anyInt());
+    verify(mockBuilder).addRoute(anyString(), anyInt());
     verifyNoMoreInteractions(mockBuilder);
   }
 
   @Test
-  public void addIpv6Routes_addsRoutes() {
-    RouteManager.addIpv6Routes(mockBuilder);
+  public void addIpv4Routes_excludeLocalAddressesAddsMultipleRoutes() {
+    RouteManager.addIpv4Routes(mockBuilder, /* excludeLocalAddresses= */ true);
 
-    verify(mockBuilder, atLeastOnce()).addRoute(anyString(), anyInt());
+    verify(mockBuilder, atLeast(2)).addRoute(anyString(), anyInt());
+    verifyNoMoreInteractions(mockBuilder);
+  }
+
+  @Test
+  public void addIpv6Routes_addsSingleRoute() {
+    RouteManager.addIpv6Routes(mockBuilder, /* excludeLocalAddresses= */ false);
+
+    verify(mockBuilder).addRoute(anyString(), anyInt());
+    verifyNoMoreInteractions(mockBuilder);
+  }
+
+  @Test
+  public void addIpv6Routes_excludeLocalAddressesAddsMultipleRoutes() {
+    RouteManager.addIpv6Routes(mockBuilder, /* excludeLocalAddresses= */ true);
+
+    verify(mockBuilder, atLeast(2)).addRoute(anyString(), anyInt());
     verifyNoMoreInteractions(mockBuilder);
   }
 }

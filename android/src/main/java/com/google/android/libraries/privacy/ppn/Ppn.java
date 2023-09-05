@@ -22,9 +22,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.time.Duration;
 import org.json.JSONObject;
 
-/**
- * Ppn is the API for controlling the PPN VPN library from an Application.
- */
+/** Ppn is the API for controlling the PPN VPN library from an Application. */
 public interface Ppn {
 
   /**
@@ -140,8 +138,21 @@ public interface Ppn {
    * next time {@link Ppn#start(Account)} is called.
    *
    * <p>This method can be called from any thread.
+   *
+   * @deprecated Use {@link #setBypassOptions(BypassOptions)} instead.
    */
+  @Deprecated
   void setDisallowedApplications(Iterable<String> disallowedApplications);
+
+  /**
+   * Updates the options related to bypassing the VPN.
+   *
+   * <p>The updates are immediately applied to the VPN. The bypass options will persist through the
+   * lifetime of the PPN object.
+   *
+   * <p>This method can be called from any thread.
+   */
+  void setBypassOptions(BypassOptions bypassOptions);
 
   /** Returns whether Safe Disconnect is enabled in PPN. Can be called from any thread. */
   boolean isSafeDisconnectEnabled();
@@ -176,6 +187,7 @@ public interface Ppn {
    * <p>This is an async method, and can be called from any thread.
    */
   ListenableFuture<Void> setSimulatedNetworkFailure(boolean simulatedNetworkFailure);
+
   /**
    * Returns debug info for inspecting the internal state of PPN.
    *

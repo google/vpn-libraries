@@ -34,6 +34,7 @@ import androidx.annotation.VisibleForTesting;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.gms.tasks.TaskExecutors;
+import com.google.android.libraries.privacy.ppn.BypassOptions;
 import com.google.android.libraries.privacy.ppn.IpGeoLevel;
 import com.google.android.libraries.privacy.ppn.Ppn;
 import com.google.android.libraries.privacy.ppn.PpnAccountManager;
@@ -334,7 +335,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     this.backgroundExecutor = options.getBackgroundExecutor();
     this.notificationManager = new PpnNotificationManager();
     this.telemetry = new PpnTelemetryManager();
-    this.vpnManager = new VpnManager(context, options);
+    this.vpnManager = VpnManager.create(context, options);
 
     Dns dns = new VpnBypassDns(vpnManager);
     if (options.isDnsCacheEnabled()) {
@@ -607,6 +608,25 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
       copy.add(packageName);
     }
     this.disallowedApplications = Collections.unmodifiableSet(copy);
+  }
+
+  @Override
+  public void setBypassOptions(BypassOptions bypassOptions) {
+    // Store the value for the next time PPN is started.
+    setDisallowedApplications(bypassOptions.disallowedApplications());
+    vpnManager.setBypassOptions(bypassOptions);
+
+    // If PPN is already running, tell Krypton to update the tunnel.
+    try {
+      synchronized (kryptonLock) {
+        if (krypton != null) {
+          // Update the tunnel to pick up the new settings
+          krypton.forceTunnelUpdate();
+        }
+      }
+    } catch (KryptonException e) {
+      Log.e(TAG, "Unable to force tunnel update in Krypton.", e);
+    }
   }
 
   /** Returns the current Safe Disconnect state. */

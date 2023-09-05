@@ -33,11 +33,13 @@ import android.net.Network;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
 import androidx.test.core.app.ApplicationProvider;
+import com.google.android.libraries.privacy.ppn.BypassOptions;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData.IpRange;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.net.InetAddresses;
 import java.net.DatagramSocket;
 import java.net.Inet4Address;
@@ -104,7 +106,7 @@ public class VpnManagerTest {
   @Test
   public void setService_marksServiceAsRunning() {
     PpnOptions options = new PpnOptions.Builder().build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     assertThat(manager.isRunning()).isFalse();
 
     manager.setService(service);
@@ -115,7 +117,7 @@ public class VpnManagerTest {
   @Test
   public void setServiceNull_marksServiceAsStopped() {
     PpnOptions options = new PpnOptions.Builder().build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     manager.setService(service);
     assertThat(manager.isRunning()).isTrue();
 
@@ -127,7 +129,7 @@ public class VpnManagerTest {
   @Test
   public void stopService_tellsServiceToStop() {
     PpnOptions options = new PpnOptions.Builder().build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     manager.setService(service);
     assertThat(manager.isRunning()).isTrue();
 
@@ -140,7 +142,7 @@ public class VpnManagerTest {
   @Test
   public void switchNetwork_setsUnderlyingNetworks() {
     PpnOptions options = new PpnOptions.Builder().build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
     doReturn(true).when(mockService).setUnderlyingNetworks(any());
 
@@ -159,10 +161,32 @@ public class VpnManagerTest {
   }
 
   @Test
+  public void setBypassOptions_setsCorrectly() {
+    PpnOptions options = new PpnOptions.Builder().build();
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
+
+    assertThat(manager.disallowedApplications()).isEmpty();
+    assertThat(manager.allowBypass()).isFalse();
+    assertThat(manager.excludeLocalAddresses()).isTrue();
+
+    BypassOptions bypassOptions =
+        BypassOptions.builder()
+            .setAllowBypass(true)
+            .setExcludeLocalAddresses(false)
+            .setDisallowedApplications(ImmutableSet.of("foo"))
+            .build();
+    manager.setBypassOptions(bypassOptions);
+
+    assertThat(manager.disallowedApplications()).containsExactly("foo");
+    assertThat(manager.allowBypass()).isTrue();
+    assertThat(manager.excludeLocalAddresses()).isFalse();
+  }
+
+  @Test
   public void createTunFd_establishesTunFd() throws Exception {
     ShadowVpnService.setPrepareResult(null);
     PpnOptions options = new PpnOptions.Builder().build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
     doReturn(mockFd).when(mockBuilder).establish();
     doReturn(0xdead).when(mockFd).detachFd();
@@ -190,7 +214,7 @@ public class VpnManagerTest {
     ShadowVpnService.setPrepareResult(null);
     // Enable IPv6 in the options
     PpnOptions options = new PpnOptions.Builder().setIPv6Enabled(true).build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
     doReturn(mockFd).when(mockBuilder).establish();
     doReturn(0xdead).when(mockFd).detachFd();
@@ -233,7 +257,7 @@ public class VpnManagerTest {
     ShadowVpnService.setPrepareResult(null);
     // Disable IPv6 in the options
     PpnOptions options = new PpnOptions.Builder().setIPv6Enabled(false).build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
     doReturn(mockFd).when(mockBuilder).establish();
     doReturn(0xdead).when(mockFd).detachFd();
@@ -255,7 +279,7 @@ public class VpnManagerTest {
 
     verify(mockService).newBuilder();
     verify(mockBuilder, atLeastOnce()).addRoute(argThat(this::isIpv4Addr), anyInt());
-    verify(mockBuilder, never()).addRoute(argThat(this::isIpv6Addr), anyInt());
+    verify(mockBuilder, atLeastOnce()).addRoute(argThat(this::isIpv6Addr), anyInt());
     verify(mockBuilder, atLeastOnce()).addAddress(argThat(this::isIpv4Addr), anyInt());
     verify(mockBuilder, never()).addAddress(argThat(this::isIpv6Addr), anyInt());
     verify(mockBuilder, atLeastOnce()).addDnsServer(argThat(this::isIpv4Addr));
@@ -275,7 +299,7 @@ public class VpnManagerTest {
   public void createTunFd_mtuUnderMinForIpv6EstablishesTunFdWithoutIpv6() throws Exception {
     ShadowVpnService.setPrepareResult(null);
     PpnOptions options = new PpnOptions.Builder().build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
     doReturn(mockFd).when(mockBuilder).establish();
     doReturn(0xdead).when(mockFd).detachFd();
@@ -297,7 +321,7 @@ public class VpnManagerTest {
 
     verify(mockService).newBuilder();
     verify(mockBuilder, atLeastOnce()).addRoute(argThat(this::isIpv4Addr), anyInt());
-    verify(mockBuilder, never()).addRoute(argThat(this::isIpv6Addr), anyInt());
+    verify(mockBuilder, atLeastOnce()).addRoute(argThat(this::isIpv6Addr), anyInt());
     verify(mockBuilder, atLeastOnce()).addAddress(argThat(this::isIpv4Addr), anyInt());
     verify(mockBuilder, never()).addAddress(argThat(this::isIpv6Addr), anyInt());
     verify(mockBuilder, atLeastOnce()).addDnsServer(argThat(this::isIpv4Addr));
@@ -317,7 +341,7 @@ public class VpnManagerTest {
   public void createTunFd_setsDisallowedApplications() throws Exception {
     ShadowVpnService.setPrepareResult(null);
     PpnOptions options = new PpnOptions.Builder().build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     manager.setDisallowedApplications(new HashSet<>(Arrays.asList("foo", "bar", "baz")));
     manager.setServiceWrapper(mockService);
     doReturn(mockFd).when(mockBuilder).establish();
@@ -345,9 +369,61 @@ public class VpnManagerTest {
   }
 
   @Test
+  public void createTunFd_bypassOptionsAllDisabled() throws Exception {
+    ShadowVpnService.setPrepareResult(null);
+    PpnOptions options =
+        new PpnOptions.Builder()
+            .setAllowBypass(false)
+            .setExcludeLocalAddresses(false)
+            .setDisallowedApplications(ImmutableSet.of())
+            .build();
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
+    manager.setServiceWrapper(mockService);
+    doReturn(mockFd).when(mockBuilder).establish();
+    doReturn(0xdead).when(mockFd).detachFd();
+
+    TunFdData data = TunFdData.getDefaultInstance();
+    int fd = manager.createTunFd(data);
+
+    assertThat(fd).isEqualTo(0xdead);
+
+    verify(mockBuilder).addRoute(argThat(this::isIpv4Addr), anyInt());
+    verify(mockBuilder).addRoute(argThat(this::isIpv6Addr), anyInt());
+    verify(mockBuilder, never()).allowBypass();
+    verify(mockBuilder, never()).addDisallowedApplication(anyString());
+  }
+
+  @Test
+  public void createTunFd_bypassOptionsAllEnabled() throws Exception {
+    ImmutableSet<String> disallowedApplications = ImmutableSet.of("foo", "bar");
+
+    ShadowVpnService.setPrepareResult(null);
+    PpnOptions options =
+        new PpnOptions.Builder()
+            .setAllowBypass(true)
+            .setExcludeLocalAddresses(true)
+            .setDisallowedApplications(disallowedApplications)
+            .build();
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
+    manager.setServiceWrapper(mockService);
+    doReturn(mockFd).when(mockBuilder).establish();
+    doReturn(0xdead).when(mockFd).detachFd();
+
+    TunFdData data = TunFdData.getDefaultInstance();
+    int fd = manager.createTunFd(data);
+
+    assertThat(fd).isEqualTo(0xdead);
+
+    verify(mockBuilder, atLeast(2)).addRoute(argThat(this::isIpv4Addr), anyInt());
+    verify(mockBuilder, atLeast(2)).addRoute(argThat(this::isIpv6Addr), anyInt());
+    verify(mockBuilder).allowBypass();
+    verify(mockBuilder, atLeastOnce()).addDisallowedApplication(anyString());
+  }
+
+  @Test
   public void createProtectedDatagramSocket_protectsAndBindsSocket() throws Exception {
     PpnOptions options = new PpnOptions.Builder().build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
     doReturn(0xfeed).when(mockFd).detachFd();
     doReturn(mockFd).when(mockService).parcelSocket(any(DatagramSocket.class));
@@ -374,7 +450,7 @@ public class VpnManagerTest {
   @Test
   public void createProtectedStreamSocket_protectsAndBindsSocket() throws Exception {
     PpnOptions options = new PpnOptions.Builder().build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
     doReturn(0xfeed).when(mockFd).detachFd();
     doReturn(mockFd).when(mockService).parcelSocket(any(Socket.class));
@@ -401,7 +477,7 @@ public class VpnManagerTest {
   @Test
   public void createProtectedStreamSocket_invalidFdFromSocket() throws Exception {
     PpnOptions options = new PpnOptions.Builder().build();
-    VpnManager manager = new VpnManager(ApplicationProvider.getApplicationContext(), options);
+    VpnManager manager = VpnManager.create(ApplicationProvider.getApplicationContext(), options);
     manager.setServiceWrapper(mockService);
     doReturn(-1).when(mockFd).detachFd();
     doReturn(mockFd).when(mockService).parcelSocket(any(Socket.class));

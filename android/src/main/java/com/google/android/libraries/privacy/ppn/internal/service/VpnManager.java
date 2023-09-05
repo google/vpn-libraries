@@ -23,15 +23,16 @@ import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
+import com.google.android.libraries.privacy.ppn.BypassOptions;
 import com.google.android.libraries.privacy.ppn.PpnException;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData.IpRange.IpFamily;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
+import com.google.common.collect.ImmutableSet;
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.Socket;
-import java.util.Collections;
 import java.util.Set;
 
 /**
@@ -53,9 +54,24 @@ public class VpnManager {
 
   @Nullable private volatile PpnNetwork network;
 
-  private volatile Set<String> disallowedApplications = Collections.emptySet();
+  private volatile BypassOptions bypassOptions;
 
-  public VpnManager(Context context, PpnOptions options) {
+  /**
+   * Creates a new instance of VpnManager.
+   */
+  public static VpnManager create(Context context, PpnOptions options) {
+    VpnManager vpnManager = new VpnManager(context, options);
+    BypassOptions bypassOptions =
+        BypassOptions.builder()
+            .setDisallowedApplications(options.getDisallowedApplications())
+            .setAllowBypass(options.allowBypass())
+            .setExcludeLocalAddresses(options.excludeLocalAddresses())
+            .build();
+    vpnManager.setBypassOptions(bypassOptions);
+    return vpnManager;
+  }
+
+  private VpnManager(Context context, PpnOptions options) {
     this.context = context;
     this.options = options;
   }
@@ -100,14 +116,33 @@ public class VpnManager {
     }
   }
 
-  /** Changes the set of disallowed applications which will bypass the VPN. */
+  /** Changes the bypass options for the VPN. */
+  public void setBypassOptions(BypassOptions bypassOptions) {
+    this.bypassOptions = bypassOptions;
+  }
+
+  /**
+   * Changes the set of disallowed applications which will bypass the VPN. None of the other
+   * BypassOptions will be updated.
+   */
   public void setDisallowedApplications(Set<String> disallowedApplications) {
-    this.disallowedApplications = disallowedApplications;
+    this.bypassOptions =
+        this.bypassOptions.toBuilder().setDisallowedApplications(disallowedApplications).build();
   }
 
   @VisibleForTesting
-  public Set<String> getDisallowApplications() {
-    return this.disallowedApplications;
+  public ImmutableSet<String> disallowedApplications() {
+    return this.bypassOptions.disallowedApplications();
+  }
+
+  @VisibleForTesting
+  public boolean allowBypass() {
+    return this.bypassOptions.allowBypass();
+  }
+
+  @VisibleForTesting
+  public boolean excludeLocalAddresses() {
+    return this.bypassOptions.excludeLocalAddresses();
   }
 
   @Nullable
@@ -144,7 +179,7 @@ public class VpnManager {
     }
 
     VpnService.Builder builder = service.newBuilder();
-    setVpnServiceParametersForDisallowedApplications(builder, disallowedApplications);
+    setVpnServiceParametersForBypassOptions(builder, this.bypassOptions, options);
     setVpnServiceParametersFromTunFdData(builder, tunFdData, options);
 
     // If the network was set before the tunnel was established, make sure to set it on the builder.
@@ -184,8 +219,8 @@ public class VpnManager {
     return fd;
   }
 
-  private void setVpnServiceParametersForDisallowedApplications(
-      VpnService.Builder builder, Set<String> disallowedApplications) {
+  private static void setVpnServiceParametersForBypassOptions(
+      VpnService.Builder builder, BypassOptions bypassOptions, PpnOptions options) {
     if (options.isIntegrityAttestationEnabled()
         && options.isForceDisallowPlayStoreForAttestationEnabled()
         && options.isAttestationNetworkOverrideEnabled()) {
@@ -199,13 +234,21 @@ public class VpnManager {
         Log.e(TAG, "Disallowed application package not found: com.google.vending", e);
       }
     }
-    for (String packageName : disallowedApplications) {
+    for (String packageName : bypassOptions.disallowedApplications()) {
       try {
         builder.addDisallowedApplication(packageName);
       } catch (NameNotFoundException e) {
         Log.e(TAG, "Disallowed application package not found: " + packageName, e);
       }
     }
+
+    if (bypassOptions.allowBypass()) {
+      Log.w(TAG, "Setting allowBypass");
+      builder.allowBypass();
+    }
+
+    RouteManager.addIpv4Routes(builder, bypassOptions.excludeLocalAddresses());
+    RouteManager.addIpv6Routes(builder, bypassOptions.excludeLocalAddresses());
   }
 
   private static void setVpnServiceParametersFromTunFdData(
@@ -240,11 +283,6 @@ public class VpnManager {
       }
       Log.w(TAG, "Adding DNS: " + ipRange.getIpRange());
       builder.addDnsServer(ipRange.getIpRange());
-    }
-
-    RouteManager.addIpv4Routes(builder);
-    if (ipv6Enabled) {
-      RouteManager.addIpv6Routes(builder);
     }
   }
 

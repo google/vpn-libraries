@@ -37,6 +37,7 @@ import android.net.ipsec.ike.TunnelModeChildSessionParams;
 import android.system.OsConstants;
 import android.util.Log;
 import androidx.annotation.Nullable;
+import com.google.android.libraries.privacy.ppn.BypassOptions;
 import com.google.android.libraries.privacy.ppn.IpGeoLevel;
 import com.google.android.libraries.privacy.ppn.Ppn;
 import com.google.android.libraries.privacy.ppn.PpnAccountManager;
@@ -256,6 +257,13 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
   @Override
   public void setDisallowedApplications(Iterable<String> disallowedApplications) {
     Log.i(TAG, "Setting disallowed applications.");
+  }
+
+  /** Throws an UnsupportedOperationException. This method has not been implemented. */
+  @Override
+  public void setBypassOptions(BypassOptions bypassOptions) {
+    Log.i(TAG, "Setting bypass options.");
+    throw new UnsupportedOperationException("setBypassOptions is not implemented");
   }
 
   @Override
