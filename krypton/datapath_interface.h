@@ -74,7 +74,7 @@ class DatapathInterface {
   // ownership, but guarantees them to stay alive for the life of the datapath.
   virtual absl::Status SwitchNetwork(uint32_t session_id,
                                      const Endpoint& endpoint,
-                                     std::optional<NetworkInfo> network_info,
+                                     const NetworkInfo& network_info,
                                      int counter) = 0;
 
   // Allow the datapath to prepare for a change in the tunnel. None of the

@@ -78,22 +78,11 @@ using ::testing::Eq;
 using ::testing::EqualsProto;
 using ::testing::Invoke;
 using ::testing::InvokeWithoutArgs;
+using ::testing::Optional;
 using ::testing::Return;
 using ::testing::SetArgPointee;
 using ::testing::status::IsOk;
 using ::testing::status::StatusIs;
-
-// Checks that a given NetworkInfo is equal to the one passed in.
-MATCHER_P(NetworkInfoEquals, expected, "") {
-  auto actual = arg;
-
-  if (!actual) {
-    return false;
-  }
-
-  return expected.network_id() == actual->network_id() &&
-         expected.network_type() == actual->network_type();
-}
 
 MATCHER_P(RequestUrlMatcher, url, "") { return arg.url() == url; }
 
@@ -118,8 +107,7 @@ class MockDatapath : public DatapathInterface {
               (DatapathInterface::NotificationInterface * notification),
               (override));
   MOCK_METHOD(absl::Status, SwitchNetwork,
-              (uint32_t, const Endpoint&, std::optional<NetworkInfo>, int),
-              (override));
+              (uint32_t, const Endpoint&, const NetworkInfo&, int), (override));
   MOCK_METHOD(void, PrepareForTunnelSwitch, (), (override));
   MOCK_METHOD(void, SwitchTunnel, (), (override));
   MOCK_METHOD(absl::Status, SetKeyMaterials, (const TransformParams&),
@@ -353,8 +341,7 @@ class SessionTest : public ::testing::Test {
     NetworkInfo network_info;
     network_info.set_network_id(123);
     network_info.set_network_type(NetworkType::CELLULAR);
-    EXPECT_CALL(*datapath_,
-                SwitchNetwork(123, _, NetworkInfoEquals(network_info), _))
+    EXPECT_CALL(*datapath_, SwitchNetwork(123, _, EqualsProto(network_info), _))
         .WillOnce(Return(absl::OkStatus()));
 
     EXPECT_OK(session_->SetNetwork(network_info));
@@ -517,9 +504,8 @@ TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
 
   NetworkInfo expected_network_info;
   expected_network_info.set_network_type(NetworkType::CELLULAR);
-  EXPECT_CALL(
-      *datapath_,
-      SwitchNetwork(123, _, NetworkInfoEquals(expected_network_info), _))
+  EXPECT_CALL(*datapath_,
+              SwitchNetwork(123, _, EqualsProto(expected_network_info), _))
       .WillOnce(Return(absl::OkStatus()));
 
   NetworkInfo network_info;
@@ -531,9 +517,8 @@ TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
   session_->DatapathEstablished();
 
   // No Network available.
-  EXPECT_CALL(*datapath_, SwitchNetwork(123, _, Eq(std::nullopt), _))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_OK(session_->SetNetwork(std::nullopt));
+  EXPECT_THAT(session_->SetNetwork(std::nullopt),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(SessionTest, SwitchNetworkToSameNetworkType) {
@@ -545,13 +530,13 @@ TEST_F(SessionTest, SwitchNetworkToSameNetworkType) {
 
   // Expect no tunnel fd change.
   EXPECT_CALL(*datapath_,
-              SwitchNetwork(123, _, NetworkInfoEquals(new_network_info), _))
+              SwitchNetwork(123, _, EqualsProto(new_network_info), _))
       .WillOnce(Return(absl::OkStatus()));
 
   EXPECT_OK(session_->SetNetwork(new_network_info));
   // Check all the parameters are correct in the session.
   EXPECT_THAT(session_->GetActiveNetworkInfoTestOnly(),
-              NetworkInfoEquals(new_network_info));
+              Optional(EqualsProto(new_network_info)));
 }
 
 TEST_F(SessionTest, DatapathReattemptFailure) {
@@ -576,14 +561,14 @@ TEST_F(SessionTest, DatapathReattemptFailure) {
                       123,
                       Endpoint("[2604:ca00:f001:4::5]:2153",
                                "2604:ca00:f001:4::5", 2153, IPProtocol::kIPv6),
-                      NetworkInfoEquals(expected_network_info), _))
+                      EqualsProto(expected_network_info), _))
           .WillOnce(Return(absl::OkStatus()));
     } else {
       EXPECT_CALL(*datapath_,
                   SwitchNetwork(123,
                                 Endpoint("64.9.240.165:2153", "64.9.240.165",
                                          2153, IPProtocol::kIPv4),
-                                NetworkInfoEquals(expected_network_info), _))
+                                EqualsProto(expected_network_info), _))
           .WillOnce(Return(absl::OkStatus()));
     }
 
@@ -619,13 +604,13 @@ TEST_F(SessionTest, SwitchNetworkToDifferentNetworkType) {
   new_network_info.set_network_type(NetworkType::WIFI);
 
   EXPECT_CALL(*datapath_,
-              SwitchNetwork(123, _, NetworkInfoEquals(new_network_info), _))
+              SwitchNetwork(123, _, EqualsProto(new_network_info), _))
       .WillOnce(Return(absl::OkStatus()));
 
   EXPECT_OK(session_->SetNetwork(new_network_info));
   // Check all the parameters are correct in the session.
   EXPECT_THAT(session_->GetActiveNetworkInfoTestOnly(),
-              NetworkInfoEquals(new_network_info));
+              Optional(EqualsProto(new_network_info)));
 }
 
 TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
@@ -638,8 +623,7 @@ TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
 
   ExpectSuccessfulDatapathInit();
 
-  EXPECT_CALL(*datapath_,
-              SwitchNetwork(_, _, NetworkInfoEquals(network_info), _));
+  EXPECT_CALL(*datapath_, SwitchNetwork(_, _, EqualsProto(network_info), _));
 
   session_->Start();
 
@@ -718,8 +702,7 @@ TEST_F(SessionTest, CalculateNetworkSwitchesDeltaForTelemetry) {
   NetworkInfo network_info;
   network_info.set_network_id(124);
   network_info.set_network_type(NetworkType::WIFI);
-  EXPECT_CALL(*datapath_,
-              SwitchNetwork(123, _, NetworkInfoEquals(network_info), _))
+  EXPECT_CALL(*datapath_, SwitchNetwork(123, _, EqualsProto(network_info), _))
       .WillOnce(Return(absl::OkStatus()));
   EXPECT_OK(session_->SetNetwork(network_info));
 

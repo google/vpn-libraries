@@ -73,7 +73,7 @@ class WintunDatapath
   void Stop() override;
 
   absl::Status SwitchNetwork(uint32_t session_id, const Endpoint& endpoint,
-                             std::optional<NetworkInfo> network_info,
+                             const NetworkInfo& network_info,
                              int counter) override;
 
   absl::Status SetKeyMaterials(const TransformParams& params) override;

@@ -73,12 +73,8 @@ void PPNDatapath::Stop() {
 }
 
 absl::Status PPNDatapath::SwitchNetwork(uint32_t session_id, const Endpoint& endpoint,
-                                        std::optional<NetworkInfo> network_info, int /*counter*/) {
+                                        const NetworkInfo& network_info, int /*counter*/) {
   LOG(INFO) << "Switching network";
-  if (!network_info) {
-    LOG(ERROR) << "network_info is unset";
-    return absl::InvalidArgumentError("network_info is unset");
-  }
 
   NEPacketTunnelFlow* packet_tunnel_flow = vpn_service_->GetPacketTunnelFlow();
   if (packet_tunnel_flow == nil) {

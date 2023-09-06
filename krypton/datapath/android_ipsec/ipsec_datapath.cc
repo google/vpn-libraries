@@ -78,15 +78,11 @@ void IpSecDatapath::Stop() {
   ShutDownIpSecPacketForwarder(/*close_network_socket=*/true);
 }
 
-absl::Status IpSecDatapath::SwitchNetwork(
-    uint32_t session_id, const Endpoint& endpoint,
-    std::optional<NetworkInfo> network_info, int /*counter*/) {
+absl::Status IpSecDatapath::SwitchNetwork(uint32_t session_id,
+                                          const Endpoint& endpoint,
+                                          const NetworkInfo& network_info,
+                                          int /*counter*/) {
   absl::MutexLock l(&mutex_);
-
-  if (!network_info) {
-    LOG(ERROR) << "network_info is unset";
-    return absl::InvalidArgumentError("network_info is unset");
-  }
 
   LOG(INFO) << "Switching Network";
 
@@ -110,9 +106,9 @@ absl::Status IpSecDatapath::SwitchNetwork(
   absl::StatusOr<std::unique_ptr<IpSecSocketInterface>> network_socket;
   if (config_.dynamic_mtu_enabled()) {
     std::unique_ptr<MtuTracker> mtu_tracker;
-    if (network_info->has_mtu()) {
+    if (network_info.has_mtu()) {
       mtu_tracker = std::make_unique<MtuTracker>(
-          endpoint.ip_protocol(), network_info->mtu(), this, &looper_);
+          endpoint.ip_protocol(), network_info.mtu(), this, &looper_);
     } else {
       mtu_tracker =
           std::make_unique<MtuTracker>(endpoint.ip_protocol(), this, &looper_);
@@ -121,11 +117,11 @@ absl::Status IpSecDatapath::SwitchNetwork(
         endpoint.ip_protocol() == IPProtocol::kIPv4 ? ipv4_tcp_mss_endpoint_
                                                     : ipv6_tcp_mss_endpoint_;
     network_socket = vpn_service_->CreateProtectedNetworkSocket(
-        *network_info, endpoint, mss_mtu_detection_endpoint,
+        network_info, endpoint, mss_mtu_detection_endpoint,
         std::move(mtu_tracker));
   } else {
     network_socket =
-        vpn_service_->CreateProtectedNetworkSocket(*network_info, endpoint);
+        vpn_service_->CreateProtectedNetworkSocket(network_info, endpoint);
   }
 
   if (!network_socket.ok()) {
@@ -141,7 +137,7 @@ absl::Status IpSecDatapath::SwitchNetwork(
   }
   int network_fd = (*network_socket)->GetFd();
 
-  key_material_->set_network_id(network_info->network_id());
+  key_material_->set_network_id(network_info.network_id());
   key_material_->set_network_fd(network_fd);
   key_material_->set_destination_address(endpoint.address());
   key_material_->set_destination_port(endpoint.port());
@@ -161,7 +157,7 @@ absl::Status IpSecDatapath::SwitchNetwork(
     return absl::InternalError("unsupported address family for endpoint");
   }
   LOG(INFO) << "Configuring IpSecManager with fd=" << network_fd
-            << " network=" << network_info->network_id()
+            << " network=" << network_info.network_id()
             << " uplink_spi=" << key_material_->uplink_spi()
             << " downlink_spi=" << key_material_->downlink_spi()
             << " endpoint=" + endpoint.ToString();

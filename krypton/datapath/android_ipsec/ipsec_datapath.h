@@ -97,7 +97,7 @@ class IpSecDatapath : public DatapathInterface,
   void Stop() override ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::Status SwitchNetwork(uint32_t session_id, const Endpoint& endpoint,
-                             std::optional<NetworkInfo> network_info,
+                             const NetworkInfo& network_info,
                              int counter) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Stops any processing that may try to access the current tunnel. If the

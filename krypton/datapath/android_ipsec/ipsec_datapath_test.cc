@@ -148,12 +148,6 @@ class IpSecDatapathTest : public ::testing::Test {
   TimerManager timer_manager_{&mock_timer_interface_};
 };
 
-TEST_F(IpSecDatapathTest, SwitchNetworkFailureNoNetworkSocket) {
-  EXPECT_THAT(datapath_->SwitchNetwork(1234, endpoint_, std::nullopt, 1),
-              StatusIs(util::error::INVALID_ARGUMENT,
-                       testing::HasSubstr("network_info")));
-}
-
 TEST_F(IpSecDatapathTest, SwitchNetworkFailureNoTunnelSocket) {
   EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(nullptr));
   absl::Notification failed;

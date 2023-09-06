@@ -92,7 +92,7 @@ class IpSecDatapath : public DatapathInterface,
 
   // Establishes the VPN tunnel.
   absl::Status SwitchNetwork(uint32_t session_id, const Endpoint& endpoint,
-                             std::optional<NetworkInfo> network_info,
+                             const NetworkInfo& network_info,
                              int counter) override;
 
   void PrepareForTunnelSwitch() override {}

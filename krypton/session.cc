@@ -671,7 +671,7 @@ absl::Status Session::ConnectDatapath() {
     LOG(INFO) << "Switching Network to network of type "
               << active_network_info_->network_type();
   } else {
-    LOG(INFO) << "Removing all networks in ConnectDatapath";
+    LOG(WARNING) << "Removing all networks in ConnectDatapath";
   }
 
   if (datapath_ == nullptr) {
@@ -721,13 +721,20 @@ absl::Status Session::ConnectDatapath() {
   if (datapath_connecting_timer_enabled_) {
     StartDatapathConnectingTimer();
   }
+
+  if (!active_network_info_) {
+    LOG(ERROR) << "ConnectDatapath called without active network.";
+    auto status = absl::InvalidArgumentError("no active network");
+    NotifyDatapathDisconnected(NetworkInfo(), status);
+    return status;
+  }
+  auto network_info = *active_network_info_;
+
   auto connect_data_status = datapath_->SwitchNetwork(
-      uplink_spi_, *ip, active_network_info_, current_restart_counter);
+      uplink_spi_, *ip, network_info, current_restart_counter);
 
   if (!connect_data_status.ok()) {
     LOG(ERROR) << "Switching networks failed: " << connect_data_status;
-    auto network_info =
-        active_network_info_ ? active_network_info_.value() : NetworkInfo();
     NotifyDatapathDisconnected(network_info, connect_data_status);
   }
 

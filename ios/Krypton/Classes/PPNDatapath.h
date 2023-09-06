@@ -91,7 +91,7 @@ class PPNDatapath : public DatapathInterface,
 
   // Establishes the VPN tunnel.
   absl::Status SwitchNetwork(uint32_t session_id, const Endpoint& endpoint,
-                             absl::optional<NetworkInfo> network_info,
+                             const NetworkInfo& network_info,
                              int counter) override;
 
   // Updates crypto keys.

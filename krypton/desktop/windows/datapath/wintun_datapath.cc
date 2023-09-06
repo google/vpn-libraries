@@ -14,8 +14,8 @@
 
 #include "privacy/net/krypton/desktop/windows/datapath/wintun_datapath.h"
 
+#include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "privacy/net/krypton/datapath/ipsec/ipsec_decryptor.h"
@@ -67,11 +67,12 @@ void WintunDatapath::Stop() {
   PPN_LOG_IF_ERROR(wintun_->EndSession());
 }
 
-absl::Status WintunDatapath::SwitchNetwork(
-    uint32_t session_id, const Endpoint& endpoint,
-    std::optional<NetworkInfo> network_info, int /*counter*/) {
+absl::Status WintunDatapath::SwitchNetwork(uint32_t session_id,
+                                           const Endpoint& endpoint,
+                                           const NetworkInfo& network_info,
+                                           int /*counter*/) {
   absl::MutexLock l(&mutex_);
-  LOG(INFO) << "Switching network to interface " << network_info->network_id();
+  LOG(INFO) << "Switching network to interface " << network_info.network_id();
   ShutdownPacketForwarder();
 
   // Start a Wintun session.
@@ -87,7 +88,7 @@ absl::Status WintunDatapath::SwitchNetwork(
   PPN_RETURN_IF_ERROR(wintun_->StartSession());
 
   // Create a network socket bound to the given network interface.
-  int active_interface_index = static_cast<int>(network_info->network_id());
+  int active_interface_index = static_cast<int>(network_info.network_id());
   if (endpoint.ip_protocol() == IPProtocol::kIPv4) {
     PPN_ASSIGN_OR_RETURN(auto active_if_addr, utils::GetInterfaceIPv4Address(
                                                   active_interface_index));

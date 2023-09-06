@@ -53,20 +53,8 @@ MATCHER_P(UrlMatcher, url, "Matches URL field of HttpRequest") {
   return arg.url() == url;
 }
 
-MATCHER_P(OptNetworkInfoEq, expected, "Matches std::optional<NetworkInfo>") {
-  if (expected.has_value() != arg.has_value()) {
-    return false;
-  }
-
-  if (!expected) {
-    return true;
-  }
-
-  return expected->network_id() == arg->network_id() &&
-         expected->network_type() == arg->network_type();
-}
-
 using ::testing::_;
+using ::testing::EqualsProto;
 using ::testing::Return;
 
 class MockTunnelManager : public TunnelManagerInterface {
@@ -93,8 +81,7 @@ class MockDatapath : public DatapathInterface {
               (DatapathInterface::NotificationInterface * notification),
               (override));
   MOCK_METHOD(absl::Status, SwitchNetwork,
-              (uint32_t, const Endpoint&, std::optional<NetworkInfo>, int),
-              (override));
+              (uint32_t, const Endpoint&, const NetworkInfo&, int), (override));
   MOCK_METHOD(void, PrepareForTunnelSwitch, (), (override));
   MOCK_METHOD(void, SwitchTunnel, (), (override));
   MOCK_METHOD(absl::Status, SetKeyMaterials, (const TransformParams&),
@@ -320,10 +307,10 @@ TEST_F(SessionManagerTest, SetNetworkWithSession) {
       .WillOnce([&mock_datapath] { return mock_datapath; });
 
   absl::Notification switch_network_called;
-  std::optional<NetworkInfo> initial_network_info = NetworkInfo();
-  initial_network_info->set_network_id(123);
+  NetworkInfo initial_network_info;
+  initial_network_info.set_network_id(123);
   EXPECT_CALL(*mock_datapath,
-              SwitchNetwork(_, _, OptNetworkInfoEq(initial_network_info), _))
+              SwitchNetwork(_, _, EqualsProto(initial_network_info), _))
       .WillOnce([&switch_network_called] {
         switch_network_called.Notify();
         return absl::OkStatus();
@@ -336,10 +323,10 @@ TEST_F(SessionManagerTest, SetNetworkWithSession) {
       switch_network_called.WaitForNotificationWithTimeout(absl::Seconds(1)));
 
   // Set up expectations for SetNetwork and call it
-  std::optional<NetworkInfo> updated_network_info = NetworkInfo();
-  updated_network_info->set_network_id(456);
+  NetworkInfo updated_network_info;
+  updated_network_info.set_network_id(456);
   EXPECT_CALL(*mock_datapath,
-              SwitchNetwork(_, _, OptNetworkInfoEq(updated_network_info), _));
+              SwitchNetwork(_, _, EqualsProto(updated_network_info), _));
 
   EXPECT_OK(session_manager_->SetNetwork(updated_network_info));
 

@@ -85,14 +85,11 @@ void IpSecDatapath::Stop() {
   looper_.Join();
 }
 
-absl::Status IpSecDatapath::SwitchNetwork(
-    uint32_t session_id, const Endpoint& endpoint,
-    std::optional<NetworkInfo> network_info, int /*counter*/) {
+absl::Status IpSecDatapath::SwitchNetwork(uint32_t session_id,
+                                          const Endpoint& endpoint,
+                                          const NetworkInfo& network_info,
+                                          int /*counter*/) {
   LOG(INFO) << "Switching network";
-  if (!network_info) {
-    LOG(ERROR) << "network_info is unset";
-    return absl::InvalidArgumentError("network_info is unset");
-  }
   auto tunnel = vpn_service_->GetTunnel();
   if (tunnel == nullptr) {
     LOG(ERROR) << "tunnel is null";

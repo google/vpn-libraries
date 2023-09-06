@@ -54,7 +54,7 @@ class MockDatapath : public DatapathInterface {
 
   MOCK_METHOD(absl::Status, SwitchNetwork,
               (uint32_t session_id, const Endpoint& endpoint,
-               std::optional<NetworkInfo> network_info, int counter),
+               const NetworkInfo& network_info, int counter),
               (override));
 
   MOCK_METHOD(void, PrepareForTunnelSwitch, (), (override));
