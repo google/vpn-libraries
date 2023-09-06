@@ -104,7 +104,7 @@ class AuthAndSignResponse {
                                bool enforce_copper_suffix);
 
   // Validates and sets the hostname.
-  absl::Status SetCopperHostname(const std::string& hostname,
+  absl::Status SetCopperHostname(absl::string_view hostname,
                                  const KryptonConfig& config,
                                  bool enforce_copper_suffix);
 

@@ -72,7 +72,7 @@ absl::Status AuthAndSignResponse::DecodeFromProto(
 }
 
 absl::Status AuthAndSignResponse::SetCopperHostname(
-    const std::string& hostname, const KryptonConfig& config,
+    absl::string_view hostname, const KryptonConfig& config,
     const bool enforce_copper_suffix) {
   if (hostname.empty()) {
     return absl::OkStatus();
