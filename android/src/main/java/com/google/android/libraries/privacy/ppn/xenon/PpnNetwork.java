@@ -19,45 +19,45 @@ import android.os.Build;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import java.util.concurrent.atomic.AtomicLong;
-import org.joda.time.DateTime;
 
 /** PpnNetwork used for a PpnConnection. */
 public final class PpnNetwork {
   // Used to generate a network ID on older versions of Android.
   private static final AtomicLong nextNetworkId = new AtomicLong(0);
+  private static final AtomicLong nextCreationIndex = new AtomicLong(1);
 
   private final NetworkType networkType;
   private final Network network;
-  private final DateTime creationTime;
   private final long networkId;
   private AddressFamily connectivity;
+  private final long creationIndex;
 
   public PpnNetwork(Network network, NetworkType networkType) {
     this.network = network;
     this.networkType = networkType;
-    this.creationTime = DateTime.now();
     this.networkId = generateNetworkId(network);
     this.connectivity = AddressFamily.V4V6;
+    this.creationIndex = nextCreationIndex.getAndIncrement();
   }
 
-  /** Getter method for the Network. */
   public Network getNetwork() {
     return network;
   }
 
-  /** Getter method for the NetworkType. */
   public NetworkType getNetworkType() {
     return networkType;
   }
 
-  /** Getter method for the creation time. */
-  public DateTime getCreationTime() {
-    return creationTime;
-  }
-
-  /** Getter method for the creation timestamp in epoch milliseconds since 1970-01-01T00:00:00Z. */
-  public long getCreationTimestamp() {
-    return creationTime.getMillis();
+  /**
+   * Gets the creation time as a counter. Generally, networks that were created more recently are
+   * preferred. This is calculated using the order that the PpnNetwork constructor was invoked,
+   * which is not an accurate measure of how long the network has been around. It is also not used
+   * in equals, so multiple PpnNetwork instances for the same network may have different times.
+   *
+   * <p>TODO: Remove time from network selection logic.
+   */
+  public long getCreationIndex() {
+    return creationIndex;
   }
 
   /** Gets a unique, opaque ID associated with the network. */

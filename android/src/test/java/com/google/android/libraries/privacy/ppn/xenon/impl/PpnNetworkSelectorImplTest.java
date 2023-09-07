@@ -27,7 +27,6 @@ import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkSelector;
 import com.google.common.collect.ImmutableList;
-import org.joda.time.DateTimeUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -41,7 +40,6 @@ import org.robolectric.shadows.ShadowWifiManager;
 
 @RunWith(RobolectricTestRunner.class)
 public final class PpnNetworkSelectorImplTest {
-  private long currentTime;
   private PpnNetworkSelector ppnNetworkSelector;
   private ShadowWifiManager shadowWifiManager;
 
@@ -52,11 +50,6 @@ public final class PpnNetworkSelectorImplTest {
   public void setUp() {
     Context context = ApplicationProvider.getApplicationContext();
     shadowWifiManager = shadowOf(context.getSystemService(WifiManager.class));
-
-    // Set our current Joda time as according to our currentTime variable.
-    currentTime = 1000L;
-    DateTimeUtils.setCurrentMillisFixed(currentTime);
-
     ppnNetworkSelector = new PpnNetworkSelectorImpl(context);
   }
 
@@ -79,32 +72,15 @@ public final class PpnNetworkSelectorImplTest {
   }
 
   @Test
-  public void testGetBestNetwork_defaultStrategy_ties() throws Exception {
-    ImmutableList<PpnNetwork> availableNetworks =
-        ImmutableList.of(
-            new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 1), NetworkType.WIFI),
-            new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 2), NetworkType.WIFI));
-
-    PpnNetwork bestNetwork = ppnNetworkSelector.getBestNetwork(availableNetworks);
-    // We expect the Wifi network with netId 1 to be returned.
-    assertThat(shadowOf(bestNetwork.getNetwork()).getNetId()).isEqualTo(1);
-    assertThat(bestNetwork.getNetworkType()).isEqualTo(NetworkType.WIFI);
-  }
-
-  @Test
   public void testGetBestNetwork_defaultStrategy_newerNetworks() throws Exception {
     PpnNetwork cellNetwork1 =
         new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 1), NetworkType.CELLULAR);
-    advanceTime();
     PpnNetwork cellNetwork2 =
         new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 2), NetworkType.CELLULAR);
-    advanceTime();
     PpnNetwork cellNetwork3 =
         new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 3), NetworkType.CELLULAR);
-    advanceTime();
     PpnNetwork wifiNetwork4 =
         new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 4), NetworkType.WIFI);
-    advanceTime();
     PpnNetwork wifiNetwork5 =
         new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 5), NetworkType.WIFI);
 
@@ -268,11 +244,5 @@ public final class PpnNetworkSelectorImplTest {
 
     // We are returning UNKNOWN for Cellular Connections needing to lookup the RSSI
     assertThat(connectionQuality).isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
-  }
-
-  // Advances our currentTime variable by 1 milliseconds.
-  private void advanceTime() {
-    currentTime += 1;
-    DateTimeUtils.setCurrentMillisFixed(currentTime);
   }
 }

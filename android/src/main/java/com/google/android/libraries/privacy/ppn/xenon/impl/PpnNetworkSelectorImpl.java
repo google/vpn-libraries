@@ -49,7 +49,7 @@ final class PpnNetworkSelectorImpl implements PpnNetworkSelector {
       Comparator.<PpnNetwork>comparingInt((ppnNetwork) -> ppnNetwork.getNetworkType().getNumber())
           // We want to order later networks first -- hence the -1 multiplier to inverse the
           // timestamps
-          .thenComparingLong((ppnNetwork) -> ppnNetwork.getCreationTimestamp() * -1);
+          .thenComparingLong((ppnNetwork) -> ppnNetwork.getCreationIndex() * -1);
 
   public PpnNetworkSelectorImpl(Context context) {
     this.context = context;
