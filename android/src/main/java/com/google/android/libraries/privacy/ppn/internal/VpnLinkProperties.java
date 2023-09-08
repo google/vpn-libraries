@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn.internal;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import com.google.auto.value.AutoValue;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 
 /** LinkProperties being tracked for VPN Networks */
@@ -24,7 +25,7 @@ import com.google.common.collect.ImmutableList;
 abstract class VpnLinkProperties {
   static VpnLinkProperties fromLinkProperties(LinkProperties linkProperties) {
     return new AutoValue_VpnLinkProperties(
-        linkProperties.getInterfaceName(),
+        Strings.nullToEmpty(linkProperties.getInterfaceName()),
         linkProperties.getMtu(),
         ImmutableList.copyOf(linkProperties.getLinkAddresses()));
   }
