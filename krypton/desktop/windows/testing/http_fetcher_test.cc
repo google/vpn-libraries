@@ -89,7 +89,7 @@ int main(int argc, char* argv[]) {
   auto oauth_token = absl::GetFlag(FLAGS_oauth_token);
   HttpFetcher http_fetcher;
 
-  auto resolved_address = http_fetcher.LookupDns("na.b.g-tun.com");
+  auto resolved_address = http_fetcher.LookupDns("na4.p.g-tun.com");
   if (!resolved_address.ok()) {
     LOG(ERROR) << "LookupDns failed: " << resolved_address.status();
     return 0;

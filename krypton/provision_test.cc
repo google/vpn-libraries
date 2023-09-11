@@ -391,7 +391,7 @@ TEST_F(ProvisionTest, TestAuthResponseSetCopperControllerHostname) {
 TEST_F(ProvisionTest, TestAuthResponseDefaultCopperControllerHostname) {
   absl::Notification done;
 
-  EXPECT_CALL(http_fetcher_, LookupDns(StrEq("na.b.g-tun.com")));
+  EXPECT_CALL(http_fetcher_, LookupDns(StrEq("na4.p.g-tun.com")));
 
   EXPECT_CALL(notification_, Provisioned(_, _)).WillOnce([&done]() {
     done.Notify();

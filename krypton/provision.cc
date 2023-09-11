@@ -57,7 +57,7 @@ namespace krypton {
 namespace {
 
 // Reattempts exclude the first attempt.
-constexpr char kDefaultCopperAddress[] = "na.b.g-tun.com";
+constexpr char kDefaultCopperAddress[] = "na4.p.g-tun.com";
 
 constexpr int kControlPlanePort = 1849;
 

@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
       config.set_brass_url(absl::StrCat(
           "https://staging.brass.cloud.cupronickel.goog", "/addegress"));
       config.set_service_type("g1");
-      config.set_copper_controller_address("na.b.g-tun.com");
+      config.set_copper_controller_address("na4.p.g-tun.com");
       config.add_copper_hostname_suffix("g-tun.com");
       config.set_zinc_public_signing_key_url(absl::StrCat(
           "https://staging.zinc.cloud.cupronickel.goog", "/publickey"));

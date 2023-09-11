@@ -52,7 +52,7 @@ ABSL_FLAG(std::string, zinc_addr, "https://staging.zinc.cloud.cupronickel.goog",
           "zinc DNS address");
 ABSL_FLAG(std::string, brass_addr,
           "https://staging.brass.cloud.cupronickel.goog", "brass DNS address");
-ABSL_FLAG(std::string, copper_addr, "na.b.g-tun.com",
+ABSL_FLAG(std::string, copper_addr, "na4.p.g-tun.com",
           "Copper Controller DNS address");
 ABSL_FLAG(std::string, oauth_token, "", "Valid OAuth token");
 ABSL_FLAG(bool, safe_disconnect, false, "Enable safe disconnect");
