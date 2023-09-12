@@ -57,7 +57,7 @@ class SessionManager : public SessionManagerInterface {
 
   void ForceTunnelUpdate() override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::Status SetNetwork(std::optional<NetworkInfo> network_info) override
+  absl::Status SetNetwork(const NetworkInfo& network_info) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void CollectTelemetry(KryptonTelemetry* telemetry);

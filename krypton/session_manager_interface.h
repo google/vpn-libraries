@@ -17,7 +17,10 @@
 
 #include <optional>
 
+#include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/session.h"
+#include "privacy/net/krypton/tunnel_manager_interface.h"
+#include "third_party/absl/status/status.h"
 
 namespace privacy {
 namespace krypton {
@@ -37,8 +40,9 @@ class SessionManagerInterface {
 
   virtual void ForceTunnelUpdate() = 0;
 
-  virtual absl::Status SetNetwork(std::optional<NetworkInfo> network_info) = 0;
+  virtual absl::Status SetNetwork(const NetworkInfo& network_info) = 0;
 };
+
 }  // namespace krypton
 }  // namespace privacy
 #endif  // PRIVACY_NET_KRYPTON_SESSION_MANAGER_INTERFACE_H_

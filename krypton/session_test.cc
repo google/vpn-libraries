@@ -515,10 +515,6 @@ TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
 
   EXPECT_CALL(notification_, DatapathConnected());
   session_->DatapathEstablished();
-
-  // No Network available.
-  EXPECT_THAT(session_->SetNetwork(std::nullopt),
-              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(SessionTest, SwitchNetworkToSameNetworkType) {

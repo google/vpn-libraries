@@ -137,7 +137,7 @@ class Session : public DatapathInterface::NotificationInterface,
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Switch network.
-  absl::Status SetNetwork(std::optional<NetworkInfo> network_info)
+  absl::Status SetNetwork(const NetworkInfo& network_info)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void CollectTelemetry(KryptonTelemetry* telemetry)
@@ -200,9 +200,8 @@ class Session : public DatapathInterface::NotificationInterface,
 
   void StartDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void UpdateActiveNetworkInfo(std::optional<NetworkInfo> network_info)
+  absl::Status ConnectDatapath(const NetworkInfo& network_info)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  absl::Status ConnectDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   absl::Status BuildTunFdData(TunFdData* tun_fd_data) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

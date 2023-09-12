@@ -477,8 +477,8 @@ void Session::StartDatapath() {
     SetState(State::kSessionError, datapath_status);
     return;
   }
-  // Datapath initialized is treated as connected event. In case of failure,
-  // we should get a failure from datapath.
+  // Datapath initialized is treated as control-plane connected event. In case
+  // of failure later, we should get a failure from datapath.
   SetState(State::kConnected, absl::OkStatus());
 
   if (!active_network_info_) {
@@ -486,7 +486,7 @@ void Session::StartDatapath() {
     return;
   }
   LOG(INFO) << "Active network is available, switching the network";
-  auto status = ConnectDatapath();
+  auto status = ConnectDatapath(*active_network_info_);
   if (!status.ok()) {
     LOG(ERROR) << "Switching datapath failed with status: " << status;
   }
@@ -580,7 +580,6 @@ void Session::ResetAllDatapathReattempts() {
 
 void Session::AttemptDatapathReconnect() {
   absl::MutexLock l(&mutex_);
-  NetworkInfo new_network_info;
   LOG(INFO) << "Datapath reconnect timer expiry";
 
   if (datapath_reattempt_timer_id_ == kInvalidTimerId) {
@@ -603,9 +602,7 @@ void Session::AttemptDatapathReconnect() {
     NotifyDatapathDisconnected(NetworkInfo(), latest_datapath_status_);
     return;
   }
-
-  // Everything looks good as we got a new network fd, connect datapath.
-  auto status = ConnectDatapath();
+  auto status = ConnectDatapath(*active_network_info_);
   if (!status.ok()) {
     LOG(ERROR) << "ConnectDatapath failed with status:" << status;
   }
@@ -640,39 +637,27 @@ void Session::DatapathPermanentFailure(const absl::Status& status) {
   NotifyDatapathDisconnected(NetworkInfo(), status);
 }
 
-void Session::UpdateActiveNetworkInfo(std::optional<NetworkInfo> network_info) {
-  // Based on the feedback from Android Eng, the underlying network should be
-  // the right choice and IsMetered should only be used when the VPN itself is
-  // charging.
-  active_network_info_ = network_info;
-}
-
-absl::Status Session::SetNetwork(std::optional<NetworkInfo> network_info) {
+absl::Status Session::SetNetwork(const NetworkInfo& network_info) {
   absl::MutexLock l(&mutex_);
-  if (network_info) {
-    LOG(INFO) << "Switching network to "
-              << utils::NetworkInfoDebugString(*network_info);
-  } else {
-    LOG(INFO) << "Switching network to null network.";
-  }
-  UpdateActiveNetworkInfo(network_info);
+  LOG(INFO) << "Switching network to "
+            << utils::NetworkInfoDebugString(network_info);
+  active_network_info_ = network_info;
   ResetAllDatapathReattempts();
 
   if (state_ != State::kConnected) {
-    LOG(INFO) << "Session is not in connected state, caching active network fd";
+    LOG(INFO) << "Session is not in connected state, caching active network";
     return absl::OkStatus();
   }
 
-  return ConnectDatapath();
+  return ConnectDatapath(network_info);
 }
 
-absl::Status Session::ConnectDatapath() {
-  if (active_network_info_) {
-    LOG(INFO) << "Switching Network to network of type "
-              << active_network_info_->network_type();
-  } else {
-    LOG(WARNING) << "Removing all networks in ConnectDatapath";
-  }
+absl::Status Session::ConnectDatapath(const NetworkInfo& network_info) {
+  // The network_info passed into this method should always be the same as
+  // active_network_info_. It's passed into the method like this to enforce that
+  // this method should never be called when the active_network_info_ is null.
+  LOG(INFO) << "Switching Network to network of type "
+            << network_info.network_type();
 
   if (datapath_ == nullptr) {
     LOG(ERROR) << "Datapath is not initialized";
@@ -704,12 +689,8 @@ absl::Status Session::ConnectDatapath() {
   LOG(INFO) << "Got tunnel";
 
   auto current_restart_counter = network_switches_count_.fetch_add(1);
-  if (active_network_info_) {
-    LOG(INFO) << "ConnectDatapath Counter " << current_restart_counter
-              << " for network type " << active_network_info_->network_type();
-  } else {
-    LOG(INFO) << "ConnectDatapath removing all networks";
-  }
+  LOG(INFO) << "ConnectDatapath Counter " << current_restart_counter
+            << " for network type " << network_info.network_type();
 
   auto ip = datapath_address_selector_.SelectDatapathAddress();
   if (!ip.ok()) {
@@ -721,14 +702,6 @@ absl::Status Session::ConnectDatapath() {
   if (datapath_connecting_timer_enabled_) {
     StartDatapathConnectingTimer();
   }
-
-  if (!active_network_info_) {
-    LOG(ERROR) << "ConnectDatapath called without active network.";
-    auto status = absl::InvalidArgumentError("no active network");
-    NotifyDatapathDisconnected(NetworkInfo(), status);
-    return status;
-  }
-  auto network_info = *active_network_info_;
 
   auto connect_data_status = datapath_->SwitchNetwork(
       uplink_spi_, *ip, network_info, current_restart_counter);
@@ -869,6 +842,8 @@ void Session::ProvisioningFailure(absl::Status status, bool permanent) {
 
 void Session::HandleDatapathFailure(const absl::Status& status) {
   if (!active_network_info_) {
+    // This should generally never happen, as the active network should never
+    // go from set to unset.
     LOG(INFO) << "Received event after network info was reset.";
     return;
   }
@@ -892,9 +867,7 @@ void Session::HandleDatapathFailure(const absl::Status& status) {
 
   // Datapath failure is not treated as session failure. These are
   // notifications to the upper layers to fix the network.
-  auto network_info =
-      active_network_info_ ? active_network_info_.value() : NetworkInfo();
-  NotifyDatapathDisconnected(network_info, status);
+  NotifyDatapathDisconnected(*active_network_info_, status);
 }
 
 void Session::NotifyDatapathDisconnected(const NetworkInfo& network_info,

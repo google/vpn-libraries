@@ -600,7 +600,7 @@ absl::Status Reconnector::SetNetwork(std::optional<NetworkInfo> network_info) {
   }
 
   // If we are paused state, resume by trying reconnection.
-  if (network_info && state_ == kPaused) {
+  if (state_ == kPaused) {
     LOG(INFO) << "Session is in Paused state, unpausing it";
     StartReconnection();
     return absl::OkStatus();
@@ -611,7 +611,7 @@ absl::Status Reconnector::SetNetwork(std::optional<NetworkInfo> network_info) {
   }
 
   // If there is a SessionManager, pass on the info.
-  return session_manager_->SetNetwork(active_network_info_);
+  return session_manager_->SetNetwork(*network_info);
 }
 
 DisconnectionStatus Reconnector::GetDisconnectionStatus(

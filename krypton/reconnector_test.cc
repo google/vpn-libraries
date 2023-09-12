@@ -71,8 +71,7 @@ class MockSessionManagerInterface : public SessionManagerInterface {
               (override));
   MOCK_METHOD(void, TerminateSession, (bool), (override));
   MOCK_METHOD(void, ForceTunnelUpdate, (), (override));
-  MOCK_METHOD(absl::Status, SetNetwork, (std::optional<NetworkInfo>),
-              (override));
+  MOCK_METHOD(absl::Status, SetNetwork, (const NetworkInfo&), (override));
 };
 
 class MockTunnelManager : public TunnelManagerInterface {

@@ -128,8 +128,7 @@ void SessionManager::ForceTunnelUpdate() {
   }
 }
 
-absl::Status SessionManager::SetNetwork(
-    std::optional<NetworkInfo> network_info) {
+absl::Status SessionManager::SetNetwork(const NetworkInfo& network_info) {
   absl::MutexLock l(&mutex_);
   if (session_ == nullptr) {
     return absl::OkStatus();
