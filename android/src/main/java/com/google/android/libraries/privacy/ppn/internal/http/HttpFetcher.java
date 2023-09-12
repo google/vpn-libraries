@@ -312,6 +312,11 @@ public class HttpFetcher {
           @Override
           public void onFailure(Call call, IOException e) {
             // The failed request may have sensitive info, so don't log it.
+            // There is special handling in logcat that filters out UnknownHostException, but we
+            // need to know if that's why the request failed, so log that case explicitly.
+            if (e instanceof UnknownHostException) {
+              Log.w(TAG, "Failed http request due to UnknownHostException.");
+            }
             Log.w(TAG, "Failed http request.", e);
             tcs.setResult(buildHttpResponse(500, "IOException executing request"));
           }
@@ -339,6 +344,14 @@ public class HttpFetcher {
             if (header != null && header.equals(PROTO_CONTENT_TYPE)) {
               try {
                 ByteString bytes = ByteString.readFrom(response.body().byteStream());
+
+                // Limit response length to 1 MB before proto parsing.
+                if (bytes.size() > 1024 * 1024) {
+                  Log.w(TAG, "Response body length exceeds limit of 1MB.");
+                  tcs.setResult(buildHttpResponse(500, "response length exceeds limit of 1MB"));
+                  return;
+                }
+
                 responseBuilder.setProtoBody(bytes);
               } catch (IOException e) {
                 // The failed response may have sensitive info, so don't log it.

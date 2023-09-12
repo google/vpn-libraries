@@ -24,8 +24,8 @@ import android.util.Log;
 import com.google.android.libraries.privacy.ppn.internal.HttpRequest;
 import com.google.android.libraries.privacy.ppn.internal.HttpResponse;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
-import com.google.android.libraries.privacy.ppn.internal.json.Json;
 import com.google.common.net.InetAddresses;
+import com.google.protobuf.ByteString;
 import com.squareup.okhttp.mockwebserver.MockResponse;
 import com.squareup.okhttp.mockwebserver.MockWebServer;
 import com.squareup.okhttp.mockwebserver.RecordedRequest;
@@ -39,8 +39,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.SocketFactory;
 import okio.Buffer;
-import org.json.JSONException;
-import org.json.JSONObject;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -54,6 +53,10 @@ import org.robolectric.RobolectricTestRunner;
 @RunWith(RobolectricTestRunner.class)
 public class HttpFetcherTest {
   private static final String TAG = "HttpFetcherTest";
+  private static final String VALID_JSON_REQUEST_BODY = "{\"foo\":\"bar\"}";
+  private static final String VALID_JSON_RESPONSE_BODY = "{\"baz\":\"qux\"}";
+  private static final byte[] VALID_PROTO_REQUEST_BODY = {0x01, 0x02, 0x03};
+  private static final byte[] VALID_PROTO_RESPONSE_BODY = {0x03, 0x02, 0x01};
 
   @Rule public final MockitoRule mocks = MockitoJUnit.rule();
   private final InetAddress address = InetAddresses.forString("127.0.0.1");
@@ -61,43 +64,40 @@ public class HttpFetcherTest {
   @Mock private BoundSocketFactoryFactory socketFactoryFactory;
 
   private HttpFetcher httpFetcher;
+  private MockWebServer mockWebServer;
 
   @Before
-  public void setUp() {
+  public void setUp() throws Exception {
     when(socketFactoryFactory.withCurrentNetwork()).thenReturn(SocketFactory.getDefault());
     when(socketFactoryFactory.withNetwork(any())).thenReturn(SocketFactory.getDefault());
     httpFetcher = new HttpFetcher(socketFactoryFactory);
     httpFetcher.setTimeout(Duration.ofSeconds(1));
+
+    mockWebServer = new MockWebServer();
+    mockWebServer.start();
   }
 
-  private static JSONObject buildJsonBody() {
-    final JSONObject message = new JSONObject();
-    Json.put(message, "oauth_token", "some_token");
-    return message;
+  @After
+  public void tearDown() throws Exception {
+    mockWebServer.shutdown();
   }
 
-  private static HttpRequest buildHttpRequest(String url) {
+  private static HttpRequest buildJsonHttpRequest(String url) {
     return HttpRequest.newBuilder()
         .setUrl(url)
         .putHeaders("header1", "header1_value")
         .putHeaders("header2", "header2_value")
-        .setJsonBody(buildJsonBody().toString())
+        .setJsonBody(VALID_JSON_REQUEST_BODY)
         .build();
   }
 
-  private static JSONObject buildJsonResponse() throws JSONException {
-    final JSONObject jsonContent = new JSONObject();
-    jsonContent.put("jwt_token", "some_token");
-    return jsonContent;
-  }
-
-  private static MockResponse buildPositiveMockResponse() throws JSONException {
-    // mock a simple response with the JSON Content
-    final MockResponse response = new MockResponse();
-    final JSONObject jsonContent = buildJsonResponse();
-    response.setBody(jsonContent.toString());
-    response.setHeader("Content-Type", "application/json; charset=utf-8");
-    return response;
+  private static HttpRequest buildProtoHttpRequest(String url) {
+    return HttpRequest.newBuilder()
+        .setUrl(url)
+        .putHeaders("header1", "header1_value")
+        .putHeaders("header2", "header2_value")
+        .setProtoBody(ByteString.copyFrom(VALID_PROTO_REQUEST_BODY))
+        .build();
   }
 
   private static MockResponse buildHugeMockResponse() {
@@ -108,75 +108,131 @@ public class HttpFetcherTest {
     Buffer buffer = new Buffer();
     buffer.write(body);
     response.setBody(buffer);
-    response.setHeader("Content-Type", "application/json; charset=utf-8");
     return response;
   }
 
-  @Test
-  public void testHttp() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
-    mockWebServer.enqueue(buildPositiveMockResponse());
+  private static MockResponse buildHugeJsonMockResponse() {
+    return buildHugeMockResponse().setHeader("Content-Type", "application/json; charset=utf-8");
+  }
 
-    HttpResponse response = postJson(buildHttpRequest(mockWebServer.url("/").toString()));
+  private static MockResponse buildHugeProtoMockResponse() {
+    return buildHugeMockResponse().setHeader("Content-Type", "application/x-protobuf");
+  }
+
+  @Test
+  public void testHttpJson() throws Exception {
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setHeader("Content-Type", "application/json; charset=utf-8")
+            .setStatus("HTTP/1.1 200 OK")
+            .setBody(VALID_JSON_RESPONSE_BODY));
+
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
     assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
     RecordedRequest request = mockWebServer.takeRequest();
     String receivedBody = request.getBody().readUtf8();
-    assertThat(receivedBody).isEqualTo(buildJsonBody().toString());
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
     assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
 
     assertThat(response.getStatus().getCode()).isEqualTo(200);
-    assertThat(response.getJsonBody()).isEqualTo(buildJsonResponse().toString());
-    mockWebServer.shutdown();
+    assertThat(response.getStatus().getMessage()).isEqualTo("OK");
+    assertThat(response.getJsonBody()).isEqualTo(VALID_JSON_RESPONSE_BODY);
+    assertThat(response.hasProtoBody()).isFalse();
+  }
+
+  @Test
+  public void testHttpProto() throws Exception {
+    Buffer requestBody = new Buffer();
+    requestBody.write(VALID_PROTO_RESPONSE_BODY);
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setHeader("Content-Type", "application/x-protobuf")
+            .setStatus("HTTP/1.1 200 OK")
+            .setBody(requestBody));
+
+    HttpResponse response = postJson(buildProtoHttpRequest(mockWebServer.url("/").toString()));
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    byte[] receivedBody = request.getBody().readByteArray();
+    assertThat(receivedBody).isEqualTo(VALID_PROTO_REQUEST_BODY);
+    assertThat(request.getHeader("Content-Type")).isEqualTo("application/x-protobuf");
+
+    assertThat(response.getStatus().getCode()).isEqualTo(200);
+    assertThat(response.getStatus().getMessage()).isEqualTo("OK");
+    assertThat(response.getProtoBody().toByteArray()).isEqualTo(VALID_PROTO_RESPONSE_BODY);
+    assertThat(response.hasJsonBody()).isFalse();
   }
 
   @Test
   public void testToInvalidHost() throws Exception {
-    HttpResponse response = postJson(buildHttpRequest("http://unknown"));
+    HttpResponse response = postJson(buildJsonHttpRequest("http://unknown"));
     assertThat(response.getStatus().getCode()).isEqualTo(500);
     assertThat(response.getStatus().getMessage()).isEqualTo("IOException executing request");
   }
 
   @Test
-  public void testNegativeResponse() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
-
+  public void testNegativeJsonResponse() throws Exception {
     mockWebServer.enqueue(
-        new MockResponse().setResponseCode(402).setBody("Something went wrong in the server"));
-    HttpResponse response = postJson(buildHttpRequest(mockWebServer.url("/").toString()));
+        new MockResponse()
+            .setStatus("HTTP/1.1 402 Payment Required")
+            .addHeader("Content-Type: application/json; charset=utf-8")
+            .setBody("Something went wrong in the server"));
+
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
+
     assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
     RecordedRequest request = mockWebServer.takeRequest();
     String receivedBody = request.getBody().readUtf8();
-    assertThat(receivedBody).isEqualTo(buildJsonBody().toString());
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
     assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
+
     assertThat(response.getStatus().getCode()).isEqualTo(402);
-    assertThat(response.getJsonBody()).isEmpty();
-    mockWebServer.shutdown();
+    assertThat(response.getStatus().getMessage()).isEqualTo("Payment Required");
+    assertThat(response.hasJsonBody()).isFalse();
+    assertThat(response.hasProtoBody()).isFalse();
+  }
+
+  @Test
+  public void testNegativeProtoResponse() throws Exception {
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setStatus("HTTP/1.1 402 Payment Required")
+            .addHeader("Content-Type: application/x-protobuf")
+            .setBody("Something went wrong in the server"));
+
+    HttpResponse response = postJson(buildProtoHttpRequest(mockWebServer.url("/").toString()));
+
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    assertThat(request.getHeader("Content-Type")).isEqualTo("application/x-protobuf");
+    assertThat(request.getBody().readByteArray()).isEqualTo(VALID_PROTO_REQUEST_BODY);
+
+    assertThat(response.getStatus().getCode()).isEqualTo(402);
+    assertThat(response.getStatus().getMessage()).isEqualTo("Payment Required");
+    assertThat(response.hasJsonBody()).isFalse();
+    assertThat(response.hasProtoBody()).isFalse();
   }
 
   @Test
   public void testNoResponse() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
     mockWebServer.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE));
 
-    HttpResponse response = postJson(buildHttpRequest(mockWebServer.url("/").toString()));
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
 
     assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
     RecordedRequest request = mockWebServer.takeRequest();
     String receivedBody = request.getBody().readUtf8();
-    assertThat(receivedBody).isEqualTo(buildJsonBody().toString());
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
     assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
+
     assertThat(response.getStatus().getCode()).isEqualTo(500);
     assertThat(response.getStatus().getMessage()).isEqualTo("IOException executing request");
-    mockWebServer.shutdown();
+    assertThat(response.hasJsonBody()).isFalse();
+    assertThat(response.hasProtoBody()).isFalse();
   }
 
   @Test
   public void testDnsTimeout() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
     // Override the DNS provider with one that will hang forever.
     FutureTask<Void> future =
         new FutureTask<>(
@@ -195,7 +251,7 @@ public class HttpFetcherTest {
           return Dns.SYSTEM.lookup(hostname);
         });
 
-    HttpResponse response = postJson(buildHttpRequest("http://example.com"));
+    HttpResponse response = postJson(buildJsonHttpRequest("http://example.com"));
 
     assertThat(mockWebServer.getRequestCount()).isEqualTo(0);
     assertThat(response.getStatus().getCode()).isEqualTo(504);
@@ -203,13 +259,10 @@ public class HttpFetcherTest {
 
     // Now that the request is finished, unblock the MockWebServer.
     future.run();
-    mockWebServer.shutdown();
   }
 
   @Test
   public void testDnsTimeoutOnCheckGet() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
     // Override the DNS provider with one that will hang forever.
     FutureTask<Void> future = new FutureTask<>(() -> null);
     httpFetcher.setDns(
@@ -231,13 +284,10 @@ public class HttpFetcherTest {
 
     // Now that the request is finished, unblock the MockWebServer.
     future.run();
-    mockWebServer.shutdown();
   }
 
   @Test
   public void testDnsCachingOnCheckGetTimesOutInitially() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
     // Override the DNS provider with one that will hang forever.
     FutureTask<Void> future = new FutureTask<>(() -> null);
     Dns hangingDns =
@@ -266,13 +316,10 @@ public class HttpFetcherTest {
 
     // Now that the request is finished, unblock the MockWebServer.
     future.run();
-    mockWebServer.shutdown();
   }
 
   @Test
   public void testDnsCachingOnCheckGetHandlesTimeout() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
     // Override the DNS provider with one that will hang forever.
     FutureTask<Void> future = new FutureTask<>(() -> null);
     Dns hangingDns =
@@ -301,15 +348,11 @@ public class HttpFetcherTest {
 
     // Now that the request is finished, unblock the MockWebServer.
     future.run();
-    mockWebServer.shutdown();
   }
 
   @Test
   public void testDnsCachingOnCheckGetSucceedsOnSecondRun() throws Exception {
-    // Set up the mock web server to respond to a GET request.
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
-    mockWebServer.enqueue(new MockResponse().setResponseCode(200));
+    mockWebServer.enqueue(new MockResponse().setStatus("HTTP/1.1 200 OK"));
     Log.e(TAG, "MockWebServer serving at " + mockWebServer.getHostName());
 
     // Create a Dns implementation that we can make hang or not.
@@ -356,62 +399,191 @@ public class HttpFetcherTest {
 
     // Now that the request is finished, unblock the MockWebServer.
     future.run();
-    mockWebServer.shutdown();
   }
 
   @Test
-  public void testEmpty() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
-    mockWebServer.enqueue(new MockResponse().setResponseCode(200));
-    HttpResponse response = postJson(buildHttpRequest(mockWebServer.url("/").toString()));
+  public void testEmptyJson_withOkStatus() throws Exception {
+    // A response with 200 and no JSON is considered malformed.
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setStatus("HTTP/1.1 200 OK")
+            .addHeader("Content-Type: application/json; charset=utf-8"));
+
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
+
     assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
     RecordedRequest request = mockWebServer.takeRequest();
     String receivedBody = request.getBody().readUtf8();
-    assertThat(receivedBody).isEqualTo(buildJsonBody().toString());
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
     assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
+
     assertThat(response.getStatus().getCode()).isEqualTo(500);
     assertThat(response.getStatus().getMessage()).isEqualTo("invalid response JSON");
-    mockWebServer.shutdown();
+    assertThat(response.hasJsonBody()).isFalse();
+    assertThat(response.hasProtoBody()).isFalse();
+  }
+
+  @Test
+  public void testEmptyProtoSuccess() throws Exception {
+    // A response with 200 and no proto bytes is acceptable, as a default proto can encode that way.
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setStatus("HTTP/1.1 200 OK")
+            .addHeader("Content-Type: application/x-protobuf"));
+
+    HttpResponse response = postJson(buildProtoHttpRequest(mockWebServer.url("/").toString()));
+
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    assertThat(request.getBody().readByteArray()).isEqualTo(VALID_PROTO_REQUEST_BODY);
+    assertThat(request.getHeader("Content-Type")).isEqualTo("application/x-protobuf");
+
+    assertThat(response.getStatus().getCode()).isEqualTo(200);
+    assertThat(response.getStatus().getMessage()).isEqualTo("OK");
+    assertThat(response.hasProtoBody()).isTrue();
+    assertThat(response.getProtoBody()).isEqualTo(ByteString.EMPTY);
+    assertThat(response.hasJsonBody()).isFalse();
+  }
+
+  @Test
+  public void testEmptyJsonError() throws Exception {
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setStatus("HTTP/1.1 400 Bad Request")
+            .addHeader("Content-Type: application/json; charset=utf-8"));
+
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
+
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    String receivedBody = request.getBody().readUtf8();
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
+    assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
+
+    assertThat(response.getStatus().getCode()).isEqualTo(400);
+    assertThat(response.getStatus().getMessage()).isEqualTo("Bad Request");
+    assertThat(response.hasJsonBody()).isFalse();
+    assertThat(response.hasProtoBody()).isFalse();
+  }
+
+  @Test
+  public void testEmptyProtoError() throws Exception {
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setStatus("HTTP/1.1 400 Bad Request")
+            .addHeader("Content-Type: application/x-protobuf"));
+
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
+
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    String receivedBody = request.getBody().readUtf8();
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
+    assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
+
+    assertThat(response.getStatus().getCode()).isEqualTo(400);
+    assertThat(response.getStatus().getMessage()).isEqualTo("Bad Request");
+    assertThat(response.hasJsonBody()).isFalse();
+    assertThat(response.hasProtoBody()).isFalse();
   }
 
   @Test
   public void testMalformedJsonBody() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
-    mockWebServer.enqueue(new MockResponse().setBody("{\"abc:123}").setResponseCode(200));
-    HttpResponse response = postJson(buildHttpRequest(mockWebServer.url("/").toString()));
+    mockWebServer.enqueue(new MockResponse().setBody("{\"abc:123}").setStatus("HTTP/1.1 200 OK"));
+
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
+
     assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
     RecordedRequest request = mockWebServer.takeRequest();
     String receivedBody = request.getBody().readUtf8();
-    assertThat(receivedBody).isEqualTo(buildJsonBody().toString());
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
     assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
+
     assertThat(response.getStatus().getCode()).isEqualTo(500);
     assertThat(response.getStatus().getMessage()).isEqualTo("invalid response JSON");
-    mockWebServer.shutdown();
+    assertThat(response.hasJsonBody()).isFalse();
+    assertThat(response.hasProtoBody()).isFalse();
   }
 
   @Test
-  public void testHugeResponse() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
-    mockWebServer.enqueue(buildHugeMockResponse());
-    HttpResponse response = postJson(buildHttpRequest(mockWebServer.url("/").toString()));
+  public void testHugeJsonResponse() throws Exception {
+    mockWebServer.enqueue(buildHugeJsonMockResponse());
+
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
     assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
     RecordedRequest request = mockWebServer.takeRequest();
     String receivedBody = request.getBody().readUtf8();
-    assertThat(receivedBody).isEqualTo(buildJsonBody().toString());
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
     assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
+
     assertThat(response.getStatus().getCode()).isEqualTo(500);
     assertThat(response.getStatus().getMessage()).isEqualTo("response length exceeds limit of 1MB");
-    mockWebServer.shutdown();
+    assertThat(response.hasProtoBody()).isFalse();
+    assertThat(response.hasJsonBody()).isFalse();
+  }
+
+  @Test
+  public void testHugeProtoResponse() throws Exception {
+    mockWebServer.enqueue(buildHugeProtoMockResponse());
+
+    HttpResponse response = postJson(buildProtoHttpRequest(mockWebServer.url("/").toString()));
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    assertThat(request.getBody().readByteArray()).isEqualTo(VALID_PROTO_REQUEST_BODY);
+    assertThat(request.getHeader("Content-Type")).isEqualTo("application/x-protobuf");
+
+    assertThat(response.getStatus().getCode()).isEqualTo(500);
+    assertThat(response.getStatus().getMessage()).isEqualTo("response length exceeds limit of 1MB");
+    assertThat(response.hasJsonBody()).isFalse();
+    assertThat(response.hasProtoBody()).isFalse();
+  }
+
+  @Test
+  public void testMalformedJsonErrorBody() throws Exception {
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setBody("This is not JSON.")
+            .setStatus("HTTP/1.1 400 Bad Request")
+            .addHeader("Content-Type: application/json; charset=utf-8"));
+
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
+
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    String receivedBody = request.getBody().readUtf8();
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
+    assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
+
+    assertThat(response.getStatus().getCode()).isEqualTo(400);
+    assertThat(response.getStatus().getMessage()).isEqualTo("Bad Request");
+    assertThat(response.hasProtoBody()).isFalse();
+    assertThat(response.hasJsonBody()).isFalse();
+  }
+
+  @Test
+  public void testMalformedProtoErrorBody() throws Exception {
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setBody("This is not a proto.")
+            .setStatus("HTTP/1.1 400 Bad Request")
+            .addHeader("Content-Type: application/x-protobuf"));
+
+    HttpResponse response = postJson(buildProtoHttpRequest(mockWebServer.url("/").toString()));
+
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    assertThat(request.getBody().readByteArray()).isEqualTo(VALID_PROTO_REQUEST_BODY);
+    assertThat(request.getHeader("Content-Type")).isEqualTo("application/x-protobuf");
+
+    assertThat(response.getStatus().getCode()).isEqualTo(400);
+    assertThat(response.getStatus().getMessage()).isEqualTo("Bad Request");
+    assertThat(response.hasJsonBody()).isFalse();
+    assertThat(response.hasProtoBody()).isFalse();
   }
 
   @Test
   public void testCheckGet() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
-    mockWebServer.enqueue(buildPositiveMockResponse());
+    mockWebServer.enqueue(new MockResponse().setStatus("HTTP/1.1 200 OK"));
 
     boolean got = checkGet(mockWebServer.url("/").toString());
 
@@ -419,29 +591,21 @@ public class HttpFetcherTest {
     RecordedRequest request = mockWebServer.takeRequest();
     assertThat(request.getMethod()).isEqualTo("GET");
     assertThat(got).isTrue();
-
-    mockWebServer.shutdown();
   }
 
   @Test
   public void testCheckGetIpv4() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
-    mockWebServer.enqueue(buildPositiveMockResponse());
+    mockWebServer.enqueue(new MockResponse().setStatus("HTTP/1.1 200 OK"));
 
     boolean got = checkGet(mockWebServer.url("/").toString(), AddressFamily.V4);
 
     assertThat(mockWebServer.getRequestCount()).isEqualTo(0);
     assertThat(got).isFalse();
-
-    mockWebServer.shutdown();
   }
 
   @Test
   public void testCheckGetIpv6() throws Exception {
-    MockWebServer mockWebServer = new MockWebServer();
-    mockWebServer.start();
-    mockWebServer.enqueue(buildPositiveMockResponse());
+    mockWebServer.enqueue(new MockResponse().setStatus("HTTP/1.1 200 OK"));
 
     boolean got = checkGet(mockWebServer.url("/").toString(), AddressFamily.V6);
 
@@ -449,8 +613,6 @@ public class HttpFetcherTest {
     RecordedRequest request = mockWebServer.takeRequest();
     assertThat(request.getMethod()).isEqualTo("GET");
     assertThat(got).isTrue();
-
-    mockWebServer.shutdown();
   }
 
   @Test
@@ -486,7 +648,7 @@ public class HttpFetcherTest {
    * the synchronous checkGet method cannot be called on the main thread.
    */
   private boolean checkGet(String url) throws Exception {
-    // Override the multinetwork DNS lookup, since the test framework doesn't support it.
+    // Override the multi-network DNS lookup, since the test framework doesn't support it.
     when(mockNetwork.getAllByName(anyString()))
         .then(invocation -> InetAddress.getAllByName(invocation.getArgument(0)));
     FutureTask<Boolean> future = new FutureTask<>(() -> httpFetcher.checkGet(url, mockNetwork));
@@ -500,7 +662,7 @@ public class HttpFetcherTest {
    * checkGet can be restricted with addressFamily.
    */
   private boolean checkGet(String url, AddressFamily addressFamily) throws Exception {
-    // Override the multinetwork DNS lookup, since the test framework doesn't support it.
+    // Override the multi-network DNS lookup, since the test framework doesn't support it.
     when(mockNetwork.getAllByName(anyString()))
         .then(invocation -> InetAddress.getAllByName(invocation.getArgument(0)));
     FutureTask<Boolean> future =
