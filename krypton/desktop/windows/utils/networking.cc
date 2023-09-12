@@ -132,7 +132,9 @@ absl::Status SetAdapterDefaultRoute(NET_LUID interface_luid,
   memset(&row, 0, sizeof(row));
   PopulateForwardRow(&row, interface_luid, interface_index, AF_INET);
   auto result = CreateIpForwardEntry2(&row);
-  if (result != NO_ERROR) {
+  // Ignore ERROR_OBJECT_ALREADY_EXISTS. If the default route already exists,
+  // throwing an error will block the reconnection attempt.
+  if (result != NO_ERROR && result != ERROR_OBJECT_ALREADY_EXISTS) {
     return GetStatusForError("CreateIpForwardEntry2 (IPv4) error", result);
   }
 
@@ -140,7 +142,7 @@ absl::Status SetAdapterDefaultRoute(NET_LUID interface_luid,
   memset(&row, 0, sizeof(row));
   PopulateForwardRow(&row, interface_luid, interface_index, AF_INET6);
   result = CreateIpForwardEntry2(&row);
-  if (result != NO_ERROR) {
+  if (result != NO_ERROR && result != ERROR_OBJECT_ALREADY_EXISTS) {
     return GetStatusForError("CreateIpForwardEntry2 (IPv6) error", result);
   }
 
