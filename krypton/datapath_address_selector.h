@@ -23,6 +23,7 @@
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/types/span.h"
 
 namespace privacy {
 namespace krypton {
@@ -39,7 +40,7 @@ class DatapathAddressSelector {
 
   // Resets the selector with a new set of addresses to try.
   // This should be called whenever the datapath is ready to reconnect.
-  void Reset(const std::vector<std::string>& addresses,
+  void Reset(absl::Span<const std::string> addresses,
              std::optional<NetworkInfo> network_info)
       ABSL_LOCKS_EXCLUDED(mutex_);
 

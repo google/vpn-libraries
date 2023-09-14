@@ -21,13 +21,14 @@
 #include "base/logging.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/utils/ip_range.h"
+#include "third_party/absl/types/span.h"
 
 namespace privacy {
 namespace krypton {
 
 constexpr int MAX_ATTEMPTS_PER_ADDRESS_FAMILY = 2;
 
-void DatapathAddressSelector::Reset(const std::vector<std::string>& addresses,
+void DatapathAddressSelector::Reset(absl::Span<const std::string> addresses,
                                     std::optional<NetworkInfo> network_info) {
   absl::MutexLock l(&mutex_);
   datapath_attempts_ = 0;
