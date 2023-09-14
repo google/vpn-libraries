@@ -20,13 +20,14 @@
 
 #include "testing/base/public/gunit.h"
 #include "testing/fuzzing/fuzztest.h"
+#include "third_party/absl/types/span.h"
 
 namespace {
 
 using privacy::ppn::BytesToUint64;
 using privacy::ppn::Uint64ToBytes;
 
-void TestUint64ToKeyAndBack(const std::vector<uint64_t>& input) {
+void TestUint64ToKeyAndBack(absl::Span<const uint64_t> input) {
   std::vector<uint64_t> vals;
   std::vector<std::string> keys;
   for (const uint64_t u64 : input) {
