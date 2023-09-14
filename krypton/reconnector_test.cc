@@ -24,6 +24,7 @@
 #include "privacy/net/krypton/pal/mock_timer_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/session.h"
@@ -57,6 +58,7 @@ class MockSessionNotification : public Session::NotificationInterface {
   MOCK_METHOD(void, ControlPlaneDisconnected, (const absl::Status&),
               (override));
   MOCK_METHOD(void, PermanentFailure, (const absl::Status&), (override));
+  MOCK_METHOD(void, DatapathConnecting, (), (override));
   MOCK_METHOD(void, DatapathConnected, (), (override));
   MOCK_METHOD(void, DatapathDisconnected,
               (const NetworkInfo& network, const absl::Status&), (override));
@@ -590,6 +592,22 @@ TEST_F(DatapathReconnectorTest, TestDatapathSuccessful) {
   EXPECT_EQ(0, reconnector_->SuccessiveDatapathFailuresTestOnly());
   EXPECT_EQ(0, reconnector_->SuccessiveControlplaneFailuresTestOnly());
   EXPECT_EQ(-1, reconnector_->DatapathWatchdogTimerIdTestOnly());
+}
+
+TEST_F(DatapathReconnectorTest, TestDatapathConnectingCounters) {
+  reconnector_->DatapathConnecting();
+  reconnector_->DatapathConnecting();
+  reconnector_->DatapathConnected();
+
+  KryptonTelemetry telemetry;
+  reconnector_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.data_plane_connecting_attempts(), 2);
+  EXPECT_EQ(telemetry.data_plane_connecting_successes(), 1);
+
+  // Check values are reset when telemetry collected
+  reconnector_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.data_plane_connecting_attempts(), 0);
+  EXPECT_EQ(telemetry.data_plane_connecting_successes(), 0);
 }
 
 TEST_F(DatapathReconnectorTest, TestDatapathWatchtimerIsRunning) {

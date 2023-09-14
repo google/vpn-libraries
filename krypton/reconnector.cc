@@ -447,8 +447,16 @@ void Reconnector::SetState(Reconnector::State state) {
   state_ = state;
 }
 
+void Reconnector::DatapathConnecting() {
+  LOG(INFO) << "Attempting to connect datapath.";
+  absl::MutexLock l(&mutex_);
+  ++telemetry_data_.data_plane_connecting_attempts;
+}
+
 void Reconnector::DatapathConnected() {
   LOG(INFO) << "Datapath connected.";
+  absl::MutexLock l(&mutex_);
+  ++telemetry_data_.data_plane_connecting_successes;
   // This has no impact on the reconnection logic and the status is propagated
   // to UX layer as Connected.
   auto notification = notification_;
@@ -458,7 +466,6 @@ void Reconnector::DatapathConnected() {
   notification_thread_->Post(
       [notification, status] { notification->Connected(status); });
   // Cancel any datapath watchdog timer and reset the counts.
-  absl::MutexLock l(&mutex_);
   successive_datapath_failures_ = 0;
   CancelDatapathWatchdogTimerIfRunning();
 }
@@ -659,7 +666,11 @@ void Reconnector::CollectTelemetry(KryptonTelemetry* telemetry) {
   telemetry->set_control_plane_failures(telemetry_data_.control_plane_failures);
   telemetry->set_data_plane_failures(telemetry_data_.data_plane_failures);
   telemetry->set_session_restarts(telemetry_data_.session_restarts);
-  telemetry_data_.Reset();
+  telemetry->set_data_plane_connecting_attempts(
+      telemetry_data_.data_plane_connecting_attempts);
+  telemetry->set_data_plane_connecting_successes(
+      telemetry_data_.data_plane_connecting_successes);
+  telemetry_data_ = TelemetryData();
 }
 
 }  // namespace krypton

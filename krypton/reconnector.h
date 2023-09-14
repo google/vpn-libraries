@@ -62,14 +62,11 @@ class Reconnector : public Session::NotificationInterface {
   };
 
   struct TelemetryData {
-    void Reset() {
-      control_plane_failures = 0;
-      data_plane_failures = 0;
-      session_restarts = 0;
-    }
     int control_plane_failures = 0;
     int data_plane_failures = 0;
     int session_restarts = 0;
+    int data_plane_connecting_attempts = 0;
+    int data_plane_connecting_successes = 0;
   };
 
   static constexpr int kInvalidTimerId = -1;
@@ -95,6 +92,7 @@ class Reconnector : public Session::NotificationInterface {
 
   void ControlPlaneConnected() ABSL_LOCKS_EXCLUDED(mutex_) override;
 
+  void DatapathConnecting() ABSL_LOCKS_EXCLUDED(mutex_) override;
   void DatapathConnected() ABSL_LOCKS_EXCLUDED(mutex_) override;
   void DatapathDisconnected(const NetworkInfo& network,
                             const absl::Status& reason)
@@ -201,7 +199,7 @@ class Reconnector : public Session::NotificationInterface {
   // connected.
   uint32_t successive_datapath_failures_ ABSL_GUARDED_BY(mutex_) = 0;
   uint32_t successive_control_plane_failures_ ABSL_GUARDED_BY(mutex_) = 0;
-  TelemetryData telemetry_data_;
+  TelemetryData telemetry_data_ ABSL_GUARDED_BY(mutex_);
   absl::Time snooze_end_time_;
 };
 

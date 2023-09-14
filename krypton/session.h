@@ -79,6 +79,8 @@ class Session : public DatapathInterface::NotificationInterface,
     virtual void PermanentFailure(const absl::Status& status) = 0;
 
     // Datapath events
+    // Attempting to connect datapath.
+    virtual void DatapathConnecting() = 0;
     // Datapath has been established and the tunnel is up for user traffic.
     virtual void DatapathConnected() = 0;
     // Datapath is disconnected and the user traffic is not flowing through the
@@ -244,6 +246,8 @@ class Session : public DatapathInterface::NotificationInterface,
   void NotifyDatapathDisconnected(const NetworkInfo& network_info,
                                   const absl::Status& status)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void NotifyDatapathConnecting() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;
 

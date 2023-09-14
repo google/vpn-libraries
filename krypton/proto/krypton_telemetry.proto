@@ -38,7 +38,12 @@ message KryptonTelemetry {
   optional uint32 network_switches = 4;
 
   optional uint32 control_plane_failures = 5;
+
+  // The number of times a datapath is found unusable. This is not analogous
+  // to data_plane_connecting fields, as a datapath can fail after it was
+  // previously connected.
   optional uint32 data_plane_failures = 6;
+
   optional uint32 session_restarts = 7;
 
   // Provides latency for each token getting operation during Auth
@@ -48,4 +53,10 @@ message KryptonTelemetry {
   // Provides latency for each token verification during Auth request.
   // Array size represents the total number of zinc_url that were called.
   repeated google.protobuf.Duration zinc_latency = 9;
+
+  // The number of attempts to connect a datapath.
+  optional uint32 data_plane_connecting_attempts = 10;
+
+  // The number of times a datapath was successfully connected.
+  optional uint32 data_plane_connecting_successes = 11;
 }

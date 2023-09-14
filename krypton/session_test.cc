@@ -73,6 +73,7 @@ namespace {
 using ::proto2::contrib::parse_proto::ParseTextProtoOrDie;
 using ::testing::_;
 using ::testing::AnyNumber;
+using ::testing::AtLeast;
 using ::testing::DoAll;
 using ::testing::Eq;
 using ::testing::EqualsProto;
@@ -92,6 +93,7 @@ class MockSessionNotification : public Session::NotificationInterface {
   MOCK_METHOD(void, ControlPlaneDisconnected, (const absl::Status&),
               (override));
   MOCK_METHOD(void, PermanentFailure, (const absl::Status&), (override));
+  MOCK_METHOD(void, DatapathConnecting, (), (override));
   MOCK_METHOD(void, DatapathConnected, (), (override));
   MOCK_METHOD(void, DatapathDisconnected,
               (const NetworkInfo&, const absl::Status&), (override));
@@ -341,6 +343,7 @@ class SessionTest : public ::testing::Test {
     NetworkInfo network_info;
     network_info.set_network_id(123);
     network_info.set_network_type(NetworkType::CELLULAR);
+    EXPECT_CALL(notification_, DatapathConnecting()).Times(AtLeast(1));
     EXPECT_CALL(*datapath_, SwitchNetwork(123, _, EqualsProto(network_info), _))
         .WillOnce(Return(absl::OkStatus()));
 

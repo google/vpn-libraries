@@ -659,6 +659,7 @@ absl::Status Session::ConnectDatapath(const NetworkInfo& network_info) {
   LOG(INFO) << "Switching Network to network of type "
             << network_info.network_type();
 
+  NotifyDatapathConnecting();
   if (datapath_ == nullptr) {
     LOG(ERROR) << "Datapath is not initialized";
     auto status = absl::FailedPreconditionError("Datapath is not initialized");
@@ -874,10 +875,16 @@ void Session::NotifyDatapathDisconnected(const NetworkInfo& network_info,
                                          const absl::Status& status) {
   CancelDatapathConnectingTimerIfRunning();
   tunnel_manager_->DatapathStopped(/*force_fail_open=*/false);
-  auto* notification = notification_;
+  NotificationInterface* notification = notification_;
   notification_thread_->Post([notification, status, network_info] {
     notification->DatapathDisconnected(network_info, status);
   });
+}
+
+void Session::NotifyDatapathConnecting() {
+  NotificationInterface* notification = notification_;
+  notification_thread_->Post(
+      [notification] { notification->DatapathConnecting(); });
 }
 
 }  // namespace krypton
