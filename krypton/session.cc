@@ -23,7 +23,6 @@
 #include <string>
 #include <utility>
 
-#include "google/protobuf/duration.proto.h"
 #include "privacy/net/brass/rpc/brass.proto.h"
 #include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/common/proto/update_path_info.proto.h"
@@ -59,7 +58,6 @@
 #include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
-#include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/json/include/nlohmann/json.hpp"
@@ -76,7 +74,6 @@ namespace krypton {
 namespace {
 
 constexpr int kInvalidTimerId = -1;
-constexpr absl::Duration kFetchTimerDuration = absl::Minutes(5);
 constexpr absl::Duration kDatapathReattemptDuration = absl::Milliseconds(500);
 constexpr absl::Duration kDefaultRekeyDuration = absl::Hours(24);
 constexpr absl::Duration kDefaultDatapathConnectingDuration = absl::Seconds(20);
@@ -145,6 +142,7 @@ Session::Session(const KryptonConfig& config, std::unique_ptr<Auth> auth,
       datapath_(std::move(ABSL_DIE_IF_NULL(datapath))),
       datapath_connecting_timer_enabled_(false),
       datapath_connecting_timer_duration_(kDefaultDatapathConnectingDuration),
+      rekey_timer_duration_(kDefaultRekeyDuration),
       vpn_service_(ABSL_DIE_IF_NULL(vpn_service)),
       timer_manager_(ABSL_DIE_IF_NULL(timer_manager)),
       notification_thread_(ABSL_DIE_IF_NULL(notification_thread)),
@@ -183,20 +181,29 @@ Session::Session(const KryptonConfig& config, std::unique_ptr<Auth> auth,
                       "valid duration.";
     }
   }
+
+  if (config_.has_rekey_duration()) {
+    auto duration = utils::DurationFromProto(config_.rekey_duration());
+    if (duration.ok()) {
+      rekey_timer_duration_ = *duration;
+    } else {
+      LOG(WARNING) << "Failed to parse rekey duration: " << duration.status();
+    }
+  }
 }
 
 Session::~Session() {
   absl::MutexLock l(&mutex_);
   CancelDatapathReattemptTimerIfRunning();
-  CancelFetcherTimerIfRunning();
+  CancelRekeyTimerIfRunning();
   CancelDatapathConnectingTimerIfRunning();
 }
 
-void Session::CancelFetcherTimerIfRunning() {
-  if (fetch_timer_id_ != kInvalidTimerId) {
-    timer_manager_->CancelTimer(fetch_timer_id_);
+void Session::CancelRekeyTimerIfRunning() {
+  if (rekey_timer_id_ != kInvalidTimerId) {
+    timer_manager_->CancelTimer(rekey_timer_id_);
   }
-  fetch_timer_id_ = kInvalidTimerId;
+  rekey_timer_id_ = kInvalidTimerId;
 }
 
 void Session::CancelDatapathReattemptTimerIfRunning() {
@@ -291,7 +298,8 @@ void Session::SetState(State state, absl::Status status) {
     case State::kConnected:
       notification_thread_->Post(
           [notification] { notification->ControlPlaneConnected(); });
-      StartFetchCountersTimer();
+      // Schedule the first rekey
+      StartRekeyTimer();
       break;
     case State::kSessionError:
       notification_thread_->Post([notification, status] {
@@ -314,12 +322,14 @@ void Session::Start() {
 
 void Session::Stop(bool forceFailOpen) {
   absl::MutexLock l(&mutex_);
-  CancelFetcherTimerIfRunning();
+  CancelRekeyTimerIfRunning();
   CancelDatapathReattemptTimerIfRunning();
   CancelDatapathConnectingTimerIfRunning();
   provision_->Stop();
-  datapath_->Stop();
-  datapath_ = nullptr;
+  if (datapath_ != nullptr) {
+    datapath_->Stop();
+    datapath_.reset();
+  }
   tunnel_manager_->DatapathStopped(forceFailOpen);
 }
 
@@ -429,7 +439,6 @@ void Session::RekeyDatapath() {
     return;
   }
   LOG(INFO) << "Rekey is successful";
-  last_rekey_time_ = absl::Now();
   number_of_rekeys_.fetch_add(1);
 }
 
@@ -492,18 +501,17 @@ void Session::StartDatapath() {
   }
 }
 
-void Session::StartFetchCountersTimer() {
-  // Start fetching the counters every 5 mins.
-  CancelFetcherTimerIfRunning();
-  LOG(INFO) << "Starting FetchCounters timer.";
-  auto timer_id = timer_manager_->StartTimer(
-      kFetchTimerDuration, absl::bind_front(&Session::FetchCounters, this),
-      "FetchCounters");
+void Session::StartRekeyTimer() {
+  CancelRekeyTimerIfRunning();
+  LOG(INFO) << "Starting Rekey timer.";
+  absl::StatusOr<int> timer_id = timer_manager_->StartTimer(
+      rekey_timer_duration_,
+      absl::bind_front(&Session::HandleRekeyTimerExpiry, this), "Rekey");
   if (!timer_id.ok()) {
-    LOG(ERROR) << "Cannot StartTimer for fetch counters";
+    LOG(ERROR) << "Cannot StartTimer for Rekey";
     return;
   }
-  fetch_timer_id_ = *timer_id;
+  rekey_timer_id_ = *timer_id;
 }
 
 void Session::StartDatapathReattemptTimer() {
@@ -517,7 +525,6 @@ void Session::StartDatapathReattemptTimer() {
     LOG(ERROR) << "Cannot StartTimer for DatapathReattempt";
     return;
   }
-
   datapath_reattempt_timer_id_ = *timer_id;
 }
 
@@ -535,24 +542,16 @@ void Session::StartDatapathConnectingTimer() {
   datapath_connecting_timer_id_ = *timer_id;
 }
 
-void Session::FetchCounters() {
+void Session::HandleRekeyTimerExpiry() {
   absl::MutexLock l(&mutex_);
-  if (fetch_timer_id_ == kInvalidTimerId) {
-    LOG(INFO) << "Fetch timer is already cancelled";
+  LOG(INFO) << "Rekey timer expired";
+  if (rekey_timer_id_ == kInvalidTimerId) {
+    LOG(INFO) << "Rekey timer is already cancelled";
     return;
   }
-
-  fetch_timer_id_ = kInvalidTimerId;
-  LOG(INFO) << "Fetching counters";
-
-  if (absl::Now() - last_rekey_time_ >
-      (config_.has_rekey_duration()
-           ? absl::Seconds(config_.rekey_duration().seconds())
-           : kDefaultRekeyDuration)) {
-    LOG(INFO) << "Starting Rekey procedures";
-    Rekey();
-  }
-  StartFetchCountersTimer();
+  rekey_timer_id_ = kInvalidTimerId;
+  LOG(INFO) << "Starting rekey";
+  Rekey();
 }
 
 void Session::DatapathEstablished() {
@@ -795,9 +794,6 @@ void Session::Provisioned(const AddEgressResponse& egress_response,
                           bool is_rekey) {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "Establishing PpnDataplane [IPsec | Bridge]";
-  // Set the last rekey. This could be the first one where it's initialized or
-  // part of the rekey procedures. Rekey is only valid for PpnDataPlane.
-  last_rekey_time_ = absl::Now();
 
   add_egress_response_ = egress_response;
   auto ppn_dataplane = add_egress_response_->ppn_dataplane_response();
@@ -830,6 +826,9 @@ void Session::Provisioned(const AddEgressResponse& egress_response,
   }
 
   RekeyDatapath();
+
+  // Schedule the next rekey
+  StartRekeyTimer();
 }
 
 void Session::ProvisioningFailure(absl::Status status, bool permanent) {

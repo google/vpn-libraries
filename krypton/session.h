@@ -195,7 +195,7 @@ class Session : public DatapathInterface::NotificationInterface,
 
  private:
   // Callback methods from timers.
-  void FetchCounters() ABSL_LOCKS_EXCLUDED(mutex_);
+  void HandleRekeyTimerExpiry() ABSL_LOCKS_EXCLUDED(mutex_);
 
   void SetState(State state, absl::Status status)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -207,7 +207,7 @@ class Session : public DatapathInterface::NotificationInterface,
   absl::Status BuildTunFdData(TunFdData* tun_fd_data) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void StartFetchCountersTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void StartRekeyTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void StartDatapathReattemptTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void StartDatapathConnectingTimer() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -228,7 +228,7 @@ class Session : public DatapathInterface::NotificationInterface,
 
   void Rekey() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void RekeyDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  void CancelFetcherTimerIfRunning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void CancelRekeyTimerIfRunning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelDatapathReattemptTimerIfRunning()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelDatapathConnectingTimerIfRunning()
@@ -257,7 +257,8 @@ class Session : public DatapathInterface::NotificationInterface,
 
   bool datapath_connecting_timer_enabled_ ABSL_GUARDED_BY(mutex_);
   absl::Duration datapath_connecting_timer_duration_ ABSL_GUARDED_BY(mutex_);
-  int fetch_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
+  absl::Duration rekey_timer_duration_ ABSL_GUARDED_BY(mutex_);
+  int rekey_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int datapath_reattempt_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int datapath_connecting_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
 
@@ -293,7 +294,6 @@ class Session : public DatapathInterface::NotificationInterface,
   int tunnel_mtu_ ABSL_GUARDED_BY(mutex_) = 1395;
 
   std::atomic_bool datapath_connected_ ABSL_GUARDED_BY(mutex_) = false;
-  absl::Time last_rekey_time_ ABSL_GUARDED_BY(mutex_);
   // Keep track of the network switches count at last telemetry collection.
   int network_switches_count_last_collection_ ABSL_GUARDED_BY(mutex_) = 0;
   std::atomic_int number_of_rekeys_ = 0;

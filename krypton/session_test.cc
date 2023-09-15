@@ -64,7 +64,6 @@
 #include "third_party/anonymous_tokens/cpp/testing/proto_utils.h"
 #include "third_party/anonymous_tokens/cpp/testing/utils.h"
 #include "third_party/json/include/nlohmann/json.hpp"
-#include "util/task/status.h"
 
 namespace privacy {
 namespace krypton {
@@ -81,6 +80,7 @@ using ::testing::Invoke;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Optional;
 using ::testing::Return;
+using ::testing::SaveArg;
 using ::testing::SetArgPointee;
 using ::testing::status::IsOk;
 using ::testing::status::StatusIs;
@@ -123,23 +123,7 @@ class SessionTest : public ::testing::Test {
   SessionTest() : tunnel_manager_(&vpn_service_, false) {}
 
   void SetUp() override {
-    auto datapath = std::make_unique<MockDatapath>();
-    datapath_ = datapath.get();
-
-    EXPECT_CALL(*datapath_, RegisterNotificationHandler)
-        .WillOnce(
-            Invoke([&](DatapathInterface::NotificationInterface* notification) {
-              datapath_notification_ = notification;
-            }));
-
-    auto auth = std::make_unique<Auth>(config_, &http_fetcher_, &oauth_);
-    auto egress_manager =
-        std::make_unique<EgressManager>(config_, &http_fetcher_);
-    session_ = std::make_unique<Session>(
-        config_, std::move(auth), std::move(egress_manager),
-        std::move(datapath), &vpn_service_, &timer_manager_, &http_fetcher_,
-        &tunnel_manager_, std::nullopt, &looper_);
-    session_->RegisterNotificationHandler(&notification_);
+    CreateSession();
 
     ASSERT_OK_AND_ASSIGN(
         key_pair_, ::private_membership::anonymous_tokens::CreateTestKey());
@@ -161,6 +145,24 @@ class SessionTest : public ::testing::Test {
         });
     ON_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
         .WillByDefault([this] { return CreateAddEgressHttpResponse(); });
+  }
+
+  void CreateSession() {
+    auto datapath = std::make_unique<MockDatapath>();
+    datapath_ = datapath.get();
+
+    EXPECT_CALL(*datapath_, RegisterNotificationHandler)
+        .WillOnce(
+            Invoke([&](DatapathInterface::NotificationInterface* notification) {
+              datapath_notification_ = notification;
+            }));
+
+    session_ = std::make_unique<Session>(
+        config_, std::make_unique<Auth>(config_, &http_fetcher_, &oauth_),
+        std::make_unique<EgressManager>(config_, &http_fetcher_),
+        std::move(datapath), &vpn_service_, &timer_manager_, &http_fetcher_,
+        &tunnel_manager_, std::nullopt, &looper_);
+    session_->RegisterNotificationHandler(&notification_);
   }
 
   HttpResponse CreateAddEgressHttpResponse() {
@@ -297,10 +299,7 @@ class SessionTest : public ::testing::Test {
     return tun_fd_data;
   }
 
-  void WaitForDatapathStart() {
-    ASSERT_TRUE(
-        datapath_started_.WaitForNotificationWithTimeout(absl::Seconds(3)));
-  }
+  void WaitForDatapathStart() { datapath_started_.WaitForNotification(); }
 
   void WaitForNotifications() {
     absl::Mutex lock;
@@ -314,12 +313,6 @@ class SessionTest : public ::testing::Test {
   }
 
   void ExpectSuccessfulDatapathInit() {
-    EXPECT_CALL(timer_interface_, StartTimer(_, absl::Minutes(5)));
-
-    // Expect the DatapathConnecting timer to be started
-    EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(10)))
-        .Times(AnyNumber());
-
     EXPECT_CALL(notification_, ControlPlaneConnected());
 
     EXPECT_CALL(*datapath_, Start(_, _))
@@ -408,17 +401,49 @@ TEST_F(SessionTest, DatapathInitFailure) {
   });
 
   session_->Start();
-  EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  done.WaitForNotification();
   EXPECT_THAT(session_->LatestStatusTestOnly(),
               StatusIs(util::error::INVALID_ARGUMENT, "Initialization error"));
 
   EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kSessionError);
 }
 
-TEST_F(SessionTest, DatapathInitSuccessful) { BringDatapathToConnected(); }
+TEST_F(SessionTest, DatapathConnectSuccessful) { BringDatapathToConnected(); }
+
+TEST_F(SessionTest, DatapathConnectStartsTimers) {
+  // Expect the rekey timer to be started
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Hours(24)));
+
+  // Expect the DatapathConnecting timer to be started
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(10)));
+
+  BringDatapathToConnected();
+}
+
+TEST_F(SessionTest, SessionUsesRekeyTimerDurationFromKryptonConfig) {
+  // Stop and delete the Session created with the original config
+  session_->Stop(/*forceFailOpen=*/true);
+  session_.reset();
+
+  // Update the Rekey duration of the config
+  config_.mutable_rekey_duration()->set_seconds(30);
+  config_.mutable_rekey_duration()->set_nanos(0);
+
+  // Create a new session with the new config values
+  CreateSession();
+
+  // Expect the DatapathConnecting timer to be started
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(10)));
+
+  // Expect the rekey timer to be started with the new duration
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(30)));
+
+  BringDatapathToConnected();
+}
 
 TEST_F(SessionTest, DatapathConnectingTimerExpired) {
-  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Minutes(5)));
+  // Expect the rekey timer to be started
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Hours(24)));
 
   EXPECT_CALL(notification_, ControlPlaneConnected());
 
@@ -440,8 +465,6 @@ TEST_F(SessionTest, DatapathConnectingTimerExpired) {
       });
 
   NetworkInfo network_info;
-  network_info.set_network_id(123);
-  network_info.set_network_type(NetworkType::CELLULAR);
   EXPECT_OK(session_->SetNetwork(network_info));
 
   // Expect the datapath reattempt to be scheduled after the datapath connecting
@@ -455,12 +478,12 @@ TEST_F(SessionTest, DatapathConnectingTimerExpired) {
 
   timer_interface_.TimerExpiry(datapath_connecting_timer_id);
 
-  ASSERT_TRUE(
-      reattempt_scheduled.WaitForNotificationWithTimeout(absl::Seconds(1)));
+  reattempt_scheduled.WaitForNotification();
 }
 
 TEST_F(SessionTest, DatapathConnectingTimerCancelled) {
-  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Minutes(5)));
+  // Expect the rekey timer to be started
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Hours(24)));
 
   EXPECT_CALL(notification_, ControlPlaneConnected());
 
@@ -482,8 +505,6 @@ TEST_F(SessionTest, DatapathConnectingTimerCancelled) {
       });
 
   NetworkInfo network_info;
-  network_info.set_network_id(123);
-  network_info.set_network_type(NetworkType::CELLULAR);
   EXPECT_OK(session_->SetNetwork(network_info));
 
   EXPECT_CALL(timer_interface_, CancelTimer(_)).Times(AnyNumber());
@@ -494,7 +515,49 @@ TEST_F(SessionTest, DatapathConnectingTimerCancelled) {
 
   session_->DatapathEstablished();
 
-  ASSERT_TRUE(timer_cancelled.WaitForNotificationWithTimeout(absl::Seconds(1)));
+  timer_cancelled.WaitForNotification();
+}
+
+TEST_F(SessionTest, RekeyTimerExpired) {
+  // Expect the rekey timer to be started
+  int rekey_timer_id = -1;
+  absl::Notification rekey_timer_restarted;
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Hours(24)))
+      .WillOnce(DoAll(SaveArg<0>(&rekey_timer_id), Return(absl::OkStatus())))
+      .WillOnce([&rekey_timer_restarted] {
+        rekey_timer_restarted.Notify();
+        return absl::OkStatus();
+      });
+
+  // Expect the DatapathConnecting timer to be started
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(10)));
+
+  BringDatapathToConnected();
+
+  // Expect requests from rekey
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("initial_data")));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("auth")));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")));
+
+  timer_interface_.TimerExpiry(rekey_timer_id);
+
+  rekey_timer_restarted.WaitForNotification();
+}
+
+TEST_F(SessionTest, RekeyTimerCancelled) {
+  // Expect the rekey timer to be started
+  int rekey_timer_id = -1;
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Hours(24)))
+      .WillOnce(DoAll(SaveArg<0>(&rekey_timer_id), Return(absl::OkStatus())));
+
+  // Expect the DatapathConnecting timer to be started
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(10)));
+
+  BringDatapathToConnected();
+
+  EXPECT_CALL(timer_interface_, CancelTimer(Eq(rekey_timer_id)));
+
+  session_->Stop(/*forceFailOpen=*/true);
 }
 
 TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
@@ -546,7 +609,10 @@ TEST_F(SessionTest, DatapathReattemptFailure) {
   expected_network_info.set_network_type(NetworkType::CELLULAR);
   absl::Status status = absl::InternalError("Some error");
   for (int i = 0; i < 4; ++i) {
-    // Initial failure
+    // Expect the datapath connecting timer to be started for each attempt.
+    EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(10)));
+
+    // Expect datapath reattempt timer to be started on failure
     EXPECT_CALL(timer_interface_, StartTimer(_, absl::Milliseconds(500)))
         .WillOnce(Return(absl::OkStatus()));
 
@@ -633,8 +699,7 @@ TEST_F(SessionTest, TestEndpointChangeBeforeEstablishingSession) {
       .WillOnce([&datapath_connected] { datapath_connected.Notify(); });
   session_->DatapathEstablished();
 
-  EXPECT_TRUE(
-      datapath_connected.WaitForNotificationWithTimeout(absl::Seconds(1)));
+  datapath_connected.WaitForNotification();
 }
 
 TEST_F(SessionTest, PopulatesDebugInfo) {
@@ -732,7 +797,7 @@ TEST_F(SessionTest, TestSetKeyMaterials) {
   session_->GetDebugInfo(&debug_info);
   EXPECT_EQ(debug_info.mutable_session()->successful_rekeys(), 0);
   session_->DoRekey();
-  EXPECT_TRUE(rekey_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  rekey_done.WaitForNotification();
   session_->GetDebugInfo(&debug_info);
   EXPECT_EQ(debug_info.mutable_session()->successful_rekeys(), 1);
 }
@@ -817,7 +882,7 @@ TEST_F(SessionTest, DownlinkMtuUpdateHandlerHttpStatusOk) {
 
   session_->DoDownlinkMtuUpdate(/*downlink_mtu=*/123);
 
-  ASSERT_TRUE(mtu_update_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+  mtu_update_done.WaitForNotification();
 
   EXPECT_EQ(session_->GetDownlinkMtuTestOnly(), 123);
   ASSERT_OK_AND_ASSIGN(auto json_obj, utils::StringToJson(json_body));
