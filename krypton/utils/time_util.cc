@@ -16,14 +16,19 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "privacy/net/krypton/utils/status.h"
+#include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
 namespace utils {
 namespace {
+
+const uint32_t kLatencyCollectionLimit = 5;
 
 // Validation requirements documented in duration.proto.
 inline ::absl::Status ValidateDuration(const google::protobuf::Duration& d) {
@@ -97,6 +102,27 @@ absl::Status VerifyTimestampIsRounded(
                      absl::FormatDuration(increments)));
   }
   return absl::OkStatus();
+}
+
+void RecordLatency(absl::Time& start,
+                   std::vector<google::protobuf::Duration>* latencies,
+                   std::string_view latency_type) {
+  google::protobuf::Duration latency;
+  absl::Duration latency_durition = absl::Now() - start;
+  auto latency_status = utils::ToProtoDuration(latency_durition, &latency);
+  if (!latency_status.ok()) {
+    LOG(ERROR) << "Unable to calculate " << latency_type
+               << " latency with status:" << latency_status;
+    return;
+  }
+  if (latencies->size() >= kLatencyCollectionLimit) {
+    LOG(ERROR) << "Max " << latency_type
+               << " latency collection limit reached, not adding latency:"
+               << latency_durition;
+    return;
+  }
+  latencies->emplace_back(latency);
+  start = absl::InfinitePast();
 }
 
 }  // namespace utils

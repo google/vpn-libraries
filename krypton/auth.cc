@@ -63,7 +63,6 @@ namespace privacy {
 namespace krypton {
 namespace {
 
-const uint32_t kLatencyCollectionLimit = 5;
 // Specify public metadata rules that must be matched by GetInitialDataResponse.
 const int64_t kValidationVersion = 1;
 
@@ -149,7 +148,7 @@ Auth::~Auth() {
 void Auth::HandleAuthAndSignResponse(bool is_rekey,
                                      const HttpResponse& http_response) {
   absl::MutexLock l(&mutex_);
-  RecordLatency(zinc_request_time_, &zinc_latencies_, "zinc");
+  utils::RecordLatency(zinc_request_time_, &zinc_latencies_, "zinc");
 
   LOG(INFO) << "Got Authentication Response. Rekey: "
             << (is_rekey ? "True" : "False")
@@ -215,7 +214,7 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
   std::optional<std::string> nonce = std::nullopt;
   {
     absl::MutexLock l(&mutex_);
-    RecordLatency(request_time_, &latencies_, "PublicKey");
+    utils::RecordLatency(request_time_, &latencies_, "PublicKey");
 
     LOG(INFO) << "Got PublicKeyResponse Response.";
     if (stopped_) {
@@ -261,7 +260,7 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
   {
     absl::MutexLock l(&mutex_);
     // TODO
-    RecordLatency(request_time_, &latencies_, "GetInitialData");
+    utils::RecordLatency(request_time_, &latencies_, "GetInitialData");
 
     LOG(INFO) << "Received GetInitialData Response.";
     if (stopped_) {
@@ -416,7 +415,7 @@ void Auth::RequestForInitialData(bool is_rekey) {
         absl::InternalError("Error fetching oauth token"));
     return;
   }
-  RecordLatency(oauth_request_time, &oauth_latencies_, "oauth");
+  utils::RecordLatency(oauth_request_time, &oauth_latencies_, "oauth");
 
   std::string token = *auth_token;
   auto use_attestation = config_.integrity_attestation_enabled();
@@ -460,7 +459,7 @@ void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
         absl::InternalError("Error fetching oauth token"));
     return;
   }
-  RecordLatency(oauth_request_time, &oauth_latencies_, "oauth");
+  utils::RecordLatency(oauth_request_time, &oauth_latencies_, "oauth");
 
   AuthAndSignRequest sign_request(
       *auth_token, config_.service_type(), std::string(),
@@ -659,27 +658,6 @@ void Auth::GetDebugInfo(AuthDebugInfo* debug_info) {
   for (const auto& latency : latencies_) {
     *debug_info->add_latency() = latency;
   }
-}
-
-void Auth::RecordLatency(absl::Time& start,
-                         std::vector<google::protobuf::Duration>* latencies,
-                         std::string_view latency_type) {
-  google::protobuf::Duration latency;
-  absl::Duration latency_durition = absl::Now() - start;
-  auto latency_status = utils::ToProtoDuration(latency_durition, &latency);
-  if (!latency_status.ok()) {
-    LOG(ERROR) << "Unable to calculate " << latency_type
-               << " latency with status:" << latency_status;
-    return;
-  }
-  if (latencies->size() >= kLatencyCollectionLimit) {
-    LOG(ERROR) << "Max " << latency_type
-               << " latency collection limit reached, not adding latency:"
-               << latency_durition;
-    return;
-  }
-  latencies->emplace_back(latency);
-  start = absl::InfinitePast();
 }
 
 }  // namespace krypton

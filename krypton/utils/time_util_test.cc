@@ -14,11 +14,16 @@
 
 #include "privacy/net/krypton/utils/time_util.h"
 
+#include <vector>
+
+#include "google/protobuf/duration.proto.h"
 #include "google/protobuf/timestamp.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/strings/string_view.h"
+#include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 
@@ -134,6 +139,39 @@ TEST(Time, VerifyTimestampIncrements) {
                 absl::StrCat("Expiry timestamp not in increments of ",
                              absl::FormatDuration(increments))));
 }
+
+TEST(Time, RecordLatencyResetsStart) {
+  absl::Time start = absl::Now();
+  std::vector<google::protobuf::Duration> latencies;
+  RecordLatency(start, &latencies, "test_latency");
+  EXPECT_EQ(start, absl::InfinitePast());
+}
+
+TEST(Time, RecordLatencyVectorSize) {
+  absl::Time start = absl::Now();
+  std::vector<google::protobuf::Duration> latencies;
+  RecordLatency(start, &latencies, "test_latency");
+  start = absl::Now();
+  RecordLatency(start, &latencies, "test_latency");
+  EXPECT_EQ(latencies.size(), 2);
+
+  // Test the kLatencyCollectionLimit
+  for (int i = 0; i < 6; i++) {
+    start = absl::Now();
+    RecordLatency(start, &latencies, "test_latency");
+  }
+  EXPECT_EQ(latencies.size(), 5);
+}
+
+TEST(Time, RecordLatencyBadLatencyStatus) {
+  // A latency with InfinitePast() start time won't have an OK latency_status.
+  // Latency shouldn't be recorded if latency_status != ok.
+  absl::Time start = absl::InfinitePast();
+  std::vector<google::protobuf::Duration> latencies;
+  RecordLatency(start, &latencies, "test_latency");
+  EXPECT_EQ(latencies.size(), 0);
+}
+
 }  // namespace
 }  // namespace utils
 }  // namespace krypton

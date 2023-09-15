@@ -135,12 +135,6 @@ class Auth {
                                  const HttpResponse& http_response)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Calculate and records the latency value. The start variable is reset to
-  // absl::InfinitePast before it is returned.
-  static void RecordLatency(absl::Time& start,
-                            std::vector<google::protobuf::Duration>* latencies,
-                            std::string_view latency_type);
-
   void RaiseAuthFailureNotification(absl::Status status)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   // Unblinds ATs provided in AuthAndSign response.
