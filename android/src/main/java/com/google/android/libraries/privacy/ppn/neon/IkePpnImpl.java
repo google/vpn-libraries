@@ -59,7 +59,7 @@ import java.util.concurrent.ExecutorService;
 import org.json.JSONObject;
 
 /** An implementation of PPN that uses IKE+VpnManager, instead of VpnService. */
-@TargetApi(32)
+@TargetApi(33)
 public class IkePpnImpl implements Ppn, Provision.Listener {
   private static final String TAG = "IkePpnImpl";
 
@@ -188,6 +188,7 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
         .setMetered(false)
         .setBypassable(true)
         .setLocalRoutesExcluded(true)
+        .setRequiresInternetValidation(true)
         .build();
   }
 
