@@ -30,6 +30,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.rpc.Status;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -332,13 +333,6 @@ public class HttpFetcher {
                             .setMessage(response.message())
                             .build());
 
-            // Only try to read the body if the response is OK.
-            if (response.code() != 200) {
-              response.body().close();
-              tcs.setResult(responseBuilder.build());
-              return;
-            }
-
             // Response with missing Content-Type header will be treated as JSON
             String header = response.header("Content-Type");
             if (header != null && header.equals(PROTO_CONTENT_TYPE)) {
@@ -347,15 +341,27 @@ public class HttpFetcher {
 
                 // Limit response length to 1 MB before proto parsing.
                 if (bytes.size() > 1024 * 1024) {
-                  Log.w(TAG, "Response body length exceeds limit of 1MB.");
+                  Log.e(TAG, "Response body length exceeds limit of 1MB.");
                   tcs.setResult(buildHttpResponse(500, "response length exceeds limit of 1MB"));
                   return;
                 }
 
+                // If this is an error response, see if the body bytes parse as a Status proto.
+                if (response.code() != 200) {
+                  Status status = Status.parseFrom(bytes, ExtensionRegistryLite.getEmptyRegistry());
+                  Log.e(TAG, "Proto status: " + status.getCode() + ": " + status.getMessage());
+                }
+
                 responseBuilder.setProtoBody(bytes);
+
+              } catch (InvalidProtocolBufferException e) {
+                // If the error response can't be parsed as a Status, just log it and keep going.
+                // The body will be unset, and we'll keep the same http status code as the response.
+                Log.w(TAG, "Failed to parse error response proto.", e);
+
               } catch (IOException e) {
                 // The failed response may have sensitive info, so don't log it.
-                Log.w(TAG, "Failed to read http proto response body.", e);
+                Log.e(TAG, "Failed to read http proto response body.", e);
                 tcs.setResult(buildHttpResponse(500, "IOException reading response body bytes"));
                 return;
               }
@@ -381,17 +387,19 @@ public class HttpFetcher {
               }
 
               if (parseJsonBody) {
-                // Parse the response body as JSON.
-                JSONObject message;
                 try {
-                  message = new JSONObject(body);
+                  JSONObject message = new JSONObject(body);
+                  responseBuilder.setJsonBody(message.toString());
                 } catch (JSONException e) {
                   // The failed response may have sensitive info, so don't log it.
                   Log.w(TAG, "Response body has malformed JSON.");
-                  tcs.setResult(buildHttpResponse(500, "invalid response JSON"));
-                  return;
+                  // Historically, the server can respond with errors that are not JSON. If so,
+                  // just ignore the missing body.
+                  if (response.code() == 200) {
+                    tcs.setResult(buildHttpResponse(500, "invalid response JSON"));
+                    return;
+                  }
                 }
-                responseBuilder.setJsonBody(message.toString());
               }
             }
 

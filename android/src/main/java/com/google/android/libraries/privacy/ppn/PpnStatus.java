@@ -20,6 +20,7 @@ import java.util.Map;
 
 /** Java representation of C++ absl::Status. */
 public class PpnStatus {
+  public static final String DETAILS_TYPE_URL = "type.googleapis.com/privacy.ppn.PpnStatusDetails";
   public static final PpnStatus STATUS_OK = new PpnStatus.Builder(Code.OK, "").build();
 
   /**

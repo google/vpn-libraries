@@ -21,11 +21,18 @@ import static org.mockito.Mockito.when;
 
 import android.net.Network;
 import android.util.Log;
+import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.internal.HttpRequest;
 import com.google.android.libraries.privacy.ppn.internal.HttpResponse;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
+import com.google.android.libraries.privacy.ppn.internal.PpnStatusDetails;
+import com.google.android.libraries.privacy.ppn.internal.json.Json;
 import com.google.common.net.InetAddresses;
+import com.google.protobuf.Any;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.ExtensionRegistryLite;
+import com.google.rpc.Code;
+import com.google.rpc.Status;
 import com.squareup.okhttp.mockwebserver.MockResponse;
 import com.squareup.okhttp.mockwebserver.MockWebServer;
 import com.squareup.okhttp.mockwebserver.RecordedRequest;
@@ -39,6 +46,8 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.SocketFactory;
 import okio.Buffer;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -57,6 +66,10 @@ public class HttpFetcherTest {
   private static final String VALID_JSON_RESPONSE_BODY = "{\"baz\":\"qux\"}";
   private static final byte[] VALID_PROTO_REQUEST_BODY = {0x01, 0x02, 0x03};
   private static final byte[] VALID_PROTO_RESPONSE_BODY = {0x03, 0x02, 0x01};
+
+  private static final PpnStatusDetails VALID_DETAILS_PROTO = buildValidDetailsProto();
+  private static final Status VALID_ERROR_PROTO = buildValidErrorProto();
+  private static final String VALID_ERROR_JSON = buildValidErrorJson();
 
   @Rule public final MockitoRule mocks = MockitoJUnit.rule();
   private final InetAddress address = InetAddresses.forString("127.0.0.1");
@@ -80,6 +93,47 @@ public class HttpFetcherTest {
   @After
   public void tearDown() throws Exception {
     mockWebServer.shutdown();
+  }
+
+  private static PpnStatusDetails buildValidDetailsProto() {
+    return PpnStatusDetails.newBuilder()
+        .setDetailedErrorCode(PpnStatusDetails.DetailedErrorCode.VPN_PERMISSION_REVOKED)
+        .build();
+  }
+
+  private static Status buildValidErrorProto() {
+    Any details =
+        Any.newBuilder()
+            .setTypeUrl(PpnStatus.DETAILS_TYPE_URL)
+            .setValue(VALID_DETAILS_PROTO.toByteString())
+            .build();
+
+    return Status.newBuilder()
+        .setCode(Code.PERMISSION_DENIED_VALUE)
+        .setMessage("Permission Denied")
+        .addDetails(details)
+        .build();
+  }
+
+  private static String buildValidErrorJson() {
+    JSONObject statusDetails = new JSONObject();
+    // In proto JSON, uint64 is encoded as a String.
+    Json.put(
+        statusDetails,
+        "authInternalErrorCode",
+        Long.toString(VALID_DETAILS_PROTO.getAuthInternalErrorCode()));
+    Json.put(statusDetails, "@type", PpnStatus.DETAILS_TYPE_URL);
+
+    JSONArray details = new JSONArray();
+    details.put(statusDetails);
+
+    JSONObject error = new JSONObject();
+    Json.put(error, "code", VALID_ERROR_PROTO.getCode());
+    Json.put(error, "message", VALID_ERROR_PROTO.getMessage());
+    Json.put(error, "details", details);
+    Json.put(error, "status", "PERMISSION_DENIED");
+
+    return error.toString();
   }
 
   private static HttpRequest buildJsonHttpRequest(String url) {
@@ -171,7 +225,29 @@ public class HttpFetcherTest {
   }
 
   @Test
-  public void testNegativeJsonResponse() throws Exception {
+  public void testJsonResponseWithErrorStatus() throws Exception {
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setStatus("HTTP/1.1 402 Payment Required")
+            .addHeader("Content-Type: application/json; charset=utf-8")
+            .setBody(VALID_JSON_RESPONSE_BODY));
+
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
+
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    String receivedBody = request.getBody().readUtf8();
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
+    assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
+
+    assertThat(response.getStatus().getCode()).isEqualTo(402);
+    assertThat(response.getStatus().getMessage()).isEqualTo("Payment Required");
+    assertThat(response.getJsonBody()).isEqualTo(VALID_JSON_RESPONSE_BODY);
+    assertThat(response.hasProtoBody()).isFalse();
+  }
+
+  @Test
+  public void testJsonResponseWithTextStatus() throws Exception {
     mockWebServer.enqueue(
         new MockResponse()
             .setStatus("HTTP/1.1 402 Payment Required")
@@ -193,12 +269,14 @@ public class HttpFetcherTest {
   }
 
   @Test
-  public void testNegativeProtoResponse() throws Exception {
+  public void testProtoResponseWithErrorStatus() throws Exception {
+    Buffer responseBody = new Buffer();
+    responseBody.write(VALID_ERROR_PROTO.toByteArray());
     mockWebServer.enqueue(
         new MockResponse()
             .setStatus("HTTP/1.1 402 Payment Required")
             .addHeader("Content-Type: application/x-protobuf")
-            .setBody("Something went wrong in the server"));
+            .setBody(responseBody));
 
     HttpResponse response = postJson(buildProtoHttpRequest(mockWebServer.url("/").toString()));
 
@@ -210,7 +288,19 @@ public class HttpFetcherTest {
     assertThat(response.getStatus().getCode()).isEqualTo(402);
     assertThat(response.getStatus().getMessage()).isEqualTo("Payment Required");
     assertThat(response.hasJsonBody()).isFalse();
-    assertThat(response.hasProtoBody()).isFalse();
+
+    Status status =
+        Status.parseFrom(response.getProtoBody(), ExtensionRegistryLite.getEmptyRegistry());
+    assertThat(status.getCode()).isEqualTo(VALID_ERROR_PROTO.getCode());
+    assertThat(status.getMessage()).isEqualTo(VALID_ERROR_PROTO.getMessage());
+    assertThat(status.getDetailsList()).hasSize(1);
+    assertThat(status.getDetailsList().get(0).getTypeUrl()).isEqualTo(PpnStatus.DETAILS_TYPE_URL);
+
+    PpnStatusDetails details =
+        PpnStatusDetails.parseFrom(
+            status.getDetailsList().get(0).getValue(), ExtensionRegistryLite.getEmptyRegistry());
+    assertThat(details.getDetailedErrorCode())
+        .isEqualTo(VALID_DETAILS_PROTO.getDetailedErrorCode());
   }
 
   @Test
@@ -483,8 +573,78 @@ public class HttpFetcherTest {
 
     assertThat(response.getStatus().getCode()).isEqualTo(400);
     assertThat(response.getStatus().getMessage()).isEqualTo("Bad Request");
+    assertThat(response.getProtoBody()).isEqualTo(ByteString.EMPTY);
     assertThat(response.hasJsonBody()).isFalse();
-    assertThat(response.hasProtoBody()).isFalse();
+  }
+
+  @Test
+  public void testProtoError() throws Exception {
+    Buffer responseBody = new Buffer();
+    responseBody.write(VALID_ERROR_PROTO.toByteArray());
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setStatus("HTTP/1.1 400 Bad Request")
+            .addHeader("Content-Type: application/x-protobuf")
+            .setBody(responseBody));
+
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
+
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    String receivedBody = request.getBody().readUtf8();
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
+    assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
+
+    assertThat(response.getStatus().getCode()).isEqualTo(400);
+    assertThat(response.getStatus().getMessage()).isEqualTo("Bad Request");
+    assertThat(response.hasJsonBody()).isFalse();
+
+    Status status =
+        Status.parseFrom(response.getProtoBody(), ExtensionRegistryLite.getEmptyRegistry());
+    assertThat(status.getCode()).isEqualTo(VALID_ERROR_PROTO.getCode());
+    assertThat(status.getMessage()).isEqualTo(VALID_ERROR_PROTO.getMessage());
+    assertThat(status.getDetailsList()).hasSize(1);
+    assertThat(status.getDetailsList().get(0).getTypeUrl()).isEqualTo(PpnStatus.DETAILS_TYPE_URL);
+
+    PpnStatusDetails details =
+        PpnStatusDetails.parseFrom(
+            status.getDetailsList().get(0).getValue(), ExtensionRegistryLite.getEmptyRegistry());
+    assertThat(details.getDetailedErrorCode())
+        .isEqualTo(VALID_DETAILS_PROTO.getDetailedErrorCode());
+  }
+
+  @Test
+  public void testJsonError() throws Exception {
+    mockWebServer.enqueue(
+        new MockResponse()
+            .setStatus("HTTP/1.1 400 Bad Request")
+            .addHeader("Content-Type: application/json; charset=utf-8")
+            .setBody(VALID_ERROR_JSON));
+
+    HttpResponse response = postJson(buildJsonHttpRequest(mockWebServer.url("/").toString()));
+
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(1);
+    RecordedRequest request = mockWebServer.takeRequest();
+    String receivedBody = request.getBody().readUtf8();
+    assertThat(receivedBody).isEqualTo(VALID_JSON_REQUEST_BODY);
+    assertThat(request.getHeader("Content-Type")).isEqualTo("application/json; charset=utf-8");
+
+    assertThat(response.getStatus().getCode()).isEqualTo(400);
+    assertThat(response.getStatus().getMessage()).isEqualTo("Bad Request");
+    assertThat(response.hasJsonBody()).isTrue();
+
+    JSONObject status = new JSONObject(response.getJsonBody());
+    assertThat(status.get("code")).isEqualTo(VALID_ERROR_PROTO.getCode());
+    assertThat(status.get("message")).isEqualTo(VALID_ERROR_PROTO.getMessage());
+    assertThat(status.get("status")).isEqualTo("PERMISSION_DENIED");
+
+    JSONArray details = status.getJSONArray("details");
+    assertThat(details.length()).isEqualTo(1);
+
+    JSONObject statusDetails = details.getJSONObject(0);
+    assertThat(statusDetails.get("@type")).isEqualTo(PpnStatus.DETAILS_TYPE_URL);
+    assertThat(statusDetails.get("authInternalErrorCode"))
+        .isEqualTo(Long.toString(VALID_DETAILS_PROTO.getAuthInternalErrorCode()));
   }
 
   @Test
