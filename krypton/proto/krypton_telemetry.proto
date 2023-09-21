@@ -24,6 +24,7 @@ option java_package = "com.google.android.libraries.privacy.ppn.internal";
 option java_api_version = 2;
 option java_multiple_files = true;
 
+// Next ID: 13
 message KryptonTelemetry {
   // Provides latency for each individual Auth requests. Array size represents
   // the total auths that were done.
@@ -59,4 +60,7 @@ message KryptonTelemetry {
 
   // The number of times a datapath was successfully connected.
   optional uint32 data_plane_connecting_successes = 11;
+
+  // The latency from the start of connecting a datapath until fully connected.
+  repeated google.protobuf.Duration data_plane_connecting_latency = 12;
 }

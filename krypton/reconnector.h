@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
@@ -67,6 +68,7 @@ class Reconnector : public Session::NotificationInterface {
     int session_restarts = 0;
     int data_plane_connecting_attempts = 0;
     int data_plane_connecting_successes = 0;
+    std::vector<google::protobuf::Duration> data_plane_connecting_latencies;
   };
 
   static constexpr int kInvalidTimerId = -1;
@@ -200,6 +202,8 @@ class Reconnector : public Session::NotificationInterface {
   uint32_t successive_datapath_failures_ ABSL_GUARDED_BY(mutex_) = 0;
   uint32_t successive_control_plane_failures_ ABSL_GUARDED_BY(mutex_) = 0;
   TelemetryData telemetry_data_ ABSL_GUARDED_BY(mutex_);
+  absl::Time data_plane_connecting_start_time_ ABSL_GUARDED_BY(mutex_) =
+      absl::InfinitePast();
   absl::Time snooze_end_time_;
 };
 

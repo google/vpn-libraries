@@ -594,7 +594,7 @@ TEST_F(DatapathReconnectorTest, TestDatapathSuccessful) {
   EXPECT_EQ(-1, reconnector_->DatapathWatchdogTimerIdTestOnly());
 }
 
-TEST_F(DatapathReconnectorTest, TestDatapathConnectingCounters) {
+TEST_F(DatapathReconnectorTest, TestDatapathConnectingTelemetry) {
   reconnector_->DatapathConnecting();
   reconnector_->DatapathConnecting();
   reconnector_->DatapathConnected();
@@ -603,11 +603,33 @@ TEST_F(DatapathReconnectorTest, TestDatapathConnectingCounters) {
   reconnector_->CollectTelemetry(&telemetry);
   EXPECT_EQ(telemetry.data_plane_connecting_attempts(), 2);
   EXPECT_EQ(telemetry.data_plane_connecting_successes(), 1);
+  EXPECT_EQ(telemetry.data_plane_connecting_latency().size(), 1);
 
   // Check values are reset when telemetry collected
+  telemetry.Clear();
   reconnector_->CollectTelemetry(&telemetry);
   EXPECT_EQ(telemetry.data_plane_connecting_attempts(), 0);
   EXPECT_EQ(telemetry.data_plane_connecting_successes(), 0);
+  EXPECT_EQ(telemetry.data_plane_connecting_latency().size(), 0);
+}
+
+TEST_F(DatapathReconnectorTest, TestTelemetryCollectedWhileConnecting) {
+  // This test ensures that even if telemetry is collected while the datapath
+  // is in the process of connecting, the appropriate number of attempts,
+  // successes, and latencies will eventually be collected.
+  reconnector_->DatapathConnecting();
+  KryptonTelemetry telemetry;
+  reconnector_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.data_plane_connecting_attempts(), 1);
+  EXPECT_EQ(telemetry.data_plane_connecting_successes(), 0);
+  EXPECT_EQ(telemetry.data_plane_connecting_latency().size(), 0);
+
+  reconnector_->DatapathConnected();
+  telemetry.Clear();
+  reconnector_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.data_plane_connecting_attempts(), 0);
+  EXPECT_EQ(telemetry.data_plane_connecting_successes(), 1);
+  EXPECT_EQ(telemetry.data_plane_connecting_latency().size(), 1);
 }
 
 TEST_F(DatapathReconnectorTest, TestDatapathWatchtimerIsRunning) {

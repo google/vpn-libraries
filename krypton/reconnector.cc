@@ -19,6 +19,7 @@
 #include <cmath>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "base/logging.h"
 #include "privacy/net/krypton/krypton_clock.h"
@@ -38,6 +39,7 @@
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
+#include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 
@@ -451,11 +453,15 @@ void Reconnector::DatapathConnecting() {
   LOG(INFO) << "Attempting to connect datapath.";
   absl::MutexLock l(&mutex_);
   ++telemetry_data_.data_plane_connecting_attempts;
+  data_plane_connecting_start_time_ = absl::Now();
 }
 
 void Reconnector::DatapathConnected() {
   LOG(INFO) << "Datapath connected.";
   absl::MutexLock l(&mutex_);
+  utils::RecordLatency(data_plane_connecting_start_time_,
+                       &telemetry_data_.data_plane_connecting_latencies,
+                       "DataPlaneConnecting");
   ++telemetry_data_.data_plane_connecting_successes;
   // This has no impact on the reconnection logic and the status is propagated
   // to UX layer as Connected.
@@ -489,6 +495,7 @@ void Reconnector::DatapathDisconnected(const NetworkInfo& network,
   });
   successive_datapath_failures_ += 1;
   ++telemetry_data_.data_plane_failures;
+  data_plane_connecting_start_time_ = absl::InfinitePast();
   PPN_LOG_IF_ERROR(StartDatapathWatchdogTimer());
 }
 
@@ -670,6 +677,10 @@ void Reconnector::CollectTelemetry(KryptonTelemetry* telemetry) {
       telemetry_data_.data_plane_connecting_attempts);
   telemetry->set_data_plane_connecting_successes(
       telemetry_data_.data_plane_connecting_successes);
+  for (const auto& latency : telemetry_data_.data_plane_connecting_latencies) {
+    *telemetry->add_data_plane_connecting_latency() = std::move(latency);
+  }
+
   telemetry_data_ = TelemetryData();
 }
 
