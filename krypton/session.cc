@@ -558,6 +558,10 @@ void Session::DatapathEstablished() {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "Datapath is established";
   datapath_connected_ = true;
+  if (switching_network_) {
+    successful_network_switches_++;
+    switching_network_ = false;
+  }
   CancelDatapathConnectingTimerIfRunning();
   ResetAllDatapathReattempts();
   auto notification = notification_;
@@ -638,8 +642,14 @@ void Session::DatapathPermanentFailure(const absl::Status& status) {
 
 absl::Status Session::SetNetwork(const NetworkInfo& network_info) {
   absl::MutexLock l(&mutex_);
-  LOG(INFO) << "Switching network to "
-            << utils::NetworkInfoDebugString(network_info);
+  if (active_network_info_) {
+    LOG(INFO) << "Switching network to "
+              << utils::NetworkInfoDebugString(network_info);
+    switching_network_ = true;
+  } else {
+    LOG(INFO) << "Setting network to "
+              << utils::NetworkInfoDebugString(network_info);
+  }
   active_network_info_ = network_info;
   ResetAllDatapathReattempts();
 
@@ -723,6 +733,8 @@ void Session::CollectTelemetry(KryptonTelemetry* telemetry) {
       network_switches_count_ - network_switches_count_last_collection_;
   telemetry->set_network_switches(delta_network_switches);
   network_switches_count_last_collection_ = network_switches_count_.load();
+  telemetry->set_successful_network_switches(successful_network_switches_);
+  successful_network_switches_ = 0;
 
   provision_->CollectTelemetry(telemetry);
 }

@@ -284,6 +284,7 @@ class Session : public DatapathInterface::NotificationInterface,
   // Counts the number of times the endpoint switched till now.
   std::atomic_int network_switches_count_ ABSL_GUARDED_BY(mutex_) = 1;
   std::atomic_int datapath_reattempt_count_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint32_t successful_network_switches_ ABSL_GUARDED_BY(mutex_) = 0;
 
   // Initialize uplink and downlink MTU values to 0 so that the initial update
   // will always cause the value to change.
@@ -296,6 +297,8 @@ class Session : public DatapathInterface::NotificationInterface,
   std::atomic_bool datapath_connected_ ABSL_GUARDED_BY(mutex_) = false;
   // Keep track of the network switches count at last telemetry collection.
   int network_switches_count_last_collection_ ABSL_GUARDED_BY(mutex_) = 0;
+  // Tells whether a network switch is currently in progress.
+  bool switching_network_ ABSL_GUARDED_BY(mutex_) = false;
   std::atomic_int number_of_rekeys_ = 0;
 
   utils::LooperThread looper_;

@@ -355,6 +355,22 @@ class SessionTest : public ::testing::Test {
     return status;
   }
 
+  void ConnectControlPlaneWithoutSettingNetwork() {
+    // Ensure that control plane is connected, but there are no datapath
+    // connection attempts.
+    absl::Notification control_plane_connected;
+    EXPECT_CALL(notification_, ControlPlaneConnected())
+        .WillOnce(
+            [&control_plane_connected] { control_plane_connected.Notify(); });
+    EXPECT_CALL(notification_, DatapathConnecting()).Times(0);
+
+    session_->Start();
+    control_plane_connected.WaitForNotification();
+
+    // kConnected is a ControlPlaneConnected event.
+    EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kConnected);
+  }
+
   KryptonConfig config_{ParseTextProtoOrDie(
       R"pb(zinc_url: "auth"
            brass_url: "add_egress"
@@ -780,6 +796,150 @@ TEST_F(SessionTest, DatapathPermanentFailure) {
 
   EXPECT_CALL(notification_, DatapathDisconnected(_, _));
   session_->DatapathPermanentFailure(absl::InvalidArgumentError("some error"));
+}
+
+TEST_F(SessionTest, ConnectControlPlaneNoSettingNetwork) {
+  ConnectControlPlaneWithoutSettingNetwork();
+}
+
+TEST_F(SessionTest, ConnectControlPlaneBeforeSettingNetwork) {
+  ConnectControlPlaneWithoutSettingNetwork();
+
+  // Set original network type.
+  NetworkInfo network_info;
+  network_info.set_network_type(NetworkType::WIFI);
+  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())));
+  EXPECT_CALL(*datapath_, SwitchNetwork(123, _, EqualsProto(network_info), _))
+      .WillOnce(Return(absl::OkStatus()));
+
+  EXPECT_CALL(notification_, DatapathConnecting());
+  EXPECT_OK(session_->SetNetwork(network_info));
+
+  EXPECT_CALL(notification_, DatapathConnected());
+  session_->DatapathEstablished();
+
+  // Verify telemetry.
+  KryptonTelemetry telemetry;
+  session_->CollectTelemetry(&telemetry);
+  // TODO Add check for network_switches here.
+  EXPECT_EQ(telemetry.successful_network_switches(), 0);
+}
+
+TEST_F(SessionTest, SwitchNetworkTelemetryWithFailedAttempt) {
+  ConnectControlPlaneWithoutSettingNetwork();
+
+  // Set original network type.
+  NetworkInfo network_info;
+  network_info.set_network_type(NetworkType::WIFI);
+  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())));
+  EXPECT_CALL(*datapath_, SwitchNetwork(123, _, EqualsProto(network_info), _))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(notification_, DatapathConnecting()).Times(3);
+  EXPECT_OK(session_->SetNetwork(network_info));
+  EXPECT_CALL(notification_, DatapathConnected()).Times(2);
+  session_->DatapathEstablished();
+  EXPECT_EQ(session_->GetActiveNetworkInfoTestOnly()->network_type(),
+            network_info.network_type());
+
+  // Switch network to different type.
+  NetworkInfo new_network_info;
+  new_network_info.set_network_type(NetworkType::CELLULAR);
+
+  // First attempt fails.
+  EXPECT_CALL(*datapath_,
+              SwitchNetwork(123, _, EqualsProto(new_network_info), _))
+      .WillOnce(Return(absl::FailedPreconditionError("test case")));
+  EXPECT_EQ(session_->SetNetwork(new_network_info),
+            absl::FailedPreconditionError("test case"));
+
+  // Second attempt succeeds.
+  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())));
+  EXPECT_CALL(*datapath_,
+              SwitchNetwork(123, _, EqualsProto(new_network_info), _))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_OK(session_->SetNetwork(new_network_info));
+  session_->DatapathEstablished();
+  EXPECT_EQ(session_->GetActiveNetworkInfoTestOnly()->network_type(),
+            new_network_info.network_type());
+
+  // Verify telemetry.
+  KryptonTelemetry telemetry;
+  session_->CollectTelemetry(&telemetry);
+  // TODO Add check for network_switches here.
+  EXPECT_EQ(telemetry.successful_network_switches(), 1);
+
+  // Verify that telemetry gets reset on collection.
+  telemetry.Clear();
+  session_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.successful_network_switches(), 0);
+}
+
+TEST_F(SessionTest, SwitchNetworkTelemetryWithDatapathReattempt) {
+  ConnectControlPlaneWithoutSettingNetwork();
+
+  // Set original network type.
+  NetworkInfo network_info;
+  network_info.set_network_type(NetworkType::WIFI);
+
+  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())));
+  EXPECT_CALL(*datapath_, SwitchNetwork(123, _, EqualsProto(network_info), _))
+      .WillRepeatedly(Return(absl::OkStatus()));
+  EXPECT_CALL(notification_, DatapathConnecting()).Times(2);
+  EXPECT_OK(session_->SetNetwork(network_info));
+  EXPECT_CALL(notification_, DatapathConnected()).Times(2);
+  session_->DatapathEstablished();
+
+  // Datapath becomes disconnected and tries to reconnect on the same network.
+  session_->DatapathFailed(absl::InternalError("health check timeout"));
+
+  // Datapath reconnects.
+  session_->AttemptDatapathReconnect();
+  session_->DatapathEstablished();
+
+  // Verify telemetry.
+  KryptonTelemetry telemetry;
+  session_->CollectTelemetry(&telemetry);
+  // TODO Add check for network_switches here.
+  EXPECT_EQ(telemetry.successful_network_switches(), 0);
+}
+
+TEST_F(SessionTest, SwitchNetworkTelemetryWithSwitchAndReattempt) {
+  ConnectControlPlaneWithoutSettingNetwork();
+
+  // Set original network type.
+  NetworkInfo network_info;
+  network_info.set_network_type(NetworkType::WIFI);
+  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())));
+  EXPECT_CALL(*datapath_, SwitchNetwork(123, _, EqualsProto(network_info), _))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(notification_, DatapathConnecting()).Times(3);
+  EXPECT_OK(session_->SetNetwork(network_info));
+  EXPECT_CALL(notification_, DatapathConnected()).Times(3);
+  session_->DatapathEstablished();
+
+  // Switch network to different type.
+  NetworkInfo new_network_info;
+  new_network_info.set_network_type(NetworkType::CELLULAR);
+  EXPECT_CALL(*datapath_,
+              SwitchNetwork(123, _, EqualsProto(new_network_info), _))
+      .WillRepeatedly(Return(absl::OkStatus()));
+  EXPECT_OK(session_->SetNetwork(new_network_info));
+  session_->DatapathEstablished();
+
+  // Datapath becomes disconnected and tries to reconnect on the same network.
+  session_->DatapathFailed(absl::InternalError("health check timeout"));
+
+  // Datapath reconnects.
+  session_->AttemptDatapathReconnect();
+  session_->DatapathEstablished();
+  EXPECT_EQ(session_->GetActiveNetworkInfoTestOnly()->network_type(),
+            new_network_info.network_type());
+
+  // Verify telemetry.
+  KryptonTelemetry telemetry;
+  session_->CollectTelemetry(&telemetry);
+  // TODO Add check for network_switches here.
+  EXPECT_EQ(telemetry.successful_network_switches(), 1);
 }
 
 TEST_F(SessionTest, TestSetKeyMaterials) {

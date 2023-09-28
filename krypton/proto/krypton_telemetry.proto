@@ -24,7 +24,7 @@ option java_package = "com.google.android.libraries.privacy.ppn.internal";
 option java_api_version = 2;
 option java_multiple_files = true;
 
-// Next ID: 13
+// Next ID: 14
 message KryptonTelemetry {
   // Provides latency for each individual Auth requests. Array size represents
   // the total auths that were done.
@@ -36,7 +36,11 @@ message KryptonTelemetry {
 
   optional uint32 successful_rekeys = 3;
 
+  // The total number of network switching attempts.
   optional uint32 network_switches = 4;
+
+  // The number of network switches followed by a downlink packet received.
+  optional uint32 successful_network_switches = 13;
 
   optional uint32 control_plane_failures = 5;
 
