@@ -80,7 +80,7 @@ class AuthAndSignRequest {
       bool attach_oauth_as_header);
   ~AuthAndSignRequest() = default;
 
-  std::optional<HttpRequest> EncodeToProto() const;
+  HttpRequest EncodeToProto() const;
 
  private:
   nlohmann::json BuildBodyJson() const;

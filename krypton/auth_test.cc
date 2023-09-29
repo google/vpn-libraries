@@ -20,7 +20,6 @@
 #include <string>
 #include <utility>
 
-#include "google/protobuf/duration.proto.h"
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/common/proto/auth_and_sign.proto.h"
@@ -53,6 +52,7 @@
 #include "third_party/anonymous_tokens/proto/anonymous_tokens.proto.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 #include "third_party/json/include/nlohmann/json_fwd.hpp"
+#include "third_party/openssl/base.h"
 
 namespace privacy {
 namespace krypton {
@@ -534,7 +534,7 @@ TEST_P(AuthParamsTest, AuthWithAttestation) {
                                    /*attach_oauth_as_header=*/false);
 
   auto request = auth_and_sign.EncodeToProto();
-  request->set_url("http://www.example.com/auth");
+  request.set_url("http://www.example.com/auth");
 
   // Step 1: Get OAuth Token
   EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
@@ -542,7 +542,7 @@ TEST_P(AuthParamsTest, AuthWithAttestation) {
   EXPECT_CALL(oauth_, GetAttestationData).WillOnce(Return(attestation_data));
 
   // Step 2: Authentication with oauth token and attestation data.
-  EXPECT_CALL(http_fetcher_, PostJson(PartiallyMatchHttpRequest(*request)))
+  EXPECT_CALL(http_fetcher_, PostJson(PartiallyMatchHttpRequest(request)))
       .WillOnce(::testing::Return(buildResponse()));
 
   EXPECT_CALL(auth_notification_, AuthSuccessful(/*is_rekey=*/GetParam()))
@@ -591,7 +591,7 @@ TEST_P(AuthParamsTest, AuthWithApiKey) {
                                    /*attach_oauth_as_header=*/false);
 
   auto request = auth_and_sign.EncodeToProto();
-  request->set_url("http://www.example.com/auth");
+  request.set_url("http://www.example.com/auth");
 
   // Step 1: Get OAuth Token
   EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
@@ -599,7 +599,7 @@ TEST_P(AuthParamsTest, AuthWithApiKey) {
   EXPECT_CALL(oauth_, GetAttestationData).WillOnce(Return(attestation_data));
 
   // Step 2: Authentication with oauth token and attestation data.
-  EXPECT_CALL(http_fetcher_, PostJson(PartiallyMatchHttpRequest(*request)))
+  EXPECT_CALL(http_fetcher_, PostJson(PartiallyMatchHttpRequest(request)))
       .WillOnce(::testing::Return(buildResponse()));
 
   EXPECT_CALL(auth_notification_, AuthSuccessful(/*is_rekey=*/GetParam()))
@@ -633,9 +633,9 @@ TEST_P(AuthParamsTest, AuthWithOauthTokenAsHeader) {
                                    /*attach_oauth_as_header=*/true);
 
   auto request = auth_and_sign.EncodeToProto();
-  request->set_url("http://www.example.com/auth");
+  request.set_url("http://www.example.com/auth");
 
-  EXPECT_CALL(http_fetcher_, PostJson(PartiallyMatchHttpRequest(*request)))
+  EXPECT_CALL(http_fetcher_, PostJson(PartiallyMatchHttpRequest(request)))
       .WillOnce(::testing::Return(return_val));
   EXPECT_CALL(auth_notification_, AuthSuccessful(GetParam()))
       .WillOnce(

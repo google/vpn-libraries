@@ -471,20 +471,13 @@ void Auth::Authenticate(bool is_rekey, std::optional<std::string> nonce) {
           : std::nullopt,
       attestation_data, config_.attach_oauth_token_as_header());
 
-  auto auth_http_request = sign_request.EncodeToProto();
-  if (!auth_http_request) {
-    LOG(ERROR) << "Cannot build AuthAndSignRequest";
-    SetState(State::kUnauthenticated);
-    RaiseAuthFailureNotification(
-        absl::PermissionDeniedError("Cannot build AuthAndSignRequest"));
-    return;
-  }
+  HttpRequest auth_http_request = sign_request.EncodeToProto();
 
   // TODO: Clean up name of zinc_url.
-  auth_http_request->set_url(config_.zinc_url());
+  auth_http_request.set_url(config_.zinc_url());
   zinc_request_time_ = absl::Now();
   http_fetcher_.PostJsonAsync(
-      auth_http_request.value(),
+      auth_http_request,
       absl::bind_front(&Auth::HandleAuthAndSignResponse, this, is_rekey));
 }
 

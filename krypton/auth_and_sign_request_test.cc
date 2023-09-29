@@ -14,25 +14,26 @@
 
 #include "privacy/net/krypton/auth_and_sign_request.h"
 
-#include <cstddef>
 #include <optional>
 #include <string>
 
 #include "google/protobuf/any.proto.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
+#include "privacy/net/common/proto/auth_and_sign.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/json_util.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 
 namespace privacy {
 namespace krypton {
 
-using ::testing::EqualsProto;
 using ::testing::Eq;
+using ::testing::EqualsProto;
 
 // TODO: Write fuzz testing of the JSON body.
 TEST(AuthAndSignRequest, TestAuthAndSignRequest) {
@@ -41,11 +42,12 @@ TEST(AuthAndSignRequest, TestAuthAndSignRequest) {
                              /*attach_oauth_as_header=*/false);
 
   auto proto = request.EncodeToProto();
-  EXPECT_TRUE(proto);
 
-  ASSERT_OK_AND_ASSIGN(auto actual, utils::StringToJson(proto->json_body()));
+  ASSERT_OK_AND_ASSIGN(absl::StatusOr<nlohmann::json> actual,
+                       utils::StringToJson(proto.json_body()));
 
-  ASSERT_OK_AND_ASSIGN(auto expected, utils::StringToJson(R"string({
+  ASSERT_OK_AND_ASSIGN(absl::StatusOr<nlohmann::json> expected,
+                       utils::StringToJson(R"string({
       "oauth_token" : "abc",
       "service_type" : "123"
    })string"));
@@ -59,16 +61,15 @@ TEST(AuthAndSignRequest, TestAuthAndSignRequestWithOauthAsHeader) {
                              /*attach_oauth_as_header=*/true);
 
   auto proto = request.EncodeToProto();
-  EXPECT_TRUE(proto);
 
-  ASSERT_OK_AND_ASSIGN(auto actual, utils::StringToJson(proto->json_body()));
+  ASSERT_OK_AND_ASSIGN(auto actual, utils::StringToJson(proto.json_body()));
 
   ASSERT_OK_AND_ASSIGN(auto expected, utils::StringToJson(R"string({
       "service_type" : "123"
    })string"));
 
   EXPECT_EQ(actual, expected);
-  EXPECT_EQ(proto->headers().find("Authorization")->second, "Bearer abc");
+  EXPECT_EQ(proto.headers().find("Authorization")->second, "Bearer abc");
 }
 
 TEST(AuthAndSignRequest, TestAuthAndSignRequestWithBlindSigning) {
@@ -76,9 +77,8 @@ TEST(AuthAndSignRequest, TestAuthAndSignRequestWithBlindSigning) {
                              "hash of blind", std::nullopt,
                              /*attach_oauth_as_header=*/false);
   auto proto = request.EncodeToProto();
-  EXPECT_TRUE(proto);
 
-  ASSERT_OK_AND_ASSIGN(auto actual, utils::StringToJson(proto->json_body()));
+  ASSERT_OK_AND_ASSIGN(auto actual, utils::StringToJson(proto.json_body()));
 
   ASSERT_OK_AND_ASSIGN(auto expected, utils::StringToJson(R"string({
        "oauth_token" : "abc",
@@ -126,10 +126,9 @@ TEST(AuthAndSignRequest, TestAuthAndSignRequestWithIntegrityToken) {
                              attestation_data,
                              /*attach_oauth_as_header=*/false);
   auto proto = request.EncodeToProto();
-  EXPECT_TRUE(proto);
 
   ppn::AuthAndSignRequest actual;
-  ASSERT_TRUE(actual.ParseFromString(proto->proto_body()));
+  ASSERT_TRUE(actual.ParseFromString(proto.proto_body()));
 
   ASSERT_THAT(
       actual, EqualsProto(R"pb(

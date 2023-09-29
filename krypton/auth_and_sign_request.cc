@@ -46,7 +46,7 @@ AuthAndSignRequest::AuthAndSignRequest(
       attestation_data_(attestation_data),
       attach_oauth_as_header_(attach_oauth_as_header) {}
 
-std::optional<HttpRequest> AuthAndSignRequest::EncodeToProto() const {
+HttpRequest AuthAndSignRequest::EncodeToProto() const {
   HttpRequest http_request;
   // Because attestation_data_ has an Any field with arbitrary types in it, it
   // can't be encoded as JSON using a protolite implementation. So, in that
