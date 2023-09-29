@@ -885,6 +885,9 @@ void Session::HandleDatapathFailure(const absl::Status& status) {
 void Session::NotifyDatapathDisconnected(const NetworkInfo& network_info,
                                          const absl::Status& status) {
   CancelDatapathConnectingTimerIfRunning();
+  if (datapath_ != nullptr) {
+    datapath_->Stop();
+  }
   tunnel_manager_->DatapathStopped(/*force_fail_open=*/false);
   NotificationInterface* notification = notification_;
   notification_thread_->Post([notification, status, network_info] {
