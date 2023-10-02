@@ -439,7 +439,7 @@ void Session::RekeyDatapath() {
     return;
   }
   LOG(INFO) << "Rekey is successful";
-  number_of_rekeys_.fetch_add(1);
+  number_of_rekeys_++;
 }
 
 void Session::Rekey() {
@@ -646,6 +646,7 @@ absl::Status Session::SetNetwork(const NetworkInfo& network_info) {
     LOG(INFO) << "Switching network to "
               << utils::NetworkInfoDebugString(network_info);
     switching_network_ = true;
+    network_switches_count_++;
   } else {
     LOG(INFO) << "Setting network to "
               << utils::NetworkInfoDebugString(network_info);
@@ -665,8 +666,7 @@ absl::Status Session::ConnectDatapath(const NetworkInfo& network_info) {
   // The network_info passed into this method should always be the same as
   // active_network_info_. It's passed into the method like this to enforce that
   // this method should never be called when the active_network_info_ is null.
-  LOG(INFO) << "Switching Network to network of type "
-            << network_info.network_type();
+  LOG(INFO) << "Connecting to network of type " << network_info.network_type();
 
   NotifyDatapathConnecting();
   if (datapath_ == nullptr) {
@@ -698,10 +698,8 @@ absl::Status Session::ConnectDatapath(const NetworkInfo& network_info) {
   }
   LOG(INFO) << "Got tunnel";
 
-  auto current_restart_counter = network_switches_count_.fetch_add(1);
-  LOG(INFO) << "ConnectDatapath Counter " << current_restart_counter
-            << " for network type " << network_info.network_type();
-
+  LOG(INFO) << "ConnectDatapath Reattempt Counter " << datapath_reattempt_count_
+            << " for network " << network_info.network_type();
   auto ip = datapath_address_selector_.SelectDatapathAddress();
   if (!ip.ok()) {
     LOG(ERROR) << "Failed to select a datapath address: " << ip.status();
@@ -714,7 +712,7 @@ absl::Status Session::ConnectDatapath(const NetworkInfo& network_info) {
   }
 
   auto connect_data_status = datapath_->SwitchNetwork(
-      uplink_spi_, *ip, network_info, current_restart_counter);
+      uplink_spi_, *ip, network_info, datapath_reattempt_count_);
 
   if (!connect_data_status.ok()) {
     LOG(ERROR) << "Switching networks failed: " << connect_data_status;
@@ -727,14 +725,10 @@ absl::Status Session::ConnectDatapath(const NetworkInfo& network_info) {
 void Session::CollectTelemetry(KryptonTelemetry* telemetry) {
   absl::MutexLock l(&mutex_);
 
-  telemetry->set_successful_rekeys(number_of_rekeys_.load());
-  number_of_rekeys_ = 0;
-  auto delta_network_switches =
-      network_switches_count_ - network_switches_count_last_collection_;
-  telemetry->set_network_switches(delta_network_switches);
-  network_switches_count_last_collection_ = network_switches_count_.load();
-  telemetry->set_successful_network_switches(successful_network_switches_);
-  successful_network_switches_ = 0;
+  telemetry->set_successful_rekeys(std::exchange(number_of_rekeys_, 0));
+  telemetry->set_network_switches(std::exchange(network_switches_count_, 0));
+  telemetry->set_successful_network_switches(
+      std::exchange(successful_network_switches_, 0));
 
   provision_->CollectTelemetry(telemetry);
 }
@@ -749,12 +743,8 @@ void Session::GetDebugInfo(KryptonDebugInfo* debug_info) {
     session_debug_info->mutable_active_network()->CopyFrom(
         active_network_info_.value());
   }
-  session_debug_info->set_successful_rekeys(number_of_rekeys_.load());
-
-  // delta since the last telemetry collection event.
-  auto delta_network_switches =
-      network_switches_count_ - network_switches_count_last_collection_;
-  session_debug_info->set_network_switches(delta_network_switches);
+  session_debug_info->set_successful_rekeys(number_of_rekeys_);
+  session_debug_info->set_network_switches(network_switches_count_);
 
   provision_->GetDebugInfo(debug_info);
   datapath_->GetDebugInfo(session_debug_info->mutable_datapath());

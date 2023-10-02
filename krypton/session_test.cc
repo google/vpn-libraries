@@ -740,7 +740,7 @@ TEST_F(SessionTest, PopulatesDebugInfo) {
     status: "OK"
     active_network < network_type: CELLULAR network_id: 123 >
     successful_rekeys: 0
-    network_switches: 1
+    network_switches: 0
     datapath: <
       uplink_packets_read: 1
       downlink_packets_read: 2
@@ -758,37 +758,12 @@ TEST_F(SessionTest, CollectTelemetry) {
   KryptonTelemetry telemetry;
   session_->CollectTelemetry(&telemetry);
 
-  EXPECT_EQ(telemetry.network_switches(), 2);
+  EXPECT_EQ(telemetry.network_switches(), 0);
   EXPECT_EQ(telemetry.successful_rekeys(), 0);
   EXPECT_EQ(telemetry.auth_latency_size(), 1);
   EXPECT_EQ(telemetry.oauth_latency_size(), 1);
   EXPECT_EQ(telemetry.zinc_latency_size(), 1);
   EXPECT_EQ(telemetry.egress_latency_size(), 1);
-}
-
-TEST_F(SessionTest, CalculateNetworkSwitchesDeltaForTelemetry) {
-  BringDatapathToConnected();
-
-  KryptonTelemetry telemetry;
-  session_->CollectTelemetry(&telemetry);
-  EXPECT_EQ(telemetry.network_switches(), 2);
-
-  // Second telemetry collection event.
-  session_->CollectTelemetry(&telemetry);
-  EXPECT_EQ(telemetry.network_switches(), 0);
-
-  // One network switch in next telemetry collection event indicates
-  // network switches delta properly calculated.
-  NetworkInfo network_info;
-  network_info.set_network_id(124);
-  network_info.set_network_type(NetworkType::WIFI);
-  EXPECT_CALL(*datapath_, SwitchNetwork(123, _, EqualsProto(network_info), _))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_OK(session_->SetNetwork(network_info));
-
-  // Third telemetry collection event.
-  session_->CollectTelemetry(&telemetry);
-  EXPECT_EQ(telemetry.network_switches(), 1);
 }
 
 TEST_F(SessionTest, DatapathPermanentFailure) {
@@ -821,58 +796,10 @@ TEST_F(SessionTest, ConnectControlPlaneBeforeSettingNetwork) {
   // Verify telemetry.
   KryptonTelemetry telemetry;
   session_->CollectTelemetry(&telemetry);
-  // TODO Add check for network_switches here.
+  EXPECT_EQ(telemetry.network_switches(), 0);
   EXPECT_EQ(telemetry.successful_network_switches(), 0);
 }
 
-TEST_F(SessionTest, SwitchNetworkTelemetryWithFailedAttempt) {
-  ConnectControlPlaneWithoutSettingNetwork();
-
-  // Set original network type.
-  NetworkInfo network_info;
-  network_info.set_network_type(NetworkType::WIFI);
-  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())));
-  EXPECT_CALL(*datapath_, SwitchNetwork(123, _, EqualsProto(network_info), _))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(notification_, DatapathConnecting()).Times(3);
-  EXPECT_OK(session_->SetNetwork(network_info));
-  EXPECT_CALL(notification_, DatapathConnected()).Times(2);
-  session_->DatapathEstablished();
-  EXPECT_EQ(session_->GetActiveNetworkInfoTestOnly()->network_type(),
-            network_info.network_type());
-
-  // Switch network to different type.
-  NetworkInfo new_network_info;
-  new_network_info.set_network_type(NetworkType::CELLULAR);
-
-  // First attempt fails.
-  EXPECT_CALL(*datapath_,
-              SwitchNetwork(123, _, EqualsProto(new_network_info), _))
-      .WillOnce(Return(absl::FailedPreconditionError("test case")));
-  EXPECT_EQ(session_->SetNetwork(new_network_info),
-            absl::FailedPreconditionError("test case"));
-
-  // Second attempt succeeds.
-  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())));
-  EXPECT_CALL(*datapath_,
-              SwitchNetwork(123, _, EqualsProto(new_network_info), _))
-      .WillOnce(Return(absl::OkStatus()));
-  EXPECT_OK(session_->SetNetwork(new_network_info));
-  session_->DatapathEstablished();
-  EXPECT_EQ(session_->GetActiveNetworkInfoTestOnly()->network_type(),
-            new_network_info.network_type());
-
-  // Verify telemetry.
-  KryptonTelemetry telemetry;
-  session_->CollectTelemetry(&telemetry);
-  // TODO Add check for network_switches here.
-  EXPECT_EQ(telemetry.successful_network_switches(), 1);
-
-  // Verify that telemetry gets reset on collection.
-  telemetry.Clear();
-  session_->CollectTelemetry(&telemetry);
-  EXPECT_EQ(telemetry.successful_network_switches(), 0);
-}
 
 TEST_F(SessionTest, SwitchNetworkTelemetryWithDatapathReattempt) {
   ConnectControlPlaneWithoutSettingNetwork();
@@ -899,7 +826,7 @@ TEST_F(SessionTest, SwitchNetworkTelemetryWithDatapathReattempt) {
   // Verify telemetry.
   KryptonTelemetry telemetry;
   session_->CollectTelemetry(&telemetry);
-  // TODO Add check for network_switches here.
+  EXPECT_EQ(telemetry.network_switches(), 0);
   EXPECT_EQ(telemetry.successful_network_switches(), 0);
 }
 
@@ -938,8 +865,14 @@ TEST_F(SessionTest, SwitchNetworkTelemetryWithSwitchAndReattempt) {
   // Verify telemetry.
   KryptonTelemetry telemetry;
   session_->CollectTelemetry(&telemetry);
-  // TODO Add check for network_switches here.
+  EXPECT_EQ(telemetry.network_switches(), 1);
   EXPECT_EQ(telemetry.successful_network_switches(), 1);
+
+  // Verify that telemetry gets reset on collection.
+  telemetry.Clear();
+  session_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.network_switches(), 0);
+  EXPECT_EQ(telemetry.successful_network_switches(), 0);
 }
 
 TEST_F(SessionTest, TestSetKeyMaterials) {

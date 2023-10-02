@@ -159,7 +159,7 @@ class Session : public DatapathInterface::NotificationInterface,
 
   int DatapathReattemptCountTestOnly() const ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock l(&mutex_);
-    return datapath_reattempt_count_.load();
+    return datapath_reattempt_count_;
   }
 
   int DatapathReattemptTimerIdTestOnly() const ABSL_LOCKS_EXCLUDED(mutex_) {
@@ -282,8 +282,8 @@ class Session : public DatapathInterface::NotificationInterface,
   std::optional<NetworkInfo> active_network_info_ ABSL_GUARDED_BY(mutex_);
 
   // Counts the number of times the endpoint switched till now.
-  std::atomic_int network_switches_count_ ABSL_GUARDED_BY(mutex_) = 1;
-  std::atomic_int datapath_reattempt_count_ ABSL_GUARDED_BY(mutex_) = 0;
+  int datapath_reattempt_count_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint32_t network_switches_count_ ABSL_GUARDED_BY(mutex_) = 0;
   uint32_t successful_network_switches_ ABSL_GUARDED_BY(mutex_) = 0;
 
   // Initialize uplink and downlink MTU values to 0 so that the initial update
@@ -294,12 +294,10 @@ class Session : public DatapathInterface::NotificationInterface,
   // to a commonly used MTU value of 1500, minus some overhead.
   int tunnel_mtu_ ABSL_GUARDED_BY(mutex_) = 1395;
 
-  std::atomic_bool datapath_connected_ ABSL_GUARDED_BY(mutex_) = false;
-  // Keep track of the network switches count at last telemetry collection.
-  int network_switches_count_last_collection_ ABSL_GUARDED_BY(mutex_) = 0;
+  bool datapath_connected_ ABSL_GUARDED_BY(mutex_) = false;
   // Tells whether a network switch is currently in progress.
   bool switching_network_ ABSL_GUARDED_BY(mutex_) = false;
-  std::atomic_int number_of_rekeys_ = 0;
+  int number_of_rekeys_ ABSL_GUARDED_BY(mutex_)= 0;
 
   utils::LooperThread looper_;
   std::unique_ptr<Provision> provision_ ABSL_GUARDED_BY(mutex_);
