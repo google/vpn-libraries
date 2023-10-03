@@ -20,7 +20,8 @@ import com.google.android.libraries.privacy.ppn.internal.IpSecTransformParams;
 public interface KryptonIpSecHelper {
 
   /** Constructs and applies an IPSecTransform. */
-  void transformFd(IpSecTransformParams params, Runnable keepaliveStartCallback)
+  void transformFd(
+      IpSecTransformParams params, boolean socketKeepaliveEnabled, Runnable keepaliveStartCallback)
       throws KryptonException;
 
   /**

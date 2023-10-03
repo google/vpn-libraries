@@ -308,23 +308,27 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
 
   @Override
   public void onKryptonNeedsIpSecConfiguration(IpSecTransformParams params) throws PpnException {
-    synchronized (kryptonLock) {
-      if (ipSecHelper == null) {
-        ipSecHelper = new KryptonIpSecHelperImpl(context, xenon);
-      }
+    if (ipSecHelper == null) {
+      ipSecHelper = new KryptonIpSecHelperImpl(context, xenon);
     }
     try {
       ipSecHelper.transformFd(
-          params,
-          () -> {
-            try {
-              krypton.disableKryptonKeepalive();
-            } catch (KryptonException e) {
-              Log.e(TAG, "Failed to disable the legacy keepalive.", e);
-            }
-          });
+          params, this.options.isSocketKeepaliveEnabled(), this::disableKeepalive);
     } catch (KryptonException e) {
       throw new PpnException("Unable to configure IpSec.", e);
+    }
+  }
+
+  private void disableKeepalive() {
+    try {
+      synchronized (kryptonLock) {
+        if (krypton != null) {
+          // TODO: Create a unit test to cover this line.
+          krypton.disableKryptonKeepalive();
+        }
+      }
+    } catch (KryptonException e) {
+      Log.e(TAG, "Failed to disable the legacy keepalive.", e);
     }
   }
 

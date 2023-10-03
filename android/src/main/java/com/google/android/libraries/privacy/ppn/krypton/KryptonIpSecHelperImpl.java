@@ -94,7 +94,8 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
   }
 
   @Override
-  public void transformFd(IpSecTransformParams params, Runnable keepaliveStartCallback)
+  public void transformFd(
+      IpSecTransformParams params, boolean socketKeepaliveEnabled, Runnable keepaliveStartCallback)
       throws KryptonException {
     Log.w(TAG, "Setting up transformFd for network = " + params.getNetworkId());
     PpnNetwork ppnNetwork = xenon.getNetwork(params.getNetworkId());
@@ -164,7 +165,9 @@ public final class KryptonIpSecHelperImpl implements KryptonIpSecHelper {
         ipSecManager.applyTransportModeTransform(
             fd.getFileDescriptor(), IpSecManager.DIRECTION_OUT, outTransform);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && encapsulationSocket != null) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+            && socketKeepaliveEnabled
+            && encapsulationSocket != null) {
           if (keepaliveHelper == null) {
             keepaliveHelper = new KryptonKeepaliveHelperImpl(context);
           }

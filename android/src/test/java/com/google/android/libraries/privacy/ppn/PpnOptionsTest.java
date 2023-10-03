@@ -324,6 +324,7 @@ public class PpnOptionsTest {
   @Test
   public void testCopperControllerAddress_hasDefault() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getCopperControllerAddress()).isEmpty();
   }
 
@@ -331,24 +332,28 @@ public class PpnOptionsTest {
   public void setCopperControllerAddress_storesValue() {
     String address = "127.0.0.1";
     PpnOptions options = new PpnOptions.Builder().setCopperControllerAddress(address).build();
+
     assertThat(options.getCopperControllerAddress()).hasValue(address);
   }
 
   @Test
   public void setCopperControllerAddress_ignoresNull() {
     PpnOptions options = new PpnOptions.Builder().setCopperControllerAddress(null).build();
+
     assertThat(options.getCopperControllerAddress()).isEmpty();
   }
 
   @Test
   public void setCopperControllerAddress_ignoresEmpty() {
     PpnOptions options = new PpnOptions.Builder().setCopperControllerAddress("").build();
+
     assertThat(options.getCopperControllerAddress()).isEmpty();
   }
 
   @Test
   public void testCopperHostnameOverride_hasDefault() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getCopperHostnameOverride()).isEmpty();
   }
 
@@ -356,24 +361,28 @@ public class PpnOptionsTest {
   public void setCopperHostnameOverride_storesValue() {
     String address = "127.0.0.1";
     PpnOptions options = new PpnOptions.Builder().setCopperHostnameOverride(address).build();
+
     assertThat(options.getCopperHostnameOverride()).hasValue(address);
   }
 
   @Test
   public void setCopperHostnameOverride_ignoresNull() {
     PpnOptions options = new PpnOptions.Builder().setCopperHostnameOverride(null).build();
+
     assertThat(options.getCopperHostnameOverride()).isEmpty();
   }
 
   @Test
   public void setCopperHostnameOverride_ignoresEmpty() {
     PpnOptions options = new PpnOptions.Builder().setCopperHostnameOverride("").build();
+
     assertThat(options.getCopperHostnameOverride()).isEmpty();
   }
 
   @Test
   public void setDatapathProtocol_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getDatapathProtocol()).isEmpty();
   }
 
@@ -381,18 +390,21 @@ public class PpnOptionsTest {
   public void setDatapathProtocol_setsValue() {
     PpnOptions options =
         new PpnOptions.Builder().setDatapathProtocol(PpnOptions.DatapathProtocol.IPSEC).build();
+
     assertThat(options.getDatapathProtocol()).hasValue(PpnOptions.DatapathProtocol.IPSEC);
   }
 
   @Test
   public void setBridgeKeyLength_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getBridgeKeyLength()).isEmpty();
   }
 
   @Test
   public void setBridgeKeyLength_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setBridgeKeyLength(256).build();
+
     assertThat(options.getBridgeKeyLength()).hasValue(256);
   }
 
@@ -405,30 +417,35 @@ public class PpnOptionsTest {
   @Test
   public void setRekeyDuration_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getRekeyDuration()).isEmpty();
   }
 
   @Test
   public void setRekeyDuration_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setRekeyDuration(Duration.ofMillis(42)).build();
+
     assertThat(options.getRekeyDuration().get().toMillis()).isEqualTo(42);
   }
 
   @Test
   public void setBlindSigningEnabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.isBlindSigningEnabled()).isEmpty();
   }
 
   @Test
   public void setBlindSigningEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setBlindSigningEnabled(true).build();
+
     assertThat(options.isBlindSigningEnabled().get()).isTrue();
   }
 
   @Test
   public void setReconnectorInitialTimeToReconnect_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getReconnectorInitialTimeToReconnect()).isEmpty();
   }
 
@@ -438,12 +455,14 @@ public class PpnOptionsTest {
         new PpnOptions.Builder()
             .setReconnectorInitialTimeToReconnect(Duration.ofMillis(42))
             .build();
+
     assertThat(options.getReconnectorInitialTimeToReconnect().get().toMillis()).isEqualTo(42);
   }
 
   @Test
   public void setReconnectorSessionConnectionDeadline_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getReconnectorSessionConnectionDeadline()).isEmpty();
   }
 
@@ -453,48 +472,70 @@ public class PpnOptionsTest {
         new PpnOptions.Builder()
             .setReconnectorSessionConnectionDeadline(Duration.ofMillis(42))
             .build();
+
     assertThat(options.getReconnectorSessionConnectionDeadline().get().toMillis()).isEqualTo(42);
   }
 
   @Test
   public void setStickyService_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.isStickyService()).isFalse();
   }
 
   @Test
   public void setStickyService_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setStickyService(true).build();
+
     assertThat(options.isStickyService()).isTrue();
   }
 
   @Test
   public void setSafeDisconnectEnabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.isSafeDisconnectEnabled()).isFalse();
   }
 
   @Test
   public void setSafeDisconnectEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setSafeDisconnectEnabled(true).build();
+
     assertThat(options.isSafeDisconnectEnabled()).isTrue();
   }
 
   @Test
   public void setIPv6Enabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.isIPv6Enabled()).isTrue();
   }
 
   @Test
   public void setIPv6Enabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setIPv6Enabled(false).build();
+
     assertThat(options.isIPv6Enabled()).isFalse();
+  }
+
+  @Test
+  public void setSocketKeepaliveEnabled_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+
+    assertThat(options.isSocketKeepaliveEnabled()).isTrue();
+  }
+
+  @Test
+  public void setSocketKeepaliveEnabled_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setSocketKeepaliveEnabled(false).build();
+
+    assertThat(options.isSocketKeepaliveEnabled()).isFalse();
   }
 
   @Test
   public void disallowedApplications_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getDisallowedApplications()).isNotNull();
     assertThat(options.getDisallowedApplications()).isEmpty();
   }
@@ -505,72 +546,84 @@ public class PpnOptionsTest {
         new PpnOptions.Builder()
             .setDisallowedApplications(Arrays.asList("foo", "bar", "baz"))
             .build();
+
     assertThat(options.getDisallowedApplications()).containsExactly("foo", "bar", "baz");
   }
 
   @Test
   public void allowBypass_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.allowBypass()).isFalse();
   }
 
   @Test
   public void allowBypass_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setAllowBypass(true).build();
+
     assertThat(options.allowBypass()).isTrue();
   }
 
   @Test
   public void excludeLocalAddresses_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.excludeLocalAddresses()).isTrue();
   }
 
   @Test
   public void excludeLocalAddresses_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setExcludeLocalAddresses(false).build();
+
     assertThat(options.excludeLocalAddresses()).isFalse();
   }
 
   @Test
   public void setDnsCacheEnabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.isDnsCacheEnabled()).isTrue();
   }
 
   @Test
   public void setDnsCacheEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setDnsCacheEnabled(false).build();
+
     assertThat(options.isDnsCacheEnabled()).isFalse();
   }
 
   @Test
   public void setApiKey_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getApiKey()).isEmpty();
   }
 
   @Test
   public void setApiKey_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setApiKey("apiKey").build();
+
     assertThat(options.getApiKey()).hasValue("apiKey");
   }
 
   @Test
   public void setAttachOauthTokenAsHeaderEnabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.isAttachOauthTokenAsHeaderEnabled()).isFalse();
   }
 
   @Test
   public void setAttachOauthTokenAsHeaderEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setAttachOauthTokenAsHeaderEnabled(true).build();
+
     assertThat(options.isAttachOauthTokenAsHeaderEnabled()).isTrue();
   }
 
   @Test
   public void setIpv4KeepaliveInterval_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getIpv4KeepaliveInterval()).isEmpty();
   }
 
@@ -578,6 +631,7 @@ public class PpnOptionsTest {
   public void setIpv4KeepaliveInterval_setsValue() {
     PpnOptions options =
         new PpnOptions.Builder().setIpv4KeepaliveInterval(Duration.ofMillis(42)).build();
+
     assertThat(options.getIpv4KeepaliveInterval()).isPresent();
     assertThat(options.getIpv4KeepaliveInterval().get()).isEqualTo(Duration.ofMillis(42));
   }
@@ -585,6 +639,7 @@ public class PpnOptionsTest {
   @Test
   public void setIpv6KeepaliveInterval_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getIpv6KeepaliveInterval()).isEmpty();
   }
 
@@ -592,6 +647,7 @@ public class PpnOptionsTest {
   public void setIpv6KeepaliveInterval_setsValue() {
     PpnOptions options =
         new PpnOptions.Builder().setIpv6KeepaliveInterval(Duration.ofMillis(42)).build();
+
     assertThat(options.getIpv6KeepaliveInterval()).isPresent();
     assertThat(options.getIpv6KeepaliveInterval().get()).isEqualTo(Duration.ofMillis(42));
   }
@@ -599,6 +655,7 @@ public class PpnOptionsTest {
   @Test
   public void setAttestationNetworkOverrideEnabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.isAttestationNetworkOverrideEnabled()).isFalse();
   }
 
@@ -606,12 +663,14 @@ public class PpnOptionsTest {
   public void setAttestationNetworkOverrideEnabled_setsValue() {
     PpnOptions options =
         new PpnOptions.Builder().setAttestationNetworkOverrideEnabled(true).build();
+
     assertThat(options.isAttestationNetworkOverrideEnabled()).isTrue();
   }
 
   @Test
   public void setForceDisallowPlayStoreForAttestationEnabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.isForceDisallowPlayStoreForAttestationEnabled()).isFalse();
   }
 
@@ -619,6 +678,7 @@ public class PpnOptionsTest {
   public void setForceDisallowPlayStoreForAttestationEnabled_setsValue() {
     PpnOptions options =
         new PpnOptions.Builder().setForceDisallowPlayStoreForAttestationEnabled(true).build();
+
     assertThat(options.isForceDisallowPlayStoreForAttestationEnabled()).isTrue();
   }
 
@@ -779,42 +839,49 @@ public class PpnOptionsTest {
   @Test
   public void setPublicMetadataEnabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.isPublicMetadataEnabled()).isEmpty();
   }
 
   @Test
   public void setPublicMetadataEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setPublicMetadataEnabled(true).build();
+
     assertThat(options.isPublicMetadataEnabled().get()).isTrue();
   }
 
   @Test
   public void setDebugModeAllowed_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.isDebugModeAllowed()).isEmpty();
   }
 
   @Test
   public void setDebugModeAllowed_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setDebugModeAllowed(true).build();
+
     assertThat(options.isDebugModeAllowed().get()).isTrue();
   }
 
   @Test
   public void setPeriodicHealthCheckEnabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.isPeriodicHealthCheckEnabled()).isFalse();
   }
 
   @Test
   public void setPeriodicHealthCheckEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setPeriodicHealthCheckEnabled(true).build();
+
     assertThat(options.isPeriodicHealthCheckEnabled()).isTrue();
   }
 
   @Test
   public void setPeriodicHealthCheckDuration_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getPeriodicHealthCheckDuration()).isEmpty();
   }
 
@@ -822,18 +889,21 @@ public class PpnOptionsTest {
   public void setPeriodicHealthCheckDuration_setsValue() {
     PpnOptions options =
         new PpnOptions.Builder().setPeriodicHealthCheckDuration(Duration.ofSeconds(30)).build();
+
     assertThat(options.getPeriodicHealthCheckDuration().get().toSeconds()).isEqualTo(30);
   }
 
   @Test
   public void setPeriodicHealthCheckDuration_ignoresNull() {
     PpnOptions options = new PpnOptions.Builder().setPeriodicHealthCheckDuration(null).build();
+
     assertThat(options.getPeriodicHealthCheckDuration()).isEmpty();
   }
 
   @Test
   public void setPeriodicHealthCheckUrl_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getPeriodicHealthCheckUrl()).isEmpty();
   }
 
@@ -841,42 +911,49 @@ public class PpnOptionsTest {
   public void setPeriodicHealthCheckUrl_setsValue() {
     PpnOptions options =
         new PpnOptions.Builder().setPeriodicHealthCheckUrl("healthCheckUrl").build();
+
     assertThat(options.getPeriodicHealthCheckUrl()).hasValue("healthCheckUrl");
   }
 
   @Test
   public void setPeriodicHealthCheckUrl_ignoresNull() {
     PpnOptions options = new PpnOptions.Builder().setPeriodicHealthCheckUrl(null).build();
+
     assertThat(options.getPeriodicHealthCheckUrl()).isEmpty();
   }
 
   @Test
   public void setPeriodicHealthCheckPort_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getPeriodicHealthCheckPort()).isEmpty();
   }
 
   @Test
   public void setPeriodicHealthCheckPort_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setPeriodicHealthCheckPort(80).build();
+
     assertThat(options.getPeriodicHealthCheckPort()).hasValue(80);
   }
 
   @Test
   public void setDatapathConnectingTimerEnabled_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getDatapathConnectingTimerEnabled()).isEmpty();
   }
 
   @Test
   public void setDatapathConnectingTimerEnabled_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setDatapathConnectingTimerEnabled(true).build();
+
     assertThat(options.getDatapathConnectingTimerEnabled().get()).isTrue();
   }
 
   @Test
   public void setDatapathConnectingTimerDuration_defaultValue() {
     PpnOptions options = new PpnOptions.Builder().build();
+
     assertThat(options.getDatapathConnectingTimerDuration()).isEmpty();
   }
 
@@ -884,12 +961,14 @@ public class PpnOptionsTest {
   public void setDatapathConnectingTimerDuration_setsValue() {
     PpnOptions options =
         new PpnOptions.Builder().setDatapathConnectingTimerDuration(Duration.ofSeconds(30)).build();
+
     assertThat(options.getDatapathConnectingTimerDuration().get().toSeconds()).isEqualTo(30);
   }
 
   @Test
   public void setDatapathConnectingTimerDuration_ignoresNull() {
     PpnOptions options = new PpnOptions.Builder().setDatapathConnectingTimerDuration(null).build();
+
     assertThat(options.getDatapathConnectingTimerDuration()).isEmpty();
   }
 }

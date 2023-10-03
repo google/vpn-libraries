@@ -79,6 +79,7 @@ public class PpnOptions {
   private final Optional<Boolean> blindSigningEnabled;
   private final boolean ipv6Enabled;
   private final boolean dynamicMtuEnabled;
+  private final boolean socketKeepaliveEnabled;
 
   private final Optional<Duration> reconnectorInitialTimeToReconnect;
   private final Optional<Duration> reconnectorSessionConnectionDeadline;
@@ -150,6 +151,7 @@ public class PpnOptions {
     this.ipGeoLevel = builder.ipGeoLevel;
     this.ipv6Enabled = builder.ipv6Enabled;
     this.dynamicMtuEnabled = builder.dynamicMtuEnabled;
+    this.socketKeepaliveEnabled = builder.socketKeepaliveEnabled;
 
     this.disallowedApplications = Collections.unmodifiableSet(builder.disallowedApplications);
     this.allowBypass = builder.allowBypass;
@@ -262,6 +264,10 @@ public class PpnOptions {
 
   public boolean isDynamicMtuEnabled() {
     return dynamicMtuEnabled;
+  }
+
+  public boolean isSocketKeepaliveEnabled() {
+    return socketKeepaliveEnabled;
   }
 
   public Optional<Duration> getReconnectorInitialTimeToReconnect() {
@@ -555,6 +561,7 @@ public class PpnOptions {
     private Optional<IpGeoLevel> ipGeoLevel = Optional.empty();
     private boolean ipv6Enabled = true;
     private boolean dynamicMtuEnabled = false;
+    private boolean socketKeepaliveEnabled = true;
 
     private Set<String> disallowedApplications = Collections.emptySet();
     private boolean allowBypass = false;
@@ -843,6 +850,13 @@ public class PpnOptions {
     @CanIgnoreReturnValue
     public Builder setDynamicMtuEnabled(boolean dynamicMtuEnabled) {
       this.dynamicMtuEnabled = dynamicMtuEnabled;
+      return this;
+    }
+
+    /** Sets whether PPN should attempt to use SocketKeepalive. */
+    @CanIgnoreReturnValue
+    public Builder setSocketKeepaliveEnabled(boolean socketKeepaliveEnabled) {
+      this.socketKeepaliveEnabled = socketKeepaliveEnabled;
       return this;
     }
 
