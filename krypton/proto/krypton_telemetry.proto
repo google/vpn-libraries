@@ -24,7 +24,7 @@ option java_package = "com.google.android.libraries.privacy.ppn.internal";
 option java_api_version = 2;
 option java_multiple_files = true;
 
-// Next ID: 14
+// Next ID: 22
 message KryptonTelemetry {
   // Provides latency for each individual Auth requests. Array size represents
   // the total auths that were done.
@@ -42,7 +42,25 @@ message KryptonTelemetry {
   // The number of network switches followed by a downlink packet received.
   optional uint32 successful_network_switches = 13;
 
+  // Provides latency for each network switch that is successful.
+  repeated google.protobuf.Duration network_switch_latency = 14;
+
+  // The number of times a client attempts provisioning.
+  optional uint32 control_plane_attempts = 15;
+
+  // The number of times the client is successfully provisioned.
+  optional uint32 control_plane_successes = 16;
+
+  // The number of times the control plane is disconnected. This is not
+  // analogous with the control plane success rate, as control plane failues
+  // may occur after the client is fully provisioned.
   optional uint32 control_plane_failures = 5;
+
+  // Provides latency from start of provisioning until fully provisioned.
+  repeated google.protobuf.Duration control_plane_success_latency = 17;
+
+  // Provides latency from start of provisioning until failure.
+  repeated google.protobuf.Duration control_plane_failure_latency = 18;
 
   // The number of times a datapath is found unusable. This is not analogous
   // to data_plane_connecting fields, as a datapath can fail after it was
@@ -65,6 +83,16 @@ message KryptonTelemetry {
   // The number of times a datapath was successfully connected.
   optional uint32 data_plane_connecting_successes = 11;
 
-  // The latency from the start of connecting a datapath until fully connected.
+  // Provides latency from start of connecting a datapath until fully connected.
   repeated google.protobuf.Duration data_plane_connecting_latency = 12;
+
+  // The number of times a health check is performed.
+  optional uint32 health_check_attempts = 19;
+
+  // The number of times a health check confirms connection.
+  optional uint32 health_check_successes = 20;
+
+  // The number of times anonymous token unblinding fails, leading to
+  // authentication failure.
+  optional uint32 token_unblind_failure_count = 21;
 }
