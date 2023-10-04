@@ -64,6 +64,7 @@
 #include "third_party/anonymous_tokens/cpp/testing/proto_utils.h"
 #include "third_party/anonymous_tokens/cpp/testing/utils.h"
 #include "third_party/json/include/nlohmann/json.hpp"
+#include "third_party/openssl/base.h"
 
 namespace privacy {
 namespace krypton {
@@ -329,7 +330,8 @@ class SessionTest : public ::testing::Test {
     WaitForDatapathStart();
     EXPECT_THAT(session_->LatestStatusTestOnly(), IsOk());
 
-    EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kConnected);
+    EXPECT_EQ(session_->GetStateTestOnly(),
+              Session::State::kControlPlaneConnected);
 
     EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())));
 
@@ -344,6 +346,9 @@ class SessionTest : public ::testing::Test {
 
     EXPECT_CALL(notification_, DatapathConnected());
     session_->DatapathEstablished();
+
+    EXPECT_EQ(session_->GetStateTestOnly(),
+              Session::State::kDataPlaneConnected);
   }
 
   absl::Status CreateVpnRevokedError() {
@@ -367,8 +372,8 @@ class SessionTest : public ::testing::Test {
     session_->Start();
     control_plane_connected.WaitForNotification();
 
-    // kConnected is a ControlPlaneConnected event.
-    EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kConnected);
+    EXPECT_EQ(session_->GetStateTestOnly(),
+              Session::State::kControlPlaneConnected);
   }
 
   KryptonConfig config_{ParseTextProtoOrDie(
@@ -921,9 +926,24 @@ TEST_F(SessionTest, UplinkMtuUpdateHandlerFailureCreatingTunnel) {
   session_->DoUplinkMtuUpdate(/*uplink_mtu=*/123, /*tunnel_mtu=*/456);
 }
 
-TEST_F(SessionTest, UplinkMtuUpdateHandlerSessionDisconnected) {
+TEST_F(SessionTest, UplinkMtuUpdateHandlerControlPlaneDisconnected) {
   session_->DoUplinkMtuUpdate(/*uplink_mtu=*/123, /*tunnel_mtu=*/456);
 
+  EXPECT_NE(session_->GetUplinkMtuTestOnly(), 123);
+  EXPECT_NE(session_->GetTunnelMtuTestOnly(), 456);
+}
+
+TEST_F(SessionTest, UplinkMtuUpdateHandlerDataPlaneDisconnected) {
+  BringDatapathToConnected();
+
+  // The datapath reattempt timer should be started
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Milliseconds(500)));
+
+  session_->DatapathFailed(absl::InternalError("Error"));
+
+  session_->DoUplinkMtuUpdate(/*uplink_mtu=*/123, /*tunnel_mtu=*/456);
+
+  // The MTU values should not have been updated
   EXPECT_NE(session_->GetUplinkMtuTestOnly(), 123);
   EXPECT_NE(session_->GetTunnelMtuTestOnly(), 456);
 }
@@ -935,8 +955,23 @@ TEST_F(SessionTest, DownlinkMtuUpdateHandler) {
   EXPECT_EQ(session_->GetDownlinkMtuTestOnly(), 123);
 }
 
-TEST_F(SessionTest, DownlinkMtuUpdateHandlerSessionDisconnected) {
+TEST_F(SessionTest, DownlinkMtuUpdateHandlerControlPlaneDisconnected) {
   session_->DoDownlinkMtuUpdate(/*downlink_mtu=*/123);
+  EXPECT_NE(session_->GetDownlinkMtuTestOnly(), 123);
+}
+
+TEST_F(SessionTest, DownlinkMtuUpdateHandlerDataPlaneDisconnected) {
+  BringDatapathToConnected();
+
+  // The datapath reattempt timer should be started
+  EXPECT_CALL(timer_interface_, StartTimer(_, absl::Milliseconds(500)));
+
+  session_->DatapathFailed(absl::InternalError("Error"));
+
+  session_->DoDownlinkMtuUpdate(/*downlink_mtu=*/123);
+
+  // The MTU values should not have been updated
+  EXPECT_NE(session_->GetUplinkMtuTestOnly(), 123);
   EXPECT_NE(session_->GetDownlinkMtuTestOnly(), 123);
 }
 
@@ -1031,7 +1066,8 @@ TEST_F(SessionTest, CreateTunnelFailure) {
   WaitForDatapathStart();
   EXPECT_THAT(session_->LatestStatusTestOnly(), IsOk());
 
-  EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kConnected);
+  EXPECT_EQ(session_->GetStateTestOnly(),
+            Session::State::kControlPlaneConnected);
 
   EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())))
       .WillOnce(
@@ -1055,7 +1091,8 @@ TEST_F(SessionTest, CreateTunnelPermanentFailure) {
   WaitForDatapathStart();
   EXPECT_THAT(session_->LatestStatusTestOnly(), IsOk());
 
-  EXPECT_EQ(session_->GetStateTestOnly(), Session::State::kConnected);
+  EXPECT_EQ(session_->GetStateTestOnly(),
+            Session::State::kControlPlaneConnected);
 
   EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())))
       .WillOnce(Return(CreateVpnRevokedError()));

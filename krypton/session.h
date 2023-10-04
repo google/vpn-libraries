@@ -15,7 +15,6 @@
 #ifndef PRIVACY_NET_KRYPTON_SESSION_H_
 #define PRIVACY_NET_KRYPTON_SESSION_H_
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -103,8 +102,12 @@ class Session : public DatapathInterface::NotificationInterface,
   enum class State {
     kInitialized,
     kEgressSessionCreated,
-    kConnected,     // This indicates auth, egress and datapath were successful.
-    kSessionError,  // Common catch all.
+    kControlPlaneConnected,
+    kDataPlaneConnected,
+    kStopped,
+    kDataPlaneError,
+    kDataPlanePermanentError,
+    kSessionError,    // Common catch all.
     kPermanentError,  // Permanent error. Krypton needs to stop.
   };
 

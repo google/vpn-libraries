@@ -596,7 +596,7 @@ public class KryptonTest {
       assertThat(debugInfo.opt(KryptonDebugJson.RECONNECTOR_STATE)).isEqualTo("Connected");
       assertThat(debugInfo.opt(KryptonDebugJson.SERVICE_TYPE)).isEqualTo("some_service_type");
       assertThat(debugInfo.opt(KryptonDebugJson.SESSION_RESTART_COUNTER)).isEqualTo(1);
-      assertThat(debugInfo.opt(KryptonDebugJson.SESSION_STATE)).isEqualTo("kConnected");
+      assertThat(debugInfo.opt(KryptonDebugJson.SESSION_STATE)).isEqualTo("kControlPlaneConnected");
       assertThat(debugInfo.opt(KryptonDebugJson.SESSION_STATUS)).isEqualTo("OK");
       assertThat(debugInfo.has(KryptonDebugJson.SESSION_ACTIVE_TUN_FD)).isFalse();
       assertThat(debugInfo.opt(KryptonDebugJson.ZINC_URL)).isEqualTo(mockAuthServer.url());

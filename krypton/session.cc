@@ -15,7 +15,6 @@
 #include "privacy/net/krypton/session.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -84,8 +83,16 @@ std::string StateString(Session::State state) {
       return "kInitialized";
     case Session::State::kEgressSessionCreated:
       return "kEgressSessionCreated";
-    case Session::State::kConnected:
-      return "kConnected";
+    case Session::State::kControlPlaneConnected:
+      return "kControlPlaneConnected";
+    case Session::State::kDataPlaneConnected:
+      return "kDataPlaneConnected";
+    case Session::State::kStopped:
+      return "kStopped";
+    case Session::State::kDataPlaneError:
+      return "kDataPlaneError";
+    case Session::State::kDataPlanePermanentError:
+      return "kDataPlanePermanentError";
     case Session::State::kSessionError:
       return "kSessionError";
     case Session::State::kPermanentError:
@@ -294,8 +301,12 @@ void Session::SetState(State state, absl::Status status) {
   switch (state) {
     case State::kInitialized:
     case State::kEgressSessionCreated:
+    case State::kDataPlaneConnected:
+    case State::kStopped:
+    case State::kDataPlaneError:
+    case State::kDataPlanePermanentError:
       break;
-    case State::kConnected:
+    case State::kControlPlaneConnected:
       notification_thread_->Post(
           [notification] { notification->ControlPlaneConnected(); });
       // Schedule the first rekey
@@ -331,6 +342,7 @@ void Session::Stop(bool forceFailOpen) {
     datapath_.reset();
   }
   tunnel_manager_->DatapathStopped(forceFailOpen);
+  SetState(State::kStopped, absl::OkStatus());
 }
 
 void Session::ForceTunnelUpdate() {
@@ -443,7 +455,9 @@ void Session::RekeyDatapath() {
 }
 
 void Session::Rekey() {
-  if (state_ != State::kConnected) {
+  if (state_ != State::kControlPlaneConnected &&
+      state_ != State::kDataPlaneConnected &&
+      state_ != State::kDataPlaneError) {
     SetState(State::kSessionError,
              absl::FailedPreconditionError(
                  "Session is not in connected state for rekey"));
@@ -488,7 +502,7 @@ void Session::StartDatapath() {
   }
   // Datapath initialized is treated as control-plane connected event. In case
   // of failure later, we should get a failure from datapath.
-  SetState(State::kConnected, absl::OkStatus());
+  SetState(State::kControlPlaneConnected, absl::OkStatus());
 
   if (!active_network_info_) {
     LOG(INFO) << "There is no active network info, waiting for SetNetwork";
@@ -557,7 +571,7 @@ void Session::HandleRekeyTimerExpiry() {
 void Session::DatapathEstablished() {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "Datapath is established";
-  datapath_connected_ = true;
+  SetState(State::kDataPlaneConnected, absl::OkStatus());
   if (switching_network_) {
     successful_network_switches_++;
     switching_network_ = false;
@@ -594,7 +608,7 @@ void Session::AttemptDatapathReconnect() {
 
   // While waiting to reconnect timer, datapath could be established as the
   // network fd is not withdrawn from the datapath.
-  if (datapath_connected_) {
+  if (state_ == State::kDataPlaneConnected) {
     LOG(INFO) << "Datapath is already connected, not reattempting";
     // Do nothing and return as the datapath came up.
     return;
@@ -654,7 +668,9 @@ absl::Status Session::SetNetwork(const NetworkInfo& network_info) {
   active_network_info_ = network_info;
   ResetAllDatapathReattempts();
 
-  if (state_ != State::kConnected) {
+  if (state_ != State::kControlPlaneConnected &&
+      state_ != State::kDataPlaneConnected &&
+      state_ != State::kDataPlaneError) {
     LOG(INFO) << "Session is not in connected state, caching active network";
     return absl::OkStatus();
   }
@@ -757,7 +773,8 @@ void Session::DoRekey() {
 
 void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
   absl::MutexLock l(&mutex_);
-  if (state_ != State::kConnected) {
+  if (state_ != State::kControlPlaneConnected &&
+      state_ != State::kDataPlaneConnected) {
     LOG(INFO) << "Ignoring uplink MTU update in unconnected state.";
     return;
   }
@@ -779,7 +796,8 @@ void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
 
 void Session::DoDownlinkMtuUpdate(int downlink_mtu) {
   absl::MutexLock l(&mutex_);
-  if (state_ != State::kConnected) {
+  if (state_ != State::kControlPlaneConnected &&
+      state_ != State::kDataPlaneConnected) {
     LOG(INFO) << "Ignoring downlink MTU update in unconnected state.";
     return;
   }
@@ -851,7 +869,7 @@ void Session::HandleDatapathFailure(const absl::Status& status) {
   }
 
   LOG(ERROR) << "Datapath Failed with status:" << status;
-  datapath_connected_ = false;
+  SetState(State::kDataPlaneError, status);
   latest_datapath_status_ = status;
 
   // For failures on datapath, see if we can reattempt.
@@ -874,6 +892,8 @@ void Session::HandleDatapathFailure(const absl::Status& status) {
 
 void Session::NotifyDatapathDisconnected(const NetworkInfo& network_info,
                                          const absl::Status& status) {
+  LOG(ERROR) << "Datapath Disconnected with status: " << status;
+  SetState(State::kDataPlanePermanentError, status);
   CancelDatapathConnectingTimerIfRunning();
   if (datapath_ != nullptr) {
     datapath_->Stop();
