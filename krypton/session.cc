@@ -57,6 +57,7 @@
 #include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
+#include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/json/include/nlohmann/json.hpp"
@@ -136,6 +137,8 @@ void AddDns(absl::string_view dns_ip, TunFdData::IpRange::IpFamily family,
 }
 
 }  // namespace
+
+using ::google::protobuf::Duration;
 
 Session::Session(const KryptonConfig& config, std::unique_ptr<Auth> auth,
                  std::unique_ptr<EgressManager> egress_manager,
@@ -574,6 +577,8 @@ void Session::DatapathEstablished() {
   SetState(State::kDataPlaneConnected, absl::OkStatus());
   if (switching_network_) {
     successful_network_switches_++;
+    utils::RecordLatency(network_switch_start_time_, &network_switch_latencies_,
+                         "NetworkSwitch");
     switching_network_ = false;
   }
   CancelDatapathConnectingTimerIfRunning();
@@ -660,6 +665,7 @@ absl::Status Session::SetNetwork(const NetworkInfo& network_info) {
     LOG(INFO) << "Switching network to "
               << utils::NetworkInfoDebugString(network_info);
     switching_network_ = true;
+    network_switch_start_time_ = absl::Now();
     network_switches_count_++;
   } else {
     LOG(INFO) << "Setting network to "
@@ -745,6 +751,10 @@ void Session::CollectTelemetry(KryptonTelemetry* telemetry) {
   telemetry->set_network_switches(std::exchange(network_switches_count_, 0));
   telemetry->set_successful_network_switches(
       std::exchange(successful_network_switches_, 0));
+  for (const Duration& latency : network_switch_latencies_) {
+    *telemetry->add_network_switch_latency() = latency;
+  }
+  network_switch_latencies_.clear();
 
   provision_->CollectTelemetry(telemetry);
 }

@@ -288,6 +288,10 @@ class Session : public DatapathInterface::NotificationInterface,
   int datapath_reattempt_count_ ABSL_GUARDED_BY(mutex_) = 0;
   uint32_t network_switches_count_ ABSL_GUARDED_BY(mutex_) = 0;
   uint32_t successful_network_switches_ ABSL_GUARDED_BY(mutex_) = 0;
+  absl::Time network_switch_start_time_ ABSL_GUARDED_BY(mutex_) =
+      absl::InfinitePast();
+  std::vector<google::protobuf::Duration> network_switch_latencies_
+      ABSL_GUARDED_BY(mutex_);
 
   // Initialize uplink and downlink MTU values to 0 so that the initial update
   // will always cause the value to change.

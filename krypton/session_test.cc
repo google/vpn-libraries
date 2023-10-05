@@ -764,6 +764,8 @@ TEST_F(SessionTest, CollectTelemetry) {
   session_->CollectTelemetry(&telemetry);
 
   EXPECT_EQ(telemetry.network_switches(), 0);
+  EXPECT_EQ(telemetry.successful_network_switches(), 0);
+  EXPECT_EQ(telemetry.network_switch_latency().size(), 0);
   EXPECT_EQ(telemetry.successful_rekeys(), 0);
   EXPECT_EQ(telemetry.auth_latency_size(), 1);
   EXPECT_EQ(telemetry.oauth_latency_size(), 1);
@@ -803,6 +805,7 @@ TEST_F(SessionTest, ConnectControlPlaneBeforeSettingNetwork) {
   session_->CollectTelemetry(&telemetry);
   EXPECT_EQ(telemetry.network_switches(), 0);
   EXPECT_EQ(telemetry.successful_network_switches(), 0);
+  EXPECT_EQ(telemetry.network_switch_latency().size(), 0);
 }
 
 
@@ -833,6 +836,7 @@ TEST_F(SessionTest, SwitchNetworkTelemetryWithDatapathReattempt) {
   session_->CollectTelemetry(&telemetry);
   EXPECT_EQ(telemetry.network_switches(), 0);
   EXPECT_EQ(telemetry.successful_network_switches(), 0);
+  EXPECT_EQ(telemetry.network_switch_latency().size(), 0);
 }
 
 TEST_F(SessionTest, SwitchNetworkTelemetryWithSwitchAndReattempt) {
@@ -872,12 +876,14 @@ TEST_F(SessionTest, SwitchNetworkTelemetryWithSwitchAndReattempt) {
   session_->CollectTelemetry(&telemetry);
   EXPECT_EQ(telemetry.network_switches(), 1);
   EXPECT_EQ(telemetry.successful_network_switches(), 1);
+  EXPECT_EQ(telemetry.network_switch_latency().size(), 1);
 
   // Verify that telemetry gets reset on collection.
   telemetry.Clear();
   session_->CollectTelemetry(&telemetry);
   EXPECT_EQ(telemetry.network_switches(), 0);
   EXPECT_EQ(telemetry.successful_network_switches(), 0);
+  EXPECT_EQ(telemetry.network_switch_latency().size(), 0);
 }
 
 TEST_F(SessionTest, TestSetKeyMaterials) {
