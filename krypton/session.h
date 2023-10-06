@@ -284,6 +284,10 @@ class Session : public DatapathInterface::NotificationInterface,
 
   std::optional<NetworkInfo> active_network_info_ ABSL_GUARDED_BY(mutex_);
 
+  // Counter for the number of times SwitchNetwork has been called for this
+  // session.
+  int datapath_switch_network_counter_ ABSL_GUARDED_BY(mutex_) = 0;
+
   // Counts the number of times the endpoint switched till now.
   int datapath_reattempt_count_ ABSL_GUARDED_BY(mutex_) = 0;
   uint32_t network_switches_count_ ABSL_GUARDED_BY(mutex_) = 0;
@@ -304,7 +308,7 @@ class Session : public DatapathInterface::NotificationInterface,
   bool datapath_connected_ ABSL_GUARDED_BY(mutex_) = false;
   // Tells whether a network switch is currently in progress.
   bool switching_network_ ABSL_GUARDED_BY(mutex_) = false;
-  int number_of_rekeys_ ABSL_GUARDED_BY(mutex_)= 0;
+  int number_of_rekeys_ ABSL_GUARDED_BY(mutex_) = 0;
 
   utils::LooperThread looper_;
   std::unique_ptr<Provision> provision_ ABSL_GUARDED_BY(mutex_);

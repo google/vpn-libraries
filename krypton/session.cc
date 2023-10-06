@@ -734,7 +734,7 @@ absl::Status Session::ConnectDatapath(const NetworkInfo& network_info) {
   }
 
   auto connect_data_status = datapath_->SwitchNetwork(
-      uplink_spi_, *ip, network_info, datapath_reattempt_count_);
+      uplink_spi_, *ip, network_info, ++datapath_switch_network_counter_);
 
   if (!connect_data_status.ok()) {
     LOG(ERROR) << "Switching networks failed: " << connect_data_status;
