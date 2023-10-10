@@ -18,7 +18,6 @@
 #include <memory>
 
 #include "privacy/net/common/proto/ppn_options.proto.h"
-#include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/pal/oauth_interface.h"
@@ -121,7 +120,6 @@ class Krypton {
   std::unique_ptr<SessionManager> session_manager_;
   std::unique_ptr<Reconnector> reconnector_;
   std::unique_ptr<utils::LooperThread> notification_thread_;
-  std::unique_ptr<KryptonClock> clock_;
 
   bool stopped_ ABSL_GUARDED_BY(stopped_lock_);
   absl::Mutex stopped_lock_;

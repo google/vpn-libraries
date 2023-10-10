@@ -15,7 +15,6 @@
 #include "privacy/net/krypton/krypton.h"
 
 #include <optional>
-#include <string>
 
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"

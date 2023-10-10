@@ -17,6 +17,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -48,7 +49,8 @@ class Reconnector : public Session::NotificationInterface {
   Reconnector(TimerManager* timer_manager, const KryptonConfig& config,
               SessionManagerInterface* session,
               TunnelManagerInterface* tunnel_manager,
-              utils::LooperThread* notification_thread, KryptonClock* clock);
+              utils::LooperThread* notification_thread,
+              std::unique_ptr<KryptonClock> clock);
   ~Reconnector() override = default;
 
   enum State {
@@ -184,7 +186,7 @@ class Reconnector : public Session::NotificationInterface {
   TunnelManagerInterface* tunnel_manager_;      // Not owned.
   const KryptonConfig config_;
   utils::LooperThread* notification_thread_;
-  KryptonClock* clock_;
+  std::unique_ptr<KryptonClock> clock_;
 
   mutable absl::Mutex mutex_;
   State state_ ABSL_GUARDED_BY(mutex_);

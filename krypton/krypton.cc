@@ -25,6 +25,7 @@
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
+#include "privacy/net/krypton/reconnector.h"
 #include "privacy/net/krypton/session_manager.h"
 #include "privacy/net/krypton/tunnel_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
@@ -65,10 +66,9 @@ void Krypton::Start(const KryptonConfig& config) {
   session_manager_ = std::make_unique<SessionManager>(
       config_, http_fetcher_, timer_manager_, vpn_service_, oauth_,
       tunnel_manager_.get(), notification_thread_.get());
-  clock_ = std::make_unique<RealClock>();
   reconnector_ = std::make_unique<Reconnector>(
       timer_manager_, config, session_manager_.get(), tunnel_manager_.get(),
-      notification_thread_.get(), clock_.get());
+      notification_thread_.get(), std::make_unique<RealClock>());
   reconnector_->RegisterNotificationInterface(notification_);
 
   notification_thread_->Post([this] { Init(); });

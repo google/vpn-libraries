@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/mock_notification_interface.h"
@@ -102,11 +103,13 @@ class ReconnectorTest : public ::testing::Test {
     notification_thread_ =
         std::make_unique<utils::LooperThread>("ReconnectorTest Looper");
 
-    fake_clock_.SetNow(absl::FromUnixSeconds(fake_clock_now_));
+    auto fake_clock =
+        std::make_unique<FakeClock>(absl::FromUnixSeconds(fake_clock_now_));
+    fake_clock_ = fake_clock.get();
 
     reconnector_ = std::make_unique<Reconnector>(
         &timer_manager_, config, &session_manager_, &tunnel_manager_,
-        notification_thread_.get(), &fake_clock_);
+        notification_thread_.get(), std::move(fake_clock));
     reconnector_->RegisterNotificationInterface(
         &krypton_notification_interface_);
   }
@@ -141,7 +144,7 @@ class ReconnectorTest : public ::testing::Test {
   std::unique_ptr<Reconnector> reconnector_;
   std::unique_ptr<utils::LooperThread> notification_thread_;
   const int64_t fake_clock_now_ = 1764328000L;
-  FakeClock fake_clock_ = FakeClock(absl::FromUnixSeconds(fake_clock_now_));
+  FakeClock* fake_clock_;
 };
 
 TEST_F(ReconnectorTest, InitialSessionCreation) {
@@ -526,7 +529,7 @@ TEST_F(ReconnectorTest, TestExtendSnooze) {
   EXPECT_OK(reconnector_->Snooze(snooze_duration));
   EXPECT_EQ(reconnector_->state(), Reconnector::State::kSnoozed);
 
-  fake_clock_.AdvanceBy(already_snoozed_duration);
+  fake_clock_->AdvanceBy(already_snoozed_duration);
   absl::Duration expected_snooze_duration_1 =
       snooze_duration - already_snoozed_duration + extend_snooze_duration;
 
@@ -534,7 +537,7 @@ TEST_F(ReconnectorTest, TestExtendSnooze) {
   ExpectStartTimer(expected_snooze_duration_1, &snooze_timer_id);
   EXPECT_OK(reconnector_->ExtendSnooze(extend_snooze_duration));
 
-  fake_clock_.AdvanceBy(already_snoozed_duration * 2);
+  fake_clock_->AdvanceBy(already_snoozed_duration * 2);
   absl::Duration expected_snooze_duration_2 = expected_snooze_duration_1 -
                                               already_snoozed_duration * 2 +
                                               extend_snooze_duration;
@@ -570,9 +573,13 @@ class DatapathReconnectorTest : public ReconnectorTest {
     notification_thread_ =
         std::make_unique<utils::LooperThread>("ReconnectorTest Looper");
 
+    auto fake_clock =
+        std::make_unique<FakeClock>(absl::FromUnixSeconds(fake_clock_now_));
+    fake_clock_ = fake_clock.get();
+
     reconnector_ = std::make_unique<Reconnector>(
         &timer_manager_, config, &session_manager_, &tunnel_manager_,
-        notification_thread_.get(), &fake_clock_);
+        notification_thread_.get(), std::move(fake_clock));
     reconnector_->RegisterNotificationInterface(
         &krypton_notification_interface_);
 

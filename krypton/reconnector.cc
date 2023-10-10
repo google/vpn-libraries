@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -75,13 +76,13 @@ Reconnector::Reconnector(TimerManager* timer_manager,
                          SessionManagerInterface* session_manager,
                          TunnelManagerInterface* tunnel_manager,
                          utils::LooperThread* notification_thread,
-                         KryptonClock* clock)
+                         std::unique_ptr<KryptonClock> clock)
     : timer_manager_(timer_manager),
       session_manager_(session_manager),
       tunnel_manager_(tunnel_manager),
       config_(config),
       notification_thread_(notification_thread),
-      clock_(clock),
+      clock_(std::move(clock)),
       state_(kInitial) {
   session_manager_->RegisterNotificationInterface(this);
 }
