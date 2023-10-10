@@ -70,6 +70,8 @@ class Reconnector : public Session::NotificationInterface {
     int session_restarts = 0;
     int data_plane_connecting_attempts = 0;
     int data_plane_connecting_successes = 0;
+    int control_plane_connecting_attempts = 0;
+    int control_plane_connecting_successes = 0;
     std::vector<google::protobuf::Duration> data_plane_connecting_latencies;
   };
 
@@ -94,6 +96,7 @@ class Reconnector : public Session::NotificationInterface {
   void CollectTelemetry(KryptonTelemetry* telemetry)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  void ControlPlaneConnecting() ABSL_LOCKS_EXCLUDED(mutex_) override;
   void ControlPlaneConnected() ABSL_LOCKS_EXCLUDED(mutex_) override;
 
   void DatapathConnecting() ABSL_LOCKS_EXCLUDED(mutex_) override;

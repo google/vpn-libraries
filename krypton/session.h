@@ -67,8 +67,10 @@ class Session : public DatapathInterface::NotificationInterface,
     virtual ~NotificationInterface() = default;
 
     // Lifecycle events.
-    // Control plane Zinc+Brass have successfully negotiated in setting up the
-    // tunnel.  This event doesn't signify that the datapath is connected.
+    // Control plane starting attempt to negotiate setting up a tunnel.
+    virtual void ControlPlaneConnecting() = 0;
+    // Control plane has successfully negotiated setting up the tunnel. This
+    // event doesn't signify that the datapath is connected.
     virtual void ControlPlaneConnected() = 0;
     // Control plane is broken and implicitly implies that there is no data
     // plane either.
@@ -83,7 +85,7 @@ class Session : public DatapathInterface::NotificationInterface,
     // Datapath has been established and the tunnel is up for user traffic.
     virtual void DatapathConnected() = 0;
     // Datapath is disconnected and the user traffic is not flowing through the
-    // tunnel.  Control plane is still up.
+    // tunnel. Control plane is still up.
     virtual void DatapathDisconnected(const NetworkInfo& network,
                                       const absl::Status& status) = 0;
   };
@@ -251,6 +253,8 @@ class Session : public DatapathInterface::NotificationInterface,
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void NotifyDatapathConnecting() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void NotifyControlPlaneConnecting() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;
 

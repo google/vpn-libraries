@@ -91,6 +91,7 @@ class MockDatapath : public DatapathInterface {
 
 class MockSessionNotification : public Session::NotificationInterface {
  public:
+  MOCK_METHOD(void, ControlPlaneConnecting, (), (override));
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
   MOCK_METHOD(void, ControlPlaneDisconnected, (const absl::Status&),
               (override));

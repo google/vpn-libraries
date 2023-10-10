@@ -331,6 +331,7 @@ void Session::Start() {
   absl::MutexLock l(&mutex_);
   DCHECK(notification_);
   LOG(INFO) << "Starting session";
+  NotifyControlPlaneConnecting();
   provision_->Start();
 }
 
@@ -919,6 +920,12 @@ void Session::NotifyDatapathConnecting() {
   NotificationInterface* notification = notification_;
   notification_thread_->Post(
       [notification] { notification->DatapathConnecting(); });
+}
+
+void Session::NotifyControlPlaneConnecting() {
+  NotificationInterface* notification = notification_;
+  notification_thread_->Post(
+      [notification] { notification->ControlPlaneConnecting(); });
 }
 
 }  // namespace krypton

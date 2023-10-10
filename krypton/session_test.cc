@@ -90,6 +90,7 @@ MATCHER_P(RequestUrlMatcher, url, "") { return arg.url() == url; }
 
 class MockSessionNotification : public Session::NotificationInterface {
  public:
+  MOCK_METHOD(void, ControlPlaneConnecting, (), (override));
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
   MOCK_METHOD(void, ControlPlaneDisconnected, (const absl::Status&),
               (override));
@@ -314,6 +315,8 @@ class SessionTest : public ::testing::Test {
   }
 
   void ExpectSuccessfulDatapathInit() {
+    EXPECT_CALL(notification_, ControlPlaneConnecting());
+
     EXPECT_CALL(notification_, ControlPlaneConnected());
 
     EXPECT_CALL(*datapath_, Start(_, _))
@@ -421,6 +424,7 @@ TEST_F(SessionTest, DatapathInitFailure) {
     return absl::InvalidArgumentError("Initialization error");
   });
 
+  EXPECT_CALL(notification_, ControlPlaneConnecting());
   session_->Start();
   done.WaitForNotification();
   EXPECT_THAT(session_->LatestStatusTestOnly(),
@@ -464,6 +468,8 @@ TEST_F(SessionTest, SessionUsesRekeyTimerDurationFromKryptonConfig) {
 
 TEST_F(SessionTest, DatapathConnectingTimerExpired) {
   // Expect the rekey timer to be started
+  EXPECT_CALL(notification_, ControlPlaneConnecting());
+
   EXPECT_CALL(timer_interface_, StartTimer(_, absl::Hours(24)));
 
   EXPECT_CALL(notification_, ControlPlaneConnected());
@@ -504,6 +510,8 @@ TEST_F(SessionTest, DatapathConnectingTimerExpired) {
 
 TEST_F(SessionTest, DatapathConnectingTimerCancelled) {
   // Expect the rekey timer to be started
+  EXPECT_CALL(notification_, ControlPlaneConnecting());
+
   EXPECT_CALL(timer_interface_, StartTimer(_, absl::Hours(24)));
 
   EXPECT_CALL(notification_, ControlPlaneConnected());

@@ -111,6 +111,12 @@ void Reconnector::RegisterNotificationInterface(
   notification_ = notification_interface;
 }
 
+void Reconnector::ControlPlaneConnecting() {
+  LOG(INFO) << "Attempting to connect session control plane.";
+  absl::MutexLock l(&mutex_);
+  ++telemetry_data_.control_plane_connecting_attempts;
+}
+
 void Reconnector::ControlPlaneConnected() {
   LOG(INFO) << "Session control plane connected.";
   if (notification_ != nullptr) {
@@ -138,6 +144,7 @@ void Reconnector::ControlPlaneConnected() {
   DCHECK(reconnector_timer_id_ == kInvalidTimerId);
 
   successive_control_plane_failures_ = 0;
+  ++telemetry_data_.control_plane_connecting_successes;
 
   CancelConnectionDeadlineTimerIfRunning();
 
@@ -678,6 +685,10 @@ void Reconnector::CollectTelemetry(KryptonTelemetry* telemetry) {
       telemetry_data_.data_plane_connecting_attempts);
   telemetry->set_data_plane_connecting_successes(
       telemetry_data_.data_plane_connecting_successes);
+  telemetry->set_control_plane_attempts(
+      telemetry_data_.control_plane_connecting_attempts);
+  telemetry->set_control_plane_successes(
+      telemetry_data_.control_plane_connecting_successes);
   for (const auto& latency : telemetry_data_.data_plane_connecting_latencies) {
     *telemetry->add_data_plane_connecting_latency() = std::move(latency);
   }

@@ -55,6 +55,7 @@ using ::testing::status::StatusIs;
 
 class MockSessionNotification : public Session::NotificationInterface {
  public:
+  MOCK_METHOD(void, ControlPlaneConnecting, (), (override));
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
   MOCK_METHOD(void, ControlPlaneDisconnected, (const absl::Status&),
               (override));
@@ -62,7 +63,7 @@ class MockSessionNotification : public Session::NotificationInterface {
   MOCK_METHOD(void, DatapathConnecting, (), (override));
   MOCK_METHOD(void, DatapathConnected, (), (override));
   MOCK_METHOD(void, DatapathDisconnected,
-              (const NetworkInfo& network, const absl::Status&), (override));
+              (const NetworkInfo&, const absl::Status&), (override));
 };
 
 class MockSessionManagerInterface : public SessionManagerInterface {
@@ -152,6 +153,41 @@ TEST_F(ReconnectorTest, InitialSessionCreation) {
   InitialExpectations(&timer_id);
 
   reconnector_->Start();
+}
+
+TEST_F(ReconnectorTest,
+  TestTelemetryCollectedWhileConnectingControlPlane) {
+  // This test checks telemetry values increment properly for control plane
+  // connecting events and ensures that even if telemetry is collected while the
+  // control plane is in the process of connecting, the appropriate number of,
+  // attempts successes, and latencies will eventually be collected.
+  int connection_deadline_timer_id;
+  InitialExpectations(&connection_deadline_timer_id);
+
+  reconnector_->Start();
+  reconnector_->ControlPlaneConnecting();
+
+  // Collect telemetry before connected
+  KryptonTelemetry telemetry;
+  reconnector_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.control_plane_attempts(), 1);
+  EXPECT_EQ(telemetry.control_plane_successes(), 0);
+
+  // Connect.
+  EXPECT_CALL(timer_interface_, CancelTimer(connection_deadline_timer_id));
+  reconnector_->ControlPlaneConnected();
+  EXPECT_EQ(reconnector_->state(), Reconnector::State::kConnected);
+
+  // Collect telemetry once connected.
+  telemetry.Clear();
+  reconnector_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.control_plane_attempts(), 0);
+  EXPECT_EQ(telemetry.control_plane_successes(), 1);
+
+  // Check values are reset when telemetry collected
+  telemetry.Clear();
+  reconnector_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.control_plane_successes(), 0);
 }
 
 TEST_F(ReconnectorTest,
@@ -620,7 +656,7 @@ TEST_F(DatapathReconnectorTest, TestDatapathConnectingTelemetry) {
   EXPECT_EQ(telemetry.data_plane_connecting_latency().size(), 0);
 }
 
-TEST_F(DatapathReconnectorTest, TestTelemetryCollectedWhileConnecting) {
+TEST_F(DatapathReconnectorTest, TestTelemetryCollectedWhileConnectingDatapath) {
   // This test ensures that even if telemetry is collected while the datapath
   // is in the process of connecting, the appropriate number of attempts,
   // successes, and latencies will eventually be collected.
