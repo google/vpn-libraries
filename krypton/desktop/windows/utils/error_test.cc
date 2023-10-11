@@ -33,9 +33,9 @@ using testing::HasSubstr;
 using testing::status::StatusIs;
 
 TEST(ErrorTest, BasicTest) {
-  EXPECT_THAT(
-      GetStatusForError("foo", ERROR_INVALID_FLAGS),
-      StatusIs(absl::StatusCode::kInternal, HasSubstr("foo: Invalid flags.")));
+  EXPECT_THAT(GetStatusForError("foo", ERROR_INVALID_FLAGS),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("foo: Error 0x000003ec: Invalid flags")));
 }
 
 TEST(ErrorTest, EmptyPrefixTest) {
@@ -47,7 +47,7 @@ TEST(ErrorTest, EmptyPrefixTest) {
 TEST(ErrorTest, NotFoundTest) {
   EXPECT_THAT(GetStatusForError("foo", ERROR_NOT_FOUND),
               StatusIs(absl::StatusCode::kNotFound,
-                       HasSubstr("foo: Element not found.")));
+                       HasSubstr("foo: Error 0x00000490: Element not found.")));
 }
 
 TEST(ErrorTest, WSATest) {

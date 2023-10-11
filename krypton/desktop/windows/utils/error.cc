@@ -58,6 +58,7 @@ std::string GetErrorMessage(DWORD error) {
   }
   std::string s = WcharToString(message);
   LocalFree(message);
+  s = absl::StrFormat("Error 0x%08x: %s", error, s);
   return s;
 }
 
@@ -66,7 +67,6 @@ absl::Status GetStatusForError(absl::string_view prefix, DWORD error) {
   if (!prefix.empty()) {
     message = absl::StrCat(prefix, ": ", message);
   }
-
   if (error == ERROR_NOT_FOUND) {
     return absl::NotFoundError(message);
   }
