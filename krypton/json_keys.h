@@ -53,7 +53,6 @@ class JsonKeys {
   static const char kBlindedTokenSignature[];
   static const char kCopperControllerHostname[];
   static const char kPublicKeyHash[];
-  static const char kDoNotUseRsaPublicExponent[];
 
   // IKE
   static const char kIkeDataplane[];
@@ -68,7 +67,6 @@ class JsonKeys {
   static const char kSessionId[];
   static const char kUplinkMtu[];
   static const char kDownlinkMtu[];
-  static const char kVerificationKey[];
   static const char kMtuUpdateSignature[];
 
   // AddEgressRequest

@@ -49,8 +49,6 @@ const char JsonKeys::kPem[] = "pem";
 const char JsonKeys::kBlindedTokenSignature[] = "blinded_token_signature";
 const char JsonKeys::kCopperControllerHostname[] = "copper_controller_hostname";
 const char JsonKeys::kPublicKeyHash[] = "public_key_hash";
-const char JsonKeys::kDoNotUseRsaPublicExponent[] =
-    "do_not_use_rsa_public_exponent";
 
 // IKE
 const char JsonKeys::kIkeDataplane[] = "ike";
@@ -65,7 +63,6 @@ const char JsonKeys::kAttestationNonce[] = "attestation_nonce";
 const char JsonKeys::kSessionId[] = "session_id";
 const char JsonKeys::kUplinkMtu[] = "uplink_mtu";
 const char JsonKeys::kDownlinkMtu[] = "downlink_mtu";
-const char JsonKeys::kVerificationKey[] = "verification_key";
 const char JsonKeys::kMtuUpdateSignature[] = "mtu_update_signature";
 
 // AddEgressRequest
