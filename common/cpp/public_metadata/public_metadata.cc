@@ -113,8 +113,9 @@ absl::StatusOr<std::string> Serialize(
     return absl::InvalidArgumentError("missing country in geo information");
   }
   geo_hint.geo_hint =
-      absl::StrCat(metadata.country.value(), ",", metadata.region.value(), ",",
-                   metadata.city.value());
+      absl::StrCat(absl::AsciiStrToUpper(metadata.country.value()), ",",
+                   absl::AsciiStrToUpper(metadata.region.value()), ",",
+                   absl::AsciiStrToUpper(metadata.city.value()));
   auto geo_ext = geo_hint.AsExtension();
   if (!geo_ext.ok()) {
     return geo_ext.status();
