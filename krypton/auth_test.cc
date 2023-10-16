@@ -35,6 +35,7 @@
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
 #include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
@@ -200,7 +201,8 @@ class AuthTest : public ::testing::Test {
 
   // Response to AT Auth Request
   HttpResponse buildATSignResponse(const HttpRequest& http_request,
-                                   bool debug_mode_enabled) {
+                                   bool debug_mode_enabled,
+                                   bool valid_response) {
     auto initial_data_response =
         createGetInitialDataResponse(debug_mode_enabled);
 
@@ -231,10 +233,11 @@ class AuthTest : public ::testing::Test {
           private_membership::anonymous_tokens::TestSign(decoded_blinded_token,
                                                          keypair_.first.get());
       EXPECT_OK(serialized_token);
-      auth_response.add_blinded_token_signature(
-          absl::Base64Escape(*serialized_token));
+      if (valid_response) {
+        auth_response.add_blinded_token_signature(
+            absl::Base64Escape(*serialized_token));
+      }
     }
-
     // add to http response
     privacy::krypton::HttpResponse response;
     response.mutable_status()->set_code(200);
@@ -669,8 +672,8 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabled) {
   EXPECT_CALL(http_fetcher_, PostJson(Partially(EqualsProto(
                                  R"pb(url: "http://www.example.com/auth")pb"))))
       .WillOnce(Invoke([this](HttpRequest request) {
-        auto response =
-            buildATSignResponse(request, /*debug_mode_enabled=*/false);
+        HttpResponse response = buildATSignResponse(
+            request, /*debug_mode_enabled=*/false, /*valid_response=*/true);
         EXPECT_EQ(response.status().code(), 200);
         EXPECT_EQ(response.status().message(), "OK");
         EXPECT_TRUE(response.has_proto_body());
@@ -732,8 +735,8 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabledAndAttestation) {
         sign_request.ParseFromString(request.proto_body());
         EXPECT_TRUE(sign_request.attestation().has_attestation_data());
         // Build response.
-        auto response =
-            buildATSignResponse(request, /*debug_mode_enabled=*/false);
+        HttpResponse response = buildATSignResponse(
+            request, /*debug_mode_enabled=*/false, /*valid_response=*/true);
         return response;
       }));
 
@@ -745,6 +748,59 @@ TEST_P(AuthParamsTest, AuthWithPublicMetadataEnabledAndAttestation) {
   auth_->Start(/*is_rekey=*/GetParam());
   EXPECT_TRUE(
       http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+
+  // Step 3: Collect telemetry and inspect
+  KryptonTelemetry telemetry;
+  auth_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.token_unblind_failure_count(), 0);
+}
+
+TEST_P(AuthParamsTest, AuthWithFailedTokenUnblind) {
+  KryptonConfig config =
+      CreateKryptonConfig(/*blind_signing=*/true, /*enable_attestation=*/true);
+  config.set_api_key("testApiKey");
+  config.set_public_metadata_enabled(true);
+  config.set_initial_data_url("http://www.example.com/initial_data");
+  ConfigureAuth(config);
+
+  absl::Notification http_fetcher_done;
+  // Step 0: RequestInitialData
+  EXPECT_CALL(oauth_, GetOAuthToken).WillOnce(Return("some_token"));
+  EXPECT_CALL(http_fetcher_,
+              PostJson(Partially(EqualsProto(buildInitialDataHttpRequest()))))
+      .WillOnce(::testing::Return(buildInitialDataHttpResponse(
+          /*with_attestation=*/false, /*debug_mode_enabled=*/false)));
+
+  // Step 1: AuthAndSign
+  EXPECT_CALL(http_fetcher_, PostJson(Partially(EqualsProto(
+                                 R"pb(url: "http://www.example.com/auth")pb"))))
+      .WillOnce(Invoke([this](HttpRequest request) {
+        HttpResponse response = buildATSignResponse(
+            request, /*debug_mode_enabled=*/false, /*valid_response=*/false);
+        EXPECT_EQ(response.status().code(), 200);
+        EXPECT_EQ(response.status().message(), "OK");
+        EXPECT_TRUE(response.has_proto_body());
+        return response;
+      }));
+
+  EXPECT_CALL(auth_notification_, AuthFailure(_))
+      .WillOnce(
+          InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
+
+  // Step 2: Hit it
+  auth_->Start(/*is_rekey=*/GetParam());
+  EXPECT_TRUE(
+      http_fetcher_done.WaitForNotificationWithTimeout(absl::Seconds(3)));
+
+  // Step 3: Collect telemetry and inspect
+  KryptonTelemetry telemetry;
+  auth_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.token_unblind_failure_count(), 1);
+
+  // Ensure that telemetry collection clears old counts.
+  telemetry.Clear();
+  auth_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.token_unblind_failure_count(), 0);
 }
 
 TEST_P(AuthParamsTest, AuthWithBadCopperHostnameDebugModeOff) {
@@ -778,8 +834,8 @@ TEST_P(AuthParamsTest, AuthWithBadCopperHostnameDebugModeOff) {
         privacy::ppn::AuthAndSignRequest sign_request;
         sign_request.ParseFromString(request.proto_body());
         // Build response without debug mode enabled
-        auto response =
-            buildATSignResponse(request, /*debug_mode_enabled=*/false);
+        HttpResponse response = buildATSignResponse(
+            request, /*debug_mode_enabled=*/false, /*valid_response=*/true);
         return response;
       });
 
@@ -826,8 +882,8 @@ TEST_P(AuthParamsTest, AuthWithBadCopperHostnameDebugModeOn) {
         privacy::ppn::AuthAndSignRequest sign_request;
         sign_request.ParseFromString(request.proto_body());
         // Build response with debug mode enabled
-        auto response =
-            buildATSignResponse(request, /*debug_mode_enabled=*/true);
+        HttpResponse response = buildATSignResponse(
+            request, /*debug_mode_enabled=*/true, /*valid_response=*/true);
         return response;
       });
 

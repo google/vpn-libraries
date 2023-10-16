@@ -16,6 +16,7 @@
 #define PRIVACY_NET_KRYPTON_AUTH_H_
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -166,6 +167,8 @@ class Auth {
       signed_tokens_;
   private_membership::anonymous_tokens::AnonymousTokensSignRequest
       at_sign_request_ ABSL_GUARDED_BY(mutex_);
+  // Token unblind failure count is reset during telemetry collection events.
+  uint32_t token_unblind_failure_count_ ABSL_GUARDED_BY(mutex_) = 0;
 
   std::vector<google::protobuf::Duration> latencies_ ABSL_GUARDED_BY(mutex_);
   std::vector<google::protobuf::Duration> oauth_latencies_

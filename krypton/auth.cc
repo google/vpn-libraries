@@ -189,6 +189,7 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
       SetState(State::kUnauthenticated);
       RaiseAuthFailureNotification(signed_tokens_.status());
       LOG(ERROR) << "Error Signing Anonymous Token";
+      token_unblind_failure_count_++;
       return;
     }
   }
@@ -630,6 +631,8 @@ void Auth::Stop() {
 
 void Auth::CollectTelemetry(KryptonTelemetry* telemetry) {
   absl::MutexLock l(&mutex_);
+  telemetry->set_token_unblind_failure_count(
+      std::exchange(token_unblind_failure_count_, 0));
   for (const auto& latency : latencies_) {
     *telemetry->add_auth_latency() = latency;
   }
