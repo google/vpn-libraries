@@ -111,9 +111,6 @@ NSDictionary<NSString *, id> *PPNReconnectorConfigToNSDictionary(
   if (config.has_session_connection_deadline_msec()) {
     dictionary[@"session_connection_deadline_msec"] = @(config.session_connection_deadline_msec());
   }
-  if (config.has_datapath_watchdog_timer_msec()) {
-    dictionary[@"datapath_watchdog_timer_msec"] = @(config.datapath_watchdog_timer_msec());
-  }
   return dictionary;
 }
 

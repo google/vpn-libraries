@@ -127,7 +127,6 @@
   XCTAssertFalse(kryptonConfig.enable_blind_signing());
   XCTAssertEqual(kryptonConfig.reconnector_config().initial_time_to_reconnect_msec(), 2000u);
   XCTAssertEqual(kryptonConfig.reconnector_config().session_connection_deadline_msec(), 60000u);
-  XCTAssertEqual(kryptonConfig.reconnector_config().datapath_watchdog_timer_msec(), 2000u);
   XCTAssertEqual(kryptonConfig.copper_hostname_suffix(0), "copperHostnameSuffix");
   XCTAssertFalse(kryptonConfig.ipv6_enabled());
   XCTAssertTrue(kryptonConfig.public_metadata_enabled());

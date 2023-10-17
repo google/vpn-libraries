@@ -23,8 +23,10 @@
 
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
+#include "privacy/net/krypton/proto/connection_status.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/proto/krypton_telemetry.proto.h"
+#include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/session.h"
 #include "privacy/net/krypton/session_manager_interface.h"
 #include "privacy/net/krypton/timer_manager.h"
@@ -137,11 +139,6 @@ class Reconnector : public Session::NotificationInterface {
     return successive_control_plane_failures_;
   }
 
-  int DatapathWatchdogTimerIdTestOnly() const {
-    absl::MutexLock l(&mutex_);
-    return datapath_watchdog_timer_id_;
-  }
-
  private:
   void SetState(State state) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void StartReconnection() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -151,7 +148,6 @@ class Reconnector : public Session::NotificationInterface {
   // Timer Expires
   void ReconnectTimerExpired() ABSL_LOCKS_EXCLUDED(mutex_);
   void SessionConnectionTimerExpired() ABSL_LOCKS_EXCLUDED(mutex_);
-  void DatapathWatchdogTimerExpired() ABSL_LOCKS_EXCLUDED(mutex_);
   void SnoozeTimerExpired() ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Reconnection Timer.
@@ -165,13 +161,6 @@ class Reconnector : public Session::NotificationInterface {
   absl::Status StartConnectionDeadlineTimer()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelConnectionDeadlineTimerIfRunning()
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  // Datapath watchdog timer
-  absl::Status StartDatapathWatchdogTimer()
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  void CancelDatapathWatchdogTimerIfRunning()
-
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void CancelAllTimersIfRunning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -196,7 +185,6 @@ class Reconnector : public Session::NotificationInterface {
   std::atomic_int session_restart_counter_ = 0;
   int reconnector_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int connection_deadline_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
-  int datapath_watchdog_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int snooze_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   std::optional<NetworkInfo> active_network_info_ ABSL_GUARDED_BY(mutex_);
   // Used to determine whether active_network == nullopt is intentional, or

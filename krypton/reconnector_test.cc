@@ -634,7 +634,6 @@ TEST_F(DatapathReconnectorTest, TestDatapathSuccessful) {
   reconnector_->DatapathConnected();
   EXPECT_EQ(0, reconnector_->SuccessiveDatapathFailuresTestOnly());
   EXPECT_EQ(0, reconnector_->SuccessiveControlplaneFailuresTestOnly());
-  EXPECT_EQ(-1, reconnector_->DatapathWatchdogTimerIdTestOnly());
 }
 
 TEST_F(DatapathReconnectorTest, TestDatapathConnectingTelemetry) {
@@ -675,49 +674,21 @@ TEST_F(DatapathReconnectorTest, TestTelemetryCollectedWhileConnectingDatapath) {
   EXPECT_EQ(telemetry.data_plane_connecting_latency().size(), 1);
 }
 
-TEST_F(DatapathReconnectorTest, TestDatapathWatchtimerIsRunning) {
-  int datapath_timer_id;
-  ExpectStartTimer(absl::Seconds(2), &datapath_timer_id);
-  reconnector_->DatapathDisconnected(NetworkInfo(),
-                                     absl::FailedPreconditionError("testing"));
-  EXPECT_EQ(reconnector_->state(), Reconnector::State::kConnected);
-  EXPECT_EQ(1, reconnector_->SuccessiveDatapathFailuresTestOnly());
-}
-
-TEST_F(DatapathReconnectorTest, TestMultipleDatapathDisconnectNotifications) {
-  int datapath_timer_id;
-  ExpectStartTimer(absl::Seconds(2), &datapath_timer_id);
-  reconnector_->DatapathDisconnected(NetworkInfo(),
-                                     absl::FailedPreconditionError("testing"));
-  EXPECT_EQ(reconnector_->state(), Reconnector::State::kConnected);
-  EXPECT_EQ(1, reconnector_->SuccessiveDatapathFailuresTestOnly());
-
-  EXPECT_CALL(timer_interface_, CancelTimer(datapath_timer_id));
-  ExpectStartTimer(absl::Seconds(2), &datapath_timer_id);
-  reconnector_->DatapathDisconnected(NetworkInfo(),
-                                     absl::FailedPreconditionError("testing"));
-  EXPECT_EQ(reconnector_->state(), Reconnector::State::kConnected);
-  EXPECT_EQ(2, reconnector_->SuccessiveDatapathFailuresTestOnly());
-}
-
 TEST_F(DatapathReconnectorTest, TestDatapathReconnectorReattempts) {
   int reconnect_timer_id;
   int connection_deadline_timer_id;
   int session_reconnect_count = 0;
 
   for (int i = 1; i < 3; i++) {
-    int datapath_timer_id;
-    ExpectStartTimer(absl::Seconds(2), &datapath_timer_id);
-    absl::Status status = absl::DeadlineExceededError("Waiting to reconnect");
-
-    EXPECT_CALL(krypton_notification_interface_, Disconnected(_)).Times(2);
-    reconnector_->DatapathDisconnected(NetworkInfo(), status);
-
-    // Datapath watchdog expiry will result in termination of the session and
-    // starting the timer.
+    // Each failure the session should terminate and the reconnect timer should
+    // increase exponentially.
     ExpectStartTimer(absl::Seconds(std::pow(2, i)), &reconnect_timer_id);
     EXPECT_CALL(session_manager_, TerminateSession);
-    timer_interface_.TimerExpiry(datapath_timer_id);
+
+    EXPECT_CALL(krypton_notification_interface_, Disconnected(_)).Times(2);
+
+    absl::Status status = absl::DeadlineExceededError("Waiting to reconnect");
+    reconnector_->DatapathDisconnected(NetworkInfo(), status);
 
     // Reconnection timer expiry.
     ExpectStartTimer(absl::Seconds(30), &connection_deadline_timer_id);

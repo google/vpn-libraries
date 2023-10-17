@@ -168,10 +168,8 @@
   privacy::krypton::ReconnectorConfig reconnectorConfig;
   reconnectorConfig.set_initial_time_to_reconnect_msec(1);
   reconnectorConfig.set_session_connection_deadline_msec(2);
-  reconnectorConfig.set_datapath_watchdog_timer_msec(3);
 
   NSDictionary<NSString *, id> *expectedDictionary = @{
-    @"datapath_watchdog_timer_msec" : @3,
     @"initial_time_to_reconnect_msec" : @1,
     @"session_connection_deadline_msec" : @2,
   };

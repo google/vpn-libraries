@@ -102,7 +102,6 @@ void Reconnector::Stop() {
 void Reconnector::CancelAllTimersIfRunning() {
   CancelConnectionDeadlineTimerIfRunning();
   CancelReconnectorTimerIfRunning();
-  CancelDatapathWatchdogTimerIfRunning();
   CancelSnoozeTimer();
 }
 
@@ -412,45 +411,6 @@ void Reconnector::CancelConnectionDeadlineTimerIfRunning() {
   connection_deadline_timer_id_ = kInvalidTimerId;
 }
 
-void Reconnector::DatapathWatchdogTimerExpired() {
-  absl::MutexLock l(&mutex_);
-  if (datapath_watchdog_timer_id_ == kInvalidTimerId) {
-    LOG(INFO) << "Datapath timer already expired";
-    return;
-  }
-  LOG(INFO) << "Datapath watchdog expired";
-  DCHECK(state_ == kConnected);
-  datapath_watchdog_timer_id_ = kInvalidTimerId;
-  // Start the reconnection.
-  StartReconnection();
-}
-
-absl::Status Reconnector::StartDatapathWatchdogTimer() {
-  absl::Duration duration = absl::Milliseconds(
-      config_.reconnector_config().datapath_watchdog_timer_msec());
-  LOG(INFO) << "Starting datapath watchdog timer.";
-  // There could be multiple back to back notifications from the datapath due to
-  // session reattempts.  Cancel any timer if running.
-  CancelDatapathWatchdogTimerIfRunning();
-  PPN_ASSIGN_OR_RETURN(
-      datapath_watchdog_timer_id_,
-      timer_manager_->StartTimer(
-          duration,
-          absl::bind_front(&Reconnector::DatapathWatchdogTimerExpired, this),
-          "DatapathWatchdog"));
-
-  return absl::OkStatus();
-}
-
-void Reconnector::CancelDatapathWatchdogTimerIfRunning() {
-  if (datapath_watchdog_timer_id_ == kInvalidTimerId) {
-    return;
-  }
-
-  timer_manager_->CancelTimer(datapath_watchdog_timer_id_);
-  datapath_watchdog_timer_id_ = kInvalidTimerId;
-}
-
 void Reconnector::SetState(Reconnector::State state) {
   LOG(INFO) << "Transitioning from " << StateString(state_) << " to "
             << StateString(state);
@@ -479,9 +439,7 @@ void Reconnector::DatapathConnected() {
   ConnectionStatus status;
   notification_thread_->Post(
       [notification, status] { notification->Connected(status); });
-  // Cancel any datapath watchdog timer and reset the counts.
   successive_datapath_failures_ = 0;
-  CancelDatapathWatchdogTimerIfRunning();
 }
 
 void Reconnector::DatapathDisconnected(const NetworkInfo& network,
@@ -503,8 +461,8 @@ void Reconnector::DatapathDisconnected(const NetworkInfo& network,
   });
   successive_datapath_failures_ += 1;
   ++telemetry_data_.data_plane_failures;
-  data_plane_connecting_start_time_ = absl::InfinitePast();
-  PPN_LOG_IF_ERROR(StartDatapathWatchdogTimer());
+  DCHECK(state_ == kConnected);
+  StartReconnection();
 }
 
 absl::Status Reconnector::Snooze(absl::Duration duration) {
