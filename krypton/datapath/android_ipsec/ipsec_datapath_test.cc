@@ -15,7 +15,6 @@
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_datapath.h"
 
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -890,6 +889,19 @@ TEST_F(IpSecDatapathTest, SwitchTunnelNullTunnel) {
       .WillOnce([&failed]() { failed.Notify(); });
   datapath_->SwitchTunnel();
   EXPECT_TRUE(failed.WaitForNotificationWithTimeout(absl::Seconds(1)));
+}
+
+TEST_F(IpSecDatapathTest, SwitchTunnelNullNetworkSocket) {
+  MockTunnel tunnel;
+  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel));
+  absl::Notification failed;
+  EXPECT_CALL(notification_,
+              DatapathPermanentFailure(StatusIs(absl::StatusCode::kInternal,
+                                                HasSubstr("network socket"))))
+      .WillOnce([&failed]() { failed.Notify(); });
+
+  datapath_->SwitchTunnel();
+  failed.WaitForNotification();
 }
 
 TEST_F(IpSecDatapathTest, UplinkMtuUpdateHandler) {

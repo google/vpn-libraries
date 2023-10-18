@@ -24,6 +24,7 @@
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_packet_forwarder.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
 #include "privacy/net/krypton/datapath/android_ipsec/mtu_tracker.h"
+#include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/endpoint.h"
 #include "privacy/net/krypton/pal/packet.h"
@@ -248,13 +249,18 @@ void IpSecDatapath::StopInternal() {
 }
 
 void IpSecDatapath::StartUpIpSecPacketForwarder() {
-  auto tunnel = vpn_service_->GetTunnel();
+  absl::StatusOr<TunnelInterface*> tunnel = vpn_service_->GetTunnel();
   if (!tunnel.ok()) {
     NotifyDatapathPermanentFailure(tunnel.status());
     return;
   }
   if (*tunnel == nullptr) {
     NotifyDatapathPermanentFailure(absl::InternalError("tunnel is null"));
+    return;
+  }
+  if (network_socket_ == nullptr) {
+    NotifyDatapathPermanentFailure(
+        absl::InternalError("network socket is null"));
     return;
   }
   forwarder_ = std::make_unique<IpSecPacketForwarder>(
