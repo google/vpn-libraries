@@ -72,9 +72,9 @@ class Session : public DatapathInterface::NotificationInterface,
     // Control plane has successfully negotiated setting up the tunnel. This
     // event doesn't signify that the datapath is connected.
     virtual void ControlPlaneConnected() = 0;
-    // Control plane is broken and implicitly implies that there is no data
-    // plane either.
-    virtual void ControlPlaneDisconnected(const absl::Status& status) = 0;
+    // The session is broken, but may attempt to recover. Implies that there
+    // was a failure in the control plane or data plane establishment.
+    virtual void SessionError(const absl::Status& status) = 0;
     // Session has non recoverable error and the Krypton layer needs to be torn
     // down.
     virtual void PermanentFailure(const absl::Status& status) = 0;

@@ -107,7 +107,7 @@ class Reconnector : public Session::NotificationInterface {
                             const absl::Status& reason)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  void ControlPlaneDisconnected(const absl::Status& reason)
+  void SessionError(const absl::Status& reason)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
   void PermanentFailure(const absl::Status& disconnect_status)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
@@ -129,14 +129,14 @@ class Reconnector : public Session::NotificationInterface {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Test only parameters
-  int SuccessiveDatapathFailuresTestOnly() const {
+  int32_t SuccessiveDatapathFailuresTestOnly() const {
     absl::MutexLock l(&mutex_);
     return successive_datapath_failures_;
   }
 
-  int SuccessiveControlplaneFailuresTestOnly() const {
+  int32_t SuccessiveSessionErrorsTestOnly() const {
     absl::MutexLock l(&mutex_);
-    return successive_control_plane_failures_;
+    return successive_session_errors_;
   }
 
  private:
@@ -182,7 +182,7 @@ class Reconnector : public Session::NotificationInterface {
 
   mutable absl::Mutex mutex_;
   State state_ ABSL_GUARDED_BY(mutex_);
-  std::atomic_int session_restart_counter_ = 0;
+  int32_t session_restart_counter_ ABSL_GUARDED_BY(mutex_) = 0;
   int reconnector_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int connection_deadline_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
   int snooze_timer_id_ ABSL_GUARDED_BY(mutex_) = -1;
@@ -190,10 +190,12 @@ class Reconnector : public Session::NotificationInterface {
   // Used to determine whether active_network == nullopt is intentional, or
   // merely a default value.
   std::atomic_bool set_network_called_ = false;
-  // Represents the successive datapath failures after control plane is
-  // connected.
-  uint32_t successive_datapath_failures_ ABSL_GUARDED_BY(mutex_) = 0;
-  uint32_t successive_control_plane_failures_ ABSL_GUARDED_BY(mutex_) = 0;
+  // Represents the successive permanent datapath failures that occur in the
+  // session.
+  int32_t successive_datapath_failures_ ABSL_GUARDED_BY(mutex_) = 0;
+  // Represents the successive failures of the session to connect the control
+  // plane or the datapath.
+  int32_t successive_session_errors_ ABSL_GUARDED_BY(mutex_) = 0;
   TelemetryData telemetry_data_ ABSL_GUARDED_BY(mutex_);
   absl::Time data_plane_connecting_start_time_ ABSL_GUARDED_BY(mutex_) =
       absl::InfinitePast();

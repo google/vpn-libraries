@@ -57,8 +57,7 @@ class MockSessionNotification : public Session::NotificationInterface {
  public:
   MOCK_METHOD(void, ControlPlaneConnecting, (), (override));
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
-  MOCK_METHOD(void, ControlPlaneDisconnected, (const absl::Status&),
-              (override));
+  MOCK_METHOD(void, SessionError, (const absl::Status&), (override));
   MOCK_METHOD(void, PermanentFailure, (const absl::Status&), (override));
   MOCK_METHOD(void, DatapathConnecting, (), (override));
   MOCK_METHOD(void, DatapathConnected, (), (override));
@@ -199,7 +198,7 @@ TEST_F(ReconnectorTest,
   reconnector_->Start();
 
   // Clear all timer expectations.
-  ::testing::Mock::VerifyAndClearExpectations(&timer_interface_);
+  testing::Mock::VerifyAndClearExpectations(&timer_interface_);
 
   // expect terminating a session and start a reconnect timer id.
   EXPECT_CALL(session_manager_, TerminateSession);
@@ -234,18 +233,18 @@ TEST_F(ReconnectorTest, CheckExponentialBackOff) {
   reconnector_->ControlPlaneConnected();
 
   // Clear all timer expectations.
-  ::testing::Mock::VerifyAndClearExpectations(&timer_interface_);
+  testing::Mock::VerifyAndClearExpectations(&timer_interface_);
 
   int reconnect_time_id;
   int reconnect_time_secs = 1;
 
-  // Start with 1 as successive control plane failures will be incremented to 1
-  // after receiving |ControlPlaneDisconnected|.
+  // Start with 1 as successive session errors will be incremented to 1
+  // after receiving |SessionError|.
   for (int i = 1; i < 10; i++) {
     reconnect_time_secs = std::pow(2, i);
     ExpectStartTimer(absl::Seconds(reconnect_time_secs), &reconnect_time_id);
     EXPECT_CALL(session_manager_, TerminateSession);
-    reconnector_->ControlPlaneDisconnected(absl::NotFoundError("Some status"));
+    reconnector_->SessionError(absl::NotFoundError("Some status"));
 
     EXPECT_CALL(session_manager_,
                 EstablishSession(++session_reconnect_count, &tunnel_manager_,
@@ -266,25 +265,55 @@ TEST_F(ReconnectorTest, ResetFailureCountersWhenSetNetworkCalled) {
   reconnector_->ControlPlaneConnected();
 
   // Clear all timer expectations.
-  ::testing::Mock::VerifyAndClearExpectations(&timer_interface_);
+  testing::Mock::VerifyAndClearExpectations(&timer_interface_);
 
-  // Simulate a control plane failure.
+  // Simulate a session error.
   int reconnect_time_id;
   ExpectStartTimer(absl::Seconds(2), &reconnect_time_id);
   EXPECT_CALL(session_manager_, TerminateSession);
-  reconnector_->ControlPlaneDisconnected(absl::NotFoundError("Some status"));
+  reconnector_->SessionError(absl::NotFoundError("Some status"));
 
   EXPECT_CALL(session_manager_,
               EstablishSession(++session_reconnect_count, &tunnel_manager_,
                                Eq(std::nullopt)));
   ExpectStartTimer(absl::Seconds(30), &connection_deadline_timer_id);
   timer_interface_.TimerExpiry(reconnect_time_id);
-  EXPECT_EQ(1, reconnector_->SuccessiveControlplaneFailuresTestOnly());
+  EXPECT_EQ(reconnector_->SuccessiveSessionErrorsTestOnly(), 1);
 
   // SetNetwork should reset the failure counters.
   EXPECT_OK(reconnector_->SetNetwork(NetworkInfo()));
-  EXPECT_EQ(0, reconnector_->SuccessiveControlplaneFailuresTestOnly());
-  EXPECT_EQ(0, reconnector_->SuccessiveDatapathFailuresTestOnly());
+  EXPECT_EQ(reconnector_->SuccessiveSessionErrorsTestOnly(), 0);
+  EXPECT_EQ(reconnector_->SuccessiveDatapathFailuresTestOnly(), 0);
+}
+
+TEST_F(ReconnectorTest, SimulateSessionErrorThenReconnectSuccess) {
+  int connection_deadline_timer_id;
+  InitialExpectations(&connection_deadline_timer_id);
+
+  reconnector_->Start();
+
+  EXPECT_CALL(timer_interface_, CancelTimer(connection_deadline_timer_id));
+  reconnector_->ControlPlaneConnected();
+
+  // Clear all timer expectations.
+  testing::Mock::VerifyAndClearExpectations(&timer_interface_);
+
+  // Simulate a session error.
+  int reconnect_time_id;
+  ExpectStartTimer(absl::Seconds(2), &reconnect_time_id);
+  EXPECT_CALL(session_manager_, TerminateSession);
+  reconnector_->SessionError(absl::NotFoundError("Some status"));
+
+  EXPECT_CALL(session_manager_,
+              EstablishSession(/*restart_count=*/1, &tunnel_manager_,
+                               Eq(std::nullopt)));
+  ExpectStartTimer(absl::Seconds(30), &connection_deadline_timer_id);
+  timer_interface_.TimerExpiry(reconnect_time_id);
+  EXPECT_EQ(reconnector_->SuccessiveSessionErrorsTestOnly(), 1);
+
+  // Simulate if the reconnection attempt succeeds.
+  reconnector_->DatapathConnected();
+  EXPECT_EQ(reconnector_->SuccessiveSessionErrorsTestOnly(), 0);
 }
 
 TEST_F(ReconnectorTest, PopulatesDebugInfo) {
@@ -296,8 +325,8 @@ TEST_F(ReconnectorTest, PopulatesDebugInfo) {
   EXPECT_THAT(debug_info, EqualsProto(R"pb(
                 state: "WaitingForSessionEstablishment"
                 session_restart_counter: 1
-                successive_control_plane_failures: 1
-                successive_data_plane_failures: 1
+                successive_control_plane_failures: 0
+                successive_data_plane_failures: 0
               )pb"));
 }
 
@@ -632,8 +661,8 @@ class DatapathReconnectorTest : public ReconnectorTest {
 
 TEST_F(DatapathReconnectorTest, TestDatapathSuccessful) {
   reconnector_->DatapathConnected();
-  EXPECT_EQ(0, reconnector_->SuccessiveDatapathFailuresTestOnly());
-  EXPECT_EQ(0, reconnector_->SuccessiveControlplaneFailuresTestOnly());
+  EXPECT_EQ(reconnector_->SuccessiveDatapathFailuresTestOnly(), 0);
+  EXPECT_EQ(reconnector_->SuccessiveSessionErrorsTestOnly(), 0);
 }
 
 TEST_F(DatapathReconnectorTest, TestDatapathConnectingTelemetry) {

@@ -590,7 +590,8 @@ public class KryptonTest {
       assertThat(debugInfo.opt(KryptonDebugJson.AUTH_STATUS)).isEqualTo("OK");
       assertThat(debugInfo.opt(KryptonDebugJson.BRASS_URL)).isEqualTo(mockEgressServer.url());
       assertThat(debugInfo.optBoolean(KryptonDebugJson.CANCELLED)).isFalse();
-      assertThat(debugInfo.opt(KryptonDebugJson.SUCCESSIVE_CONTROL_PLANE_FAILURES)).isEqualTo(1);
+      assertThat(debugInfo.opt(KryptonDebugJson.SUCCESSIVE_CONTROL_PLANE_FAILURES)).isEqualTo(0);
+      assertThat(debugInfo.opt(KryptonDebugJson.SUCCESSIVE_DATA_PLANE_FAILURES)).isEqualTo(0);
       assertThat(debugInfo.opt(KryptonDebugJson.EGRESS_STATE)).isEqualTo("kEgressSessionCreated");
       assertThat(debugInfo.opt(KryptonDebugJson.EGRESS_STATUS)).isEqualTo("OK");
       assertThat(debugInfo.opt(KryptonDebugJson.RECONNECTOR_STATE)).isEqualTo("Connected");

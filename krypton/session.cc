@@ -316,9 +316,8 @@ void Session::SetState(State state, absl::Status status) {
       StartRekeyTimer();
       break;
     case State::kSessionError:
-      notification_thread_->Post([notification, status] {
-        notification->ControlPlaneDisconnected(status);
-      });
+      notification_thread_->Post(
+          [notification, status] { notification->SessionError(status); });
       break;
     case State::kPermanentError:
       notification_thread_->Post(
