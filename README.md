@@ -19,7 +19,7 @@ Google One.
 
 The VPN libraries in this repo are currently adopted by the Google One Android
 App as of October 2020, the Google One iOS App as of February 2022, and the
-Google 1 macOS and Windows App as of December 2022.
+Google One macOS and Windows App as of December 2022.
 
 ## Current status
 
