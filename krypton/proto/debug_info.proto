@@ -31,6 +31,7 @@ message ReconnectorDebugInfo {
   optional int32 session_restart_counter = 2;
   optional int32 successive_control_plane_failures = 3;
   optional int32 successive_data_plane_failures = 4;
+  optional int32 successive_session_errors = 5;
 }
 
 message AuthDebugInfo {

@@ -34,6 +34,7 @@ public class KryptonDebugJson {
   public static final String SESSION_RESTART_COUNTER = "sessionRestartCounter";
   public static final String SUCCESSIVE_CONTROL_PLANE_FAILURES = "successiveControlPlaneFailures";
   public static final String SUCCESSIVE_DATA_PLANE_FAILURES = "successiveDataPlaneFailures";
+  public static final String SUCCESSIVE_SESSION_ERRORS = "successiveSessionErrors";
 
   // Auth
   public static final String AUTH_STATE = "authState";
@@ -86,6 +87,8 @@ public class KryptonDebugJson {
           json,
           SUCCESSIVE_DATA_PLANE_FAILURES,
           debugInfo.getReconnector().getSuccessiveDataPlaneFailures());
+      Json.put(
+          json, SUCCESSIVE_SESSION_ERRORS, debugInfo.getReconnector().getSuccessiveSessionErrors());
     }
 
     if (debugInfo.hasAuth()) {

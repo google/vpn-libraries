@@ -127,6 +127,7 @@ void Reconnector::ControlPlaneFailure() {
                        &telemetry_data_.control_plane_failure_latencies,
                        "ControlPlaneFailed");
   ++telemetry_data_.control_plane_failures;
+  ++successive_control_plane_failures_;
 }
 
 void Reconnector::ControlPlaneConnected() {
@@ -159,6 +160,7 @@ void Reconnector::ControlPlaneConnected() {
                        &telemetry_data_.control_plane_success_latencies,
                        "ControlPlaneConnected");
   ++telemetry_data_.control_plane_connecting_successes;
+  successive_control_plane_failures_ = 0;
 
   CancelConnectionDeadlineTimerIfRunning();
 
@@ -310,6 +312,9 @@ void Reconnector::SnoozeTimerExpired() {
 }
 
 absl::Duration Reconnector::GetReconnectDuration() {
+  // Successive control plane failures aren't a factor in exponential backoff.
+  // Control plane failures in the Session produce either a PermanentError or a
+  // SessionError. A session error is a factor in backoff.
   auto max_reattempts_till_now =
       std::max(successive_session_errors_, successive_datapath_failures_);
 
@@ -319,10 +324,9 @@ absl::Duration Reconnector::GetReconnectDuration() {
   reconnector_duration *=
       std::pow(2, static_cast<double>(max_reattempts_till_now));
 
-  // TODO Add successive control plane failure to log when
-  // the CL tracking it is added.
-  LOG(INFO) << "Session errors during reconnection "
-            << successive_session_errors_ << " Dataplane reconnection failures "
+  LOG(INFO) << "Successive session errors during reconnection "
+            << successive_session_errors_
+            << " Dataplane reconnection failures "
             << successive_datapath_failures_ << " Reconnection duration "
             << reconnector_duration;
 
@@ -334,6 +338,7 @@ void Reconnector::ResetFailureCounters() {
   LOG(INFO) << "Resetting failure counters";
   successive_session_errors_ = 0;
   successive_datapath_failures_ = 0;
+  successive_control_plane_failures_ = 0;
 }
 
 absl::Status Reconnector::StartReconnectorTimer() {
@@ -645,10 +650,10 @@ void Reconnector::GetDebugInfo(ReconnectorDebugInfo* debug_info) {
 
   debug_info->set_state(StateString(state_));
   debug_info->set_session_restart_counter(session_restart_counter_);
-  debug_info->set_successive_control_plane_failures(successive_session_errors_);
+  debug_info->set_successive_control_plane_failures(
+      successive_control_plane_failures_);
   debug_info->set_successive_data_plane_failures(successive_datapath_failures_);
-  // TODO Add debug info field for session errors and collect
-  // successive control plane failures using the correct field.
+  debug_info->set_successive_session_errors(successive_session_errors_);
 }
 
 void Reconnector::CollectTelemetry(KryptonTelemetry* telemetry) {

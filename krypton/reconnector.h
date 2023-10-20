@@ -193,6 +193,8 @@ class Reconnector : public Session::NotificationInterface {
   // Used to determine whether active_network == nullopt is intentional, or
   // merely a default value.
   std::atomic_bool set_network_called_ = false;
+  // Represents the successive control plane failures that occur in the session.
+  int32_t successive_control_plane_failures_ ABSL_GUARDED_BY(mutex_) = 0;
   // Represents the successive permanent datapath failures that occur in the
   // session.
   int32_t successive_datapath_failures_ ABSL_GUARDED_BY(mutex_) = 0;

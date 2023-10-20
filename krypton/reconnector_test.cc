@@ -201,7 +201,7 @@ TEST_F(ReconnectorTest, ControlPlaneFailureTelemetryCollection) {
   reconnector_->ControlPlaneConnecting();
   reconnector_->ControlPlaneFailure();
 
-  // Collect telemetry once connected.
+  // Collect telemetry once attempt fails.
   KryptonTelemetry telemetry;
   reconnector_->CollectTelemetry(&telemetry);
   EXPECT_EQ(telemetry.control_plane_attempts(), 1);
@@ -209,6 +209,30 @@ TEST_F(ReconnectorTest, ControlPlaneFailureTelemetryCollection) {
   EXPECT_EQ(telemetry.control_plane_successes(), 0);
   EXPECT_EQ(telemetry.control_plane_success_latency_size(), 0);
   EXPECT_EQ(telemetry.control_plane_failure_latency_size(), 1);
+}
+
+TEST_F(ReconnectorTest, ControlPlaneFailureDebugInfo) {
+  // Connecting attempt fails.
+  reconnector_->ControlPlaneConnecting();
+  reconnector_->ControlPlaneFailure();
+
+  // Get debug info once attempt fails.
+  ReconnectorDebugInfo debug_info;
+  reconnector_->GetDebugInfo(&debug_info);
+  EXPECT_EQ(debug_info.successive_control_plane_failures(), 1);
+
+  // Connecting attempt succeeds.
+  int connection_deadline_timer_id;
+  InitialExpectations(&connection_deadline_timer_id);
+  reconnector_->Start();
+  reconnector_->ControlPlaneConnecting();
+  EXPECT_CALL(timer_interface_, CancelTimer(connection_deadline_timer_id));
+  reconnector_->ControlPlaneConnected();
+  EXPECT_EQ(reconnector_->state(), Reconnector::State::kConnected);
+
+  // Get debug info once attempt succeeds.
+  reconnector_->GetDebugInfo(&debug_info);
+  EXPECT_EQ(debug_info.successive_control_plane_failures(), 0);
 }
 
 TEST_F(ReconnectorTest,
@@ -349,6 +373,7 @@ TEST_F(ReconnectorTest, PopulatesDebugInfo) {
                 session_restart_counter: 1
                 successive_control_plane_failures: 0
                 successive_data_plane_failures: 0
+                successive_session_errors: 0
               )pb"));
 }
 
