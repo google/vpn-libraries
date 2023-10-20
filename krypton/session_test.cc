@@ -92,6 +92,7 @@ class MockSessionNotification : public Session::NotificationInterface {
  public:
   MOCK_METHOD(void, ControlPlaneConnecting, (), (override));
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
+  MOCK_METHOD(void, ControlPlaneFailure, (), (override));
   MOCK_METHOD(void, SessionError, (const absl::Status&), (override));
   MOCK_METHOD(void, PermanentFailure, (const absl::Status&), (override));
   MOCK_METHOD(void, DatapathConnecting, (), (override));
@@ -442,6 +443,23 @@ TEST_F(SessionTest, DatapathConnectStartsTimers) {
   EXPECT_CALL(timer_interface_, StartTimer(_, absl::Seconds(10)));
 
   BringDatapathToConnected();
+}
+
+TEST_F(SessionTest, AuthFailureNotifiesControlPlaneFailure) {
+  // This verifies that an auth failure, which is a provisioning failure,
+  // will trigger a control plane failure notification.
+
+  // Expect control plane failure because auth fails.
+  EXPECT_CALL(notification_, ControlPlaneConnecting());
+  EXPECT_CALL(notification_, ControlPlaneFailure());
+
+  // Expect a bad oauth token, which causes auth failure.
+  EXPECT_CALL(oauth_, GetOAuthToken)
+      .WillOnce(Return(absl::InternalError("bad_token")));
+
+  // Start the session.
+  session_->Start();
+  WaitForNotifications();
 }
 
 TEST_F(SessionTest, SessionUsesRekeyTimerDurationFromKryptonConfig) {

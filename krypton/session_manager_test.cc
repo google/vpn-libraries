@@ -93,6 +93,7 @@ class MockSessionNotification : public Session::NotificationInterface {
  public:
   MOCK_METHOD(void, ControlPlaneConnecting, (), (override));
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
+  MOCK_METHOD(void, ControlPlaneFailure, (), (override));
   MOCK_METHOD(void, SessionError, (const absl::Status&), (override));
   MOCK_METHOD(void, PermanentFailure, (const absl::Status&), (override));
   MOCK_METHOD(void, DatapathConnecting, (), (override));

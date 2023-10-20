@@ -877,6 +877,7 @@ void Session::Provisioned(const AddEgressResponse& egress_response,
 
 void Session::ProvisioningFailure(absl::Status status, bool permanent) {
   absl::MutexLock l(&mutex_);
+  NotifyControlPlaneFailure();
   if (permanent) {
     SetState(State::kPermanentError, status);
   } else {
@@ -939,6 +940,12 @@ void Session::NotifyControlPlaneConnecting() {
   NotificationInterface* notification = notification_;
   notification_thread_->Post(
       [notification] { notification->ControlPlaneConnecting(); });
+}
+
+void Session::NotifyControlPlaneFailure() {
+  NotificationInterface* notification = notification_;
+  notification_thread_->Post(
+      [notification] { notification->ControlPlaneFailure(); });
 }
 
 }  // namespace krypton

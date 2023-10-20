@@ -23,6 +23,7 @@
 #include <utility>
 
 #include "base/logging.h"
+#include "google/protobuf/duration.proto.h"
 #include "privacy/net/krypton/krypton_clock.h"
 #include "privacy/net/krypton/pal/krypton_notification_interface.h"
 #include "privacy/net/krypton/proto/connection_status.proto.h"
@@ -71,6 +72,8 @@ std::string StateString(Reconnector::State state) {
 }
 }  // namespace
 
+using ::google::protobuf::Duration;
+
 Reconnector::Reconnector(TimerManager* timer_manager,
                          const KryptonConfig& config,
                          SessionManagerInterface* session_manager,
@@ -114,6 +117,16 @@ void Reconnector::ControlPlaneConnecting() {
   LOG(INFO) << "Attempting to connect session control plane.";
   absl::MutexLock l(&mutex_);
   ++telemetry_data_.control_plane_connecting_attempts;
+  control_plane_connecting_start_time_ = clock_->Now();
+}
+
+void Reconnector::ControlPlaneFailure() {
+  LOG(INFO) << "Attempt to connect session control plane failed.";
+  absl::MutexLock l(&mutex_);
+  utils::RecordLatency(control_plane_connecting_start_time_,
+                       &telemetry_data_.control_plane_failure_latencies,
+                       "ControlPlaneFailed");
+  ++telemetry_data_.control_plane_failures;
 }
 
 void Reconnector::ControlPlaneConnected() {
@@ -142,6 +155,9 @@ void Reconnector::ControlPlaneConnected() {
   // Ensure that there is no reconnection timer running.
   DCHECK(reconnector_timer_id_ == kInvalidTimerId);
 
+  utils::RecordLatency(control_plane_connecting_start_time_,
+                       &telemetry_data_.control_plane_success_latencies,
+                       "ControlPlaneConnected");
   ++telemetry_data_.control_plane_connecting_successes;
 
   CancelConnectionDeadlineTimerIfRunning();
@@ -176,9 +192,6 @@ void Reconnector::SessionError(const absl::Status& reason) {
     });
   }
   ++successive_session_errors_;
-  // TODO When a notification is added for control plane connecting
-  // failures, increment control_plane_failures counter there.
-  ++telemetry_data_.control_plane_failures;
   StartReconnection();
 }
 
@@ -286,9 +299,6 @@ void Reconnector::SessionConnectionTimerExpired() {
   DCHECK(reconnector_timer_id_ == kInvalidTimerId);
   connection_deadline_timer_id_ = kInvalidTimerId;
   ++successive_session_errors_;
-  // TODO Evaluate whether this should be tracked here after
-  // the control plane connecting notification is added.
-  ++telemetry_data_.control_plane_failures;
   StartReconnection();
 }
 
@@ -310,7 +320,7 @@ absl::Duration Reconnector::GetReconnectDuration() {
       std::pow(2, static_cast<double>(max_reattempts_till_now));
 
   // TODO Add successive control plane failure to log when
-  // the CL tracking this is added.
+  // the CL tracking it is added.
   LOG(INFO) << "Session errors during reconnection "
             << successive_session_errors_ << " Dataplane reconnection failures "
             << successive_datapath_failures_ << " Reconnection duration "
@@ -637,9 +647,8 @@ void Reconnector::GetDebugInfo(ReconnectorDebugInfo* debug_info) {
   debug_info->set_session_restart_counter(session_restart_counter_);
   debug_info->set_successive_control_plane_failures(successive_session_errors_);
   debug_info->set_successive_data_plane_failures(successive_datapath_failures_);
-  // TODO Add debug info field for session errors. When the
-  // notification for control plane failures is added, clean up this debug info
-  // collection.
+  // TODO Add debug info field for session errors and collect
+  // successive control plane failures using the correct field.
 }
 
 void Reconnector::CollectTelemetry(KryptonTelemetry* telemetry) {
@@ -655,8 +664,17 @@ void Reconnector::CollectTelemetry(KryptonTelemetry* telemetry) {
       telemetry_data_.control_plane_connecting_attempts);
   telemetry->set_control_plane_successes(
       telemetry_data_.control_plane_connecting_successes);
-  for (const auto& latency : telemetry_data_.data_plane_connecting_latencies) {
-    *telemetry->add_data_plane_connecting_latency() = std::move(latency);
+  for (const Duration& latency :
+       telemetry_data_.data_plane_connecting_latencies) {
+    *telemetry->add_data_plane_connecting_latency() = latency;
+  }
+  for (const Duration& latency :
+       telemetry_data_.control_plane_success_latencies) {
+    *telemetry->add_control_plane_success_latency() = latency;
+  }
+  for (const Duration& latency :
+       telemetry_data_.control_plane_failure_latencies) {
+    *telemetry->add_control_plane_failure_latency() = latency;
   }
 
   telemetry_data_ = TelemetryData();

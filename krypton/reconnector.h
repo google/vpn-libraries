@@ -75,6 +75,8 @@ class Reconnector : public Session::NotificationInterface {
     int control_plane_connecting_attempts = 0;
     int control_plane_connecting_successes = 0;
     std::vector<google::protobuf::Duration> data_plane_connecting_latencies;
+    std::vector<google::protobuf::Duration> control_plane_success_latencies;
+    std::vector<google::protobuf::Duration> control_plane_failure_latencies;
   };
 
   static constexpr int kInvalidTimerId = -1;
@@ -100,6 +102,7 @@ class Reconnector : public Session::NotificationInterface {
 
   void ControlPlaneConnecting() ABSL_LOCKS_EXCLUDED(mutex_) override;
   void ControlPlaneConnected() ABSL_LOCKS_EXCLUDED(mutex_) override;
+  void ControlPlaneFailure() ABSL_LOCKS_EXCLUDED(mutex_) override;
 
   void DatapathConnecting() ABSL_LOCKS_EXCLUDED(mutex_) override;
   void DatapathConnected() ABSL_LOCKS_EXCLUDED(mutex_) override;
@@ -198,6 +201,8 @@ class Reconnector : public Session::NotificationInterface {
   int32_t successive_session_errors_ ABSL_GUARDED_BY(mutex_) = 0;
   TelemetryData telemetry_data_ ABSL_GUARDED_BY(mutex_);
   absl::Time data_plane_connecting_start_time_ ABSL_GUARDED_BY(mutex_) =
+      absl::InfinitePast();
+  absl::Time control_plane_connecting_start_time_ ABSL_GUARDED_BY(mutex_) =
       absl::InfinitePast();
   absl::Time snooze_end_time_;
 };

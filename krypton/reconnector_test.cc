@@ -57,6 +57,7 @@ class MockSessionNotification : public Session::NotificationInterface {
  public:
   MOCK_METHOD(void, ControlPlaneConnecting, (), (override));
   MOCK_METHOD(void, ControlPlaneConnected, (), (override));
+  MOCK_METHOD(void, ControlPlaneFailure, (), (override));
   MOCK_METHOD(void, SessionError, (const absl::Status&), (override));
   MOCK_METHOD(void, PermanentFailure, (const absl::Status&), (override));
   MOCK_METHOD(void, DatapathConnecting, (), (override));
@@ -182,11 +183,32 @@ TEST_F(ReconnectorTest,
   reconnector_->CollectTelemetry(&telemetry);
   EXPECT_EQ(telemetry.control_plane_attempts(), 0);
   EXPECT_EQ(telemetry.control_plane_successes(), 1);
+  EXPECT_EQ(telemetry.control_plane_success_latency_size(), 1);
 
   // Check values are reset when telemetry collected
   telemetry.Clear();
   reconnector_->CollectTelemetry(&telemetry);
   EXPECT_EQ(telemetry.control_plane_successes(), 0);
+  EXPECT_EQ(telemetry.control_plane_success_latency_size(), 0);
+}
+
+TEST_F(ReconnectorTest, ControlPlaneFailureTelemetryCollection) {
+  // This test ensures that when the control plane fails, the failure telemetry
+  // is properly computed and collected. Session notifications are used to tell
+  // reconnector when control plane is attempted and if it succeeds or fails.
+
+  // Connecting attempt fails.
+  reconnector_->ControlPlaneConnecting();
+  reconnector_->ControlPlaneFailure();
+
+  // Collect telemetry once connected.
+  KryptonTelemetry telemetry;
+  reconnector_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.control_plane_attempts(), 1);
+  EXPECT_EQ(telemetry.control_plane_failures(), 1);
+  EXPECT_EQ(telemetry.control_plane_successes(), 0);
+  EXPECT_EQ(telemetry.control_plane_success_latency_size(), 0);
+  EXPECT_EQ(telemetry.control_plane_failure_latency_size(), 1);
 }
 
 TEST_F(ReconnectorTest,

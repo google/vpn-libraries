@@ -72,6 +72,8 @@ class Session : public DatapathInterface::NotificationInterface,
     // Control plane has successfully negotiated setting up the tunnel. This
     // event doesn't signify that the datapath is connected.
     virtual void ControlPlaneConnected() = 0;
+    // Control plane failed to negotiate setting up the tunnel.
+    virtual void ControlPlaneFailure() = 0;
     // The session is broken, but may attempt to recover. Implies that there
     // was a failure in the control plane or data plane establishment.
     virtual void SessionError(const absl::Status& status) = 0;
@@ -257,6 +259,10 @@ class Session : public DatapathInterface::NotificationInterface,
   void NotifyDatapathConnecting() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void NotifyControlPlaneConnecting() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  // Called in the case of a Provisioning failure, whether or not the failure is
+  // permanent.
+  void NotifyControlPlaneFailure() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;
 
