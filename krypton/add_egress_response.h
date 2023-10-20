@@ -40,7 +40,6 @@ class AddEgressResponse {
   }
 
   AddEgressResponse() = default;
-  ~AddEgressResponse() = default;
 
   absl::StatusOr<::privacy::ppn::PpnDataplaneResponse> ppn_dataplane_response()
       const {

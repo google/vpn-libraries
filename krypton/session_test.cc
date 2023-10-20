@@ -46,6 +46,7 @@
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/tunnel_manager.h"
+#include "privacy/net/krypton/utils/http_response_test_utils.h"
 #include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
@@ -53,8 +54,6 @@
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/cleanup/cleanup.h"
 #include "third_party/absl/status/status.h"
-#include "third_party/absl/status/statusor.h"
-#include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/str_replace.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
@@ -62,7 +61,6 @@
 #include "third_party/absl/time/time.h"
 #include "third_party/absl/types/optional.h"
 #include "third_party/anonymous_tokens/cpp/testing/proto_utils.h"
-#include "third_party/anonymous_tokens/cpp/testing/utils.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 #include "third_party/openssl/base.h"
 
@@ -133,20 +131,21 @@ class SessionTest : public ::testing::Test {
     key_pair_.second.set_use_case("TEST_USE_CASE");
 
     // Configure default behavior to be successful auth and egress
-    ppn::AttestationData attestation_data;
     ON_CALL(oauth_, GetAttestationData(_))
-        .WillByDefault(Return(attestation_data));
+        .WillByDefault(Return(ppn::AttestationData()));
     ON_CALL(oauth_, GetOAuthToken).WillByDefault(Return("some_token"));
 
     ON_CALL(http_fetcher_, LookupDns(_)).WillByDefault(Return("0.0.0.0"));
     ON_CALL(http_fetcher_, PostJson(RequestUrlMatcher("initial_data")))
-        .WillByDefault([this] { return CreateInitialDataHttpResponse(); });
+        .WillByDefault(
+            Return(utils::CreateGetInitialDataHttpResponse(key_pair_.second)));
     ON_CALL(http_fetcher_, PostJson(RequestUrlMatcher("auth")))
         .WillByDefault([this](const HttpRequest& http_request) {
-          return CreateAuthHttpResponse(http_request);
+          return utils::CreateAuthHttpResponse(http_request,
+                                               key_pair_.first.get());
         });
     ON_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
-        .WillByDefault([this] { return CreateAddEgressHttpResponse(); });
+        .WillByDefault(Return(utils::CreateAddEgressHttpResponse()));
   }
 
   void CreateSession() {
@@ -167,101 +166,9 @@ class SessionTest : public ::testing::Test {
     session_->RegisterNotificationHandler(&notification_);
   }
 
-  HttpResponse CreateAddEgressHttpResponse() {
-    HttpResponse fake_add_egress_http_response;
-    fake_add_egress_http_response.mutable_status()->set_code(200);
-    fake_add_egress_http_response.mutable_status()->set_message("OK");
-    fake_add_egress_http_response.set_json_body(R"string({
-      "ppn_dataplane": {
-        "user_private_ip": [{
-          "ipv4_range": "10.2.2.123/32",
-          "ipv6_range": "fec2:0001::3/64"
-        }],
-        "egress_point_sock_addr": ["64.9.240.165:2153", "[2604:ca00:f001:4::5]:2153"],
-        "egress_point_public_value": "a22j+91TxHtS5qa625KCD5ybsyzPR1wkTDWHV2qSQQc=",
-        "server_nonce": "Uzt2lEzyvZYzjLAP3E+dAA==",
-        "uplink_spi": 123,
-        "expiry": "2020-08-07T01:06:13+00:00"
-      }
-    })string");
-    return fake_add_egress_http_response;
-  }
-
-  HttpResponse CreateAuthHttpResponse(
-      HttpRequest auth_and_sign_request,
-      absl::string_view copper_controller_hostname = "") {
-    privacy::ppn::AuthAndSignRequest request;
-    EXPECT_TRUE(request.ParseFromString(auth_and_sign_request.proto_body()));
-
-    // Construct AuthAndSignResponse.
-    ppn::AuthAndSignResponse auth_response;
-    for (const auto& request_token : request.blinded_token()) {
-      std::string decoded_blinded_token;
-      EXPECT_TRUE(absl::Base64Unescape(request_token, &decoded_blinded_token));
-      absl::StatusOr<std::string> serialized_token =
-          // TODO This is for RSA signatures which don't take
-          // public metadata into account. Eventually this will need to be
-          // updated.
-          private_membership::anonymous_tokens::TestSign(decoded_blinded_token,
-                                                         key_pair_.first.get());
-      EXPECT_OK(serialized_token);
-      auth_response.add_blinded_token_signature(
-          absl::Base64Escape(*serialized_token));
-    }
-
-    auth_response.set_copper_controller_hostname(copper_controller_hostname);
-
-    // add to http response
-    privacy::krypton::HttpResponse response;
-    response.mutable_status()->set_code(200);
-    response.mutable_status()->set_message("OK");
-    response.set_proto_body(auth_response.SerializeAsString());
-    return response;
-  }
-
   void TearDown() override {
     session_->Stop(/*forceFailOpen=*/true);
     tunnel_manager_.Stop();
-  }
-
-  ppn::GetInitialDataResponse CreateGetInitialDataResponse() {
-    ppn::GetInitialDataResponse response = ParseTextProtoOrDie(R"pb(
-      at_public_metadata_public_key: {
-        use_case: "TEST_USE_CASE",
-        key_version: 2,
-        serialized_public_key: "",
-        expiration_time: { seconds: 0, nanos: 0 },
-        key_validity_start_time: { seconds: 0, nanos: 0 },
-        sig_hash_type: AT_HASH_TYPE_SHA256,
-        mask_gen_function: AT_MGF_SHA256,
-        salt_length: 2,
-        key_size: 256,
-        message_mask_type: AT_MESSAGE_MASK_CONCAT,
-        message_mask_size: 2
-      },
-      public_metadata_info: {
-        public_metadata: {
-          exit_location: { country: "US", city_geo_id: "us_ca_san_diego" },
-          service_type: "service_type",
-          expiration: { seconds: 900, nanos: 0 },
-          debug_mode: 0,
-        },
-        validation_version: 1
-      }
-    )pb");
-
-    *response.mutable_at_public_metadata_public_key() = key_pair_.second;
-
-    return response;
-  }
-
-  HttpResponse CreateInitialDataHttpResponse() {
-    HttpResponse fake_initial_data_http_response;
-    fake_initial_data_http_response.mutable_status()->set_code(200);
-    fake_initial_data_http_response.mutable_status()->set_message("OK");
-    fake_initial_data_http_response.set_proto_body(
-        CreateGetInitialDataResponse().SerializeAsString());
-    return fake_initial_data_http_response;
   }
 
   TunFdData GetTunFdData(int mtu = 1395) {
@@ -833,7 +740,6 @@ TEST_F(SessionTest, ConnectControlPlaneBeforeSettingNetwork) {
   EXPECT_EQ(telemetry.network_switch_latency().size(), 0);
 }
 
-
 TEST_F(SessionTest, SwitchNetworkTelemetryWithDatapathReattempt) {
   ConnectControlPlaneWithoutSettingNetwork();
 
@@ -1031,10 +937,7 @@ TEST_F(SessionTest, DownlinkMtuUpdateHandlerHttpStatusOk) {
           mtu_update_done.Notify();
         };
         json_body = request.json_body();
-        HttpResponse http_response;
-        auto* http_status = http_response.mutable_status();
-        http_status->set_code(200);
-        return http_response;
+        return utils::CreateHttpResponseWithStatus(200, "OK");
       });
 
   EXPECT_CALL(notification_, SessionError(_)).Times(0);
@@ -1055,13 +958,8 @@ TEST_F(SessionTest, DownlinkMtuUpdateHandlerHttpStatusBadRequest) {
   BringDatapathToConnected();
 
   EXPECT_CALL(http_fetcher_, PostJson(_))
-      .WillOnce([](const HttpRequest& /*request*/) {
-        HttpResponse http_response;
-        auto* http_status = http_response.mutable_status();
-        http_status->set_code(400);
-        http_status->set_message("Bad Request");
-        return http_response;
-      });
+      .WillOnce(
+          Return(utils::CreateHttpResponseWithStatus(400, "Bad Request")));
 
   EXPECT_CALL(notification_, SessionError(_)).Times(0);
 
