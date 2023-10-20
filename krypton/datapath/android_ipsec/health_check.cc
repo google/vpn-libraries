@@ -19,11 +19,14 @@
 #include <memory>
 
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/ip_range.h"
+#include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
 #include "third_party/absl/cleanup/cleanup.h"
 #include "third_party/absl/functional/bind_front.h"
+#include "third_party/absl/log/die_if_null.h"
 #include "third_party/absl/log/log.h"
 
 namespace privacy {
@@ -99,6 +102,10 @@ void HealthCheck::ConfigureHealthCheck(const KryptonConfig& config) {
 }
 
 absl::Status HealthCheck::CheckConnection() const {
+  // Notify health check starting.
+  NotificationInterface* notification = notification_;
+  notification_thread_->Post(
+      [notification]() { notification->HealthCheckStarting(); });
   PPN_ASSIGN_OR_RETURN(auto resolved_address,
                        utils::ResolveIPAddress(periodic_health_check_url_));
   PPN_ASSIGN_OR_RETURN(auto ip_range, utils::IPRange::Parse(resolved_address));
@@ -169,12 +176,17 @@ void HealthCheck::HandleHealthCheckTimeout(
     BuildDebugInfo(status.ok());
     LOG(INFO) << "HealthCheck finished with status: " << status;
     if (!status.ok()) {
-      auto* notification = notification_;
+      // Notify health check failed.
+      NotificationInterface* notification = notification_;
       notification_thread_->Post([notification, status]() {
         notification->HealthCheckFailed(status);
       });
       return;
     }
+    // Notify health check passed.
+    NotificationInterface* notification = notification_;
+    notification_thread_->Post(
+        [notification, status]() { notification->HealthCheckSucceeded(); });
     StartHealthCheckTimer(/*prev_timer_expired=*/true);
   });
 }

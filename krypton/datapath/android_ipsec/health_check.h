@@ -26,6 +26,9 @@
 #include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "third_party/absl/base/thread_annotations.h"
+#include "third_party/absl/status/status.h"
+#include "third_party/absl/synchronization/mutex.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -44,7 +47,12 @@ class HealthCheck {
    public:
     virtual ~NotificationInterface() = default;
 
+    // Notifies that HealthCheck failed.
     virtual void HealthCheckFailed(const absl::Status& status) = 0;
+    // Notifies that HealthCheck is attempting a connection check.
+    virtual void HealthCheckStarting() = 0;
+    // Notifies that HealthCheck confirmed connection.
+    virtual void HealthCheckSucceeded() = 0;
   };
 
   HealthCheck(const KryptonConfig& config, TimerManager* timer_manager,

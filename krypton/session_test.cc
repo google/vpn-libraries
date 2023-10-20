@@ -1121,6 +1121,30 @@ TEST_F(SessionTest, CreateTunnelPermanentFailure) {
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
+TEST_F(SessionTest, VerifyHealthCheckTelemetry) {
+  BringDatapathToConnected();
+
+  // Notifications simulating health check successful.
+  session_->DatapathHealthCheckStarting();
+  session_->DatapathHealthCheckSucceeded();
+
+  // Notifications simulating health check failure.
+  session_->DatapathHealthCheckStarting();
+  session_->DatapathFailed(absl::InternalError("health check failed"));
+
+  // Verify HealthCheck telemetry collected from Session.
+  KryptonTelemetry telemetry;
+  session_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.health_check_attempts(), 2);
+  EXPECT_EQ(telemetry.health_check_successes(), 1);
+
+  // Verify HealthCheck telemetry reset by collection.
+  telemetry.Clear();
+  session_->CollectTelemetry(&telemetry);
+  EXPECT_EQ(telemetry.health_check_attempts(), 0);
+  EXPECT_EQ(telemetry.health_check_successes(), 0);
+}
+
 TEST(UpdatePathInfoTest, UpdatePathInfoRequestToJsonDefaultValues) {
   ppn::UpdatePathInfoRequest update_path_info;
   auto json_str = ProtoToJsonString(update_path_info);

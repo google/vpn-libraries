@@ -132,6 +132,10 @@ class IpSecDatapath : public DatapathInterface,
 
   void HealthCheckFailed(const absl::Status& status) override;
 
+  void HealthCheckStarting() override;
+
+  void HealthCheckSucceeded() override;
+
  private:
   void StopInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

@@ -137,6 +137,8 @@ class Session : public DatapathInterface::NotificationInterface,
       ABSL_LOCKS_EXCLUDED(mutex_);
   void DoDownlinkMtuUpdate(int downlink_mtu) override
       ABSL_LOCKS_EXCLUDED(mutex_);
+  void DatapathHealthCheckSucceeded() override ABSL_LOCKS_EXCLUDED(mutex_);
+  void DatapathHealthCheckStarting() override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void Provisioned(const AddEgressResponse& egress_response,
                    bool is_rekey) override ABSL_LOCKS_EXCLUDED(mutex_);
@@ -296,6 +298,8 @@ class Session : public DatapathInterface::NotificationInterface,
   int datapath_reattempt_count_ ABSL_GUARDED_BY(mutex_) = 0;
   uint32_t network_switches_count_ ABSL_GUARDED_BY(mutex_) = 0;
   uint32_t successful_network_switches_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint32_t health_check_attempts_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint32_t health_check_succeeded_ ABSL_GUARDED_BY(mutex_) = 0;
   absl::Time network_switch_start_time_ ABSL_GUARDED_BY(mutex_) =
       absl::InfinitePast();
   std::vector<google::protobuf::Duration> network_switch_latencies_

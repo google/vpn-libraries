@@ -372,6 +372,20 @@ void IpSecDatapath::HealthCheckFailed(const absl::Status& status) {
   NotifyDatapathFailed(status);
 }
 
+void IpSecDatapath::HealthCheckStarting() {
+  LOG(INFO) << "HealthCheck is checking for connection.";
+  auto* notification = notification_;
+  notification_thread_->Post(
+      [notification]() { notification->DatapathHealthCheckStarting(); });
+}
+
+void IpSecDatapath::HealthCheckSucceeded() {
+  LOG(INFO) << "HealthCheck passed.";
+  auto* notification = notification_;
+  notification_thread_->Post(
+      [notification]() { notification->DatapathHealthCheckSucceeded(); });
+}
+
 void IpSecDatapath::GetDebugInfo(DatapathDebugInfo* debug_info) {
   absl::MutexLock l(&mutex_);
   if (forwarder_ != nullptr) {

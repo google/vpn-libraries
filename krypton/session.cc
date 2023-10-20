@@ -749,6 +749,10 @@ void Session::CollectTelemetry(KryptonTelemetry* telemetry) {
 
   telemetry->set_successful_rekeys(std::exchange(number_of_rekeys_, 0));
   telemetry->set_network_switches(std::exchange(network_switches_count_, 0));
+  telemetry->set_health_check_attempts(
+      std::exchange(health_check_attempts_, 0));
+  telemetry->set_health_check_successes(
+      std::exchange(health_check_succeeded_, 0));
   telemetry->set_successful_network_switches(
       std::exchange(successful_network_switches_, 0));
   for (const Duration& latency : network_switch_latencies_) {
@@ -818,6 +822,16 @@ void Session::DoDownlinkMtuUpdate(int downlink_mtu) {
     downlink_mtu_ = downlink_mtu;
     PPN_LOG_IF_ERROR(SendUpdatePathInfoRequest());
   }
+}
+
+void Session::DatapathHealthCheckSucceeded() {
+  absl::MutexLock l(&mutex_);
+  health_check_succeeded_++;
+}
+
+void Session::DatapathHealthCheckStarting() {
+  absl::MutexLock l(&mutex_);
+  health_check_attempts_++;
 }
 
 void Session::Provisioned(const AddEgressResponse& egress_response,

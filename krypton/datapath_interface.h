@@ -52,6 +52,10 @@ class DatapathInterface {
     // Datapath MTU has been updated
     virtual void DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) = 0;
     virtual void DoDownlinkMtuUpdate(int downlink_mtu) = 0;
+    // Datapath's HealthCheck is attempting connection.
+    virtual void DatapathHealthCheckStarting() = 0;
+    // Datapath's HealthCheck passed.
+    virtual void DatapathHealthCheckSucceeded() = 0;
   };
 
   // Initialize the data path.  Start takes two parameters, the transform params

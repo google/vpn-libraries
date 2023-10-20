@@ -63,6 +63,8 @@ class MockNotification : public DatapathInterface::NotificationInterface {
   MOCK_METHOD(void, DoRekey, (), (override));
   MOCK_METHOD(void, DoUplinkMtuUpdate, (int, int), (override));
   MOCK_METHOD(void, DoDownlinkMtuUpdate, (int), (override));
+  MOCK_METHOD(void, DatapathHealthCheckStarting, (), (override));
+  MOCK_METHOD(void, DatapathHealthCheckSucceeded, (), (override));
 };
 
 class MockIpSecVpnService : public IpSecDatapath::IpSecVpnServiceInterface {

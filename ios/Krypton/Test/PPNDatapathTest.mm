@@ -73,6 +73,10 @@ class TestNotification : public DatapathInterface::NotificationInterface {
 
   void DoDownlinkMtuUpdate(int downlink_mtu) override {}
 
+  void DatapathHealthCheckSucceeded() override {}
+
+  void DatapathHealthCheckStarting() override {}
+
   void VerifyNoMoreNotifications() {
     if (_unexpectedNotifications.count > 0) {
       XCTFail(@"Unexpected notifications: %@",

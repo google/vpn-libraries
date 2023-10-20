@@ -38,6 +38,8 @@ using ::testing::status::StatusIs;
 class MockNotification : public HealthCheck::NotificationInterface {
  public:
   MOCK_METHOD(void, HealthCheckFailed, (const absl::Status &), (override));
+  MOCK_METHOD(void, HealthCheckStarting, (), (override));
+  MOCK_METHOD(void, HealthCheckSucceeded, (), (override));
 };
 
 class HealthCheckTest : public ::testing::Test {
@@ -229,9 +231,9 @@ TEST_F(HealthCheckTest, HealthCheckPass) {
       });
 
   health_check.Start();
-
+  EXPECT_CALL(mock_notification_, HealthCheckStarting()).Times(1);
+  EXPECT_CALL(mock_notification_, HealthCheckSucceeded()).Times(1);
   EXPECT_CALL(mock_notification_, HealthCheckFailed(_)).Times(0);
-
   mock_timer_interface_.TimerExpiry(expected_timer_id);
 
   ASSERT_TRUE(timer_started.WaitForNotificationWithTimeout(absl::Seconds(1)));

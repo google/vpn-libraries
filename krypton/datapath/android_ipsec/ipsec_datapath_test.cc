@@ -64,6 +64,8 @@ class MockNotification : public DatapathInterface::NotificationInterface {
   MOCK_METHOD(void, DoRekey, (), (override));
   MOCK_METHOD(void, DoUplinkMtuUpdate, (int, int), (override));
   MOCK_METHOD(void, DoDownlinkMtuUpdate, (int), (override));
+  MOCK_METHOD(void, DatapathHealthCheckStarting, (), (override));
+  MOCK_METHOD(void, DatapathHealthCheckSucceeded, (), (override));
 };
 
 class IpSecDatapathTest : public ::testing::Test {
@@ -566,6 +568,19 @@ TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
   datapath_->Stop();
 }
 
+TEST_F(IpSecDatapathTest, HealthCheckNotifications) {
+  // Verifies that Session notifications are sent from the datapath in response
+  // to health check events.
+  EXPECT_CALL(notification_, DatapathHealthCheckStarting).Times(2);
+  EXPECT_CALL(notification_, DatapathHealthCheckSucceeded).Times(1);
+  EXPECT_CALL(notification_, DatapathFailed(absl::InternalError("Failure")))
+      .Times(1);
+  datapath_->HealthCheckStarting();
+  datapath_->HealthCheckSucceeded();
+  datapath_->HealthCheckStarting();
+  datapath_->HealthCheckFailed(absl::InternalError("Failure"));
+}
+
 TEST_F(IpSecDatapathTest, HealthCheckFailureHandled) {
   auto socket_ptr = std::make_unique<MockIpSecSocket>();
 
@@ -617,6 +632,10 @@ TEST_F(IpSecDatapathTest, HealthCheckFailureHandled) {
   EXPECT_CALL(notification_, DatapathEstablished).WillOnce([&established]() {
     established.Notify();
   });
+
+  // Verify datapath receives health check notifications when expected.
+  EXPECT_CALL(notification_, DatapathHealthCheckStarting).Times(1);
+  EXPECT_CALL(notification_, DatapathHealthCheckSucceeded).Times(0);
 
   // Simulate some network traffic so that the health check is started and then
   // simulate a blocking read.
