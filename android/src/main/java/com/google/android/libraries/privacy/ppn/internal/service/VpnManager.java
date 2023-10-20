@@ -56,9 +56,7 @@ public class VpnManager {
 
   private volatile BypassOptions bypassOptions;
 
-  /**
-   * Creates a new instance of VpnManager.
-   */
+  /** Creates a new instance of VpnManager. */
   public static VpnManager create(Context context, PpnOptions options) {
     VpnManager vpnManager = new VpnManager(context, options);
     BypassOptions bypassOptions =
@@ -228,10 +226,10 @@ public class VpnManager {
       // devices, Play Store may not have permission to bypass the VPN, so in order to be able to
       // reconnect when the VPN is not working, we have to add the Play Store to the bypass list.
       try {
-        Log.e(TAG, "Adding com.google.vending to disallowed applications for Play Integrity.");
-        builder.addDisallowedApplication("com.google.vending");
+        Log.e(TAG, "Adding com.android.vending to disallowed applications for Play Integrity.");
+        builder.addDisallowedApplication("com.android.vending");
       } catch (NameNotFoundException e) {
-        Log.e(TAG, "Disallowed application package not found: com.google.vending", e);
+        Log.e(TAG, "Disallowed application package not found: com.android.vending", e);
       }
     }
     for (String packageName : bypassOptions.disallowedApplications()) {
