@@ -17,6 +17,7 @@ syntax = "proto3";
 package privacy.ppn;
 
 import "privacy/net/attestation/proto/attestation.proto";
+import "privacy/net/common/proto/proxy_layer.proto";
 import "privacy/net/common/proto/public_metadata.proto";
 import "third_party/anonymous_tokens/proto/anonymous_tokens.proto";
 
@@ -42,6 +43,9 @@ message GetInitialDataRequest {
 
   // Indicates what validation rules the client uses for public metadata.
   int64 validation_version = 4;
+
+  // Only set for some service types where multi layer proxies are supported.
+  ProxyLayer proxy_layer = 5;
 }
 
 // Contains data needed to perform blind signing and prepare for calling

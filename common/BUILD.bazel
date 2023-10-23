@@ -5,6 +5,7 @@ proto_library(
         ":key_services_protobuf",
         ":public_metadata_protobuf",
         "attestation:attestation_protobuf",
+        ":proxy_layer_protobuf",
     ],
     import_prefix = "privacy/net/common/proto/",
     strip_import_prefix = "/common/",
@@ -17,6 +18,7 @@ proto_library(
         "attestation:attestation_protobuf",
         ":public_metadata_protobuf",
         ":anonymous_tokens_protobuf",
+        ":proxy_layer_protobuf",
     ],
     import_prefix = "privacy/net/common/proto/",
     strip_import_prefix = "/common/",
@@ -25,6 +27,13 @@ proto_library(
 proto_library(
     name = "key_services_protobuf",
     srcs = ["key_services.proto"],
+    import_prefix = "privacy/net/common/proto/",
+    strip_import_prefix = "/common/",
+)
+
+proto_library(
+    name = "proxy_layer_protobuf",
+    srcs = ["proxy_layer.proto"],
     import_prefix = "privacy/net/common/proto/",
     strip_import_prefix = "/common/",
 )
