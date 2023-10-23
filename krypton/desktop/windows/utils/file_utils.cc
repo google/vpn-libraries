@@ -64,7 +64,8 @@ absl::Status CreateDirectoryRecursively(
     // taken care of the parent directories by now)
     BOOL result = ::CreateDirectoryW(directory.c_str(), nullptr);
     if (result == FALSE) {
-      LOG(ERROR) << "Could not create directory: " << directory.c_str();
+      LOG(ERROR) << "Could not create directory: "
+                 << WcharToString(directory.c_str());
       return absl::InternalError("Could not create directory");
     }
 
