@@ -18,13 +18,14 @@ using private_membership::anonymous_tokens::DebugMode;
 using private_membership::anonymous_tokens::ExpirationTimestamp;
 using private_membership::anonymous_tokens::Extensions;
 using private_membership::anonymous_tokens::GeoHint;
+using private_membership::anonymous_tokens::ProxyLayer;
 using private_membership::anonymous_tokens::ServiceType;
 
 BinaryPublicMetadata PublicMetadataProtoToStruct(
     const PublicMetadata& metadata) {
   BinaryPublicMetadata binary_struct;
   // If any fields in the struct change, we need to bump the version.
-  binary_struct.version = 1;
+  binary_struct.version = 2;
   if (!metadata.service_type().empty()) {
     binary_struct.service_type = metadata.service_type();
   }
@@ -51,10 +52,16 @@ BinaryPublicMetadata PublicMetadataProtoToStruct(
 absl::Status ValidateBinaryPublicMetadataCardinality(
     const privacy::ppn::BinaryPublicMetadata& metadata, absl::Time now) {
   // If the version changes, then the fields have changed.
-  if (metadata.version != 1) {
-    return absl::InvalidArgumentError(
-        "Binary metadata version is incompatible");
+  if (metadata.version < 1 || metadata.version > 2) {
+    return absl::InvalidArgumentError("Binary metadata has unexpected version");
   }
+  if (metadata.version == 2) {
+    if (metadata.proxy_layer != 0 && metadata.proxy_layer != 1) {
+      return absl::InvalidArgumentError(
+          "Binary metadata has unexpected proxy layer");
+    }
+  }
+  // Checks below included for version 1
   if (!metadata.service_type.has_value()) {
     return absl::InvalidArgumentError(
         "Binary metadata is missing service type");
@@ -90,6 +97,7 @@ absl::Status ValidateBinaryPublicMetadataCardinality(
   if (expiration_time < now || expiration_time > now + absl::Hours(168)) {
     return absl::InvalidArgumentError("Binary metadata has expired");
   }
+
   return absl::OkStatus();
 }
 
@@ -149,6 +157,20 @@ absl::StatusOr<std::string> Serialize(
   }
   extensions.extensions.push_back(debug_mode_ext.value());
 
+  if (metadata.version == 2) {
+    ProxyLayer proxy_layer;
+    if (metadata.proxy_layer == 0) {
+      proxy_layer.layer = ProxyLayer::kProxyA;
+    } else if (metadata.proxy_layer == 1) {
+      proxy_layer.layer = ProxyLayer::kProxyB;
+    }
+    auto proxy_layer_ext = proxy_layer.AsExtension();
+    if (!proxy_layer_ext.ok()) {
+      return proxy_layer_ext.status();
+    }
+    extensions.extensions.push_back(proxy_layer_ext.value());
+  }
+
   return private_membership::anonymous_tokens::EncodeExtensions(extensions);
 }
 
@@ -161,7 +183,9 @@ absl::StatusOr<privacy::ppn::BinaryPublicMetadata> Deserialize(
   if (!extensions.ok()) {
     return extensions.status();
   }
-  if (extensions->extensions.size() != 4) {
+  // TODO: b/306703210 - propagate version information
+  if (extensions->extensions.size() != 4 &&
+      extensions->extensions.size() != 5) {
     return absl::InvalidArgumentError("Wrong number of extensions");
   }
   auto expiration =
@@ -189,7 +213,17 @@ absl::StatusOr<privacy::ppn::BinaryPublicMetadata> Deserialize(
   }
 
   BinaryPublicMetadata metadata;
-  metadata.version = 1;
+  if (extensions->extensions.size() == 5) {
+    auto proxy_layer = ProxyLayer::FromExtension(extensions->extensions[4]);
+    if (!proxy_layer.ok()) {
+      return proxy_layer.status();
+    }
+    metadata.version = 2;
+    metadata.proxy_layer = proxy_layer->layer;
+  } else {
+    metadata.version = 1;
+  }
+
   metadata.expiration_epoch_seconds = expiration.value().timestamp;
   metadata.country = geo_hint->country_code;
   metadata.region = geo_hint->region;

@@ -38,6 +38,10 @@ struct BinaryPublicMetadata {
   // Indicates the debug context of this payload.
   // 0 is UNSPECIFIED, and 1 is DEBUG_ALL.
   uint32_t debug_mode;
+
+  // Indicates whether the token is usable for only a specific proxy layer.
+  // 0 is proxy A and 1 is proxy B.
+  uint32_t proxy_layer;
 };
 
 BinaryPublicMetadata PublicMetadataProtoToStruct(
