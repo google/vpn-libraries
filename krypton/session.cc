@@ -424,7 +424,7 @@ void Session::UpdateTunnelIfNeeded(bool force_tunnel_update) {
     if (IsTunnelCreationErrorPermanent(tunnel_status)) {
       SetState(State::kPermanentError, tunnel_status);
     } else {
-      SetState(State::kSessionError, tunnel_status);
+      NotifyDatapathDisconnected(NetworkInfo(), tunnel_status);
     }
     return;
   }
@@ -691,22 +691,6 @@ absl::Status Session::ConnectDatapath(const NetworkInfo& network_info) {
   LOG(INFO) << "Connecting to network of type " << network_info.network_type();
 
   NotifyDatapathConnecting();
-  if (datapath_ == nullptr) {
-    LOG(ERROR) << "Datapath is not initialized";
-    auto status = absl::FailedPreconditionError("Datapath is not initialized");
-    SetState(State::kSessionError, status);
-    return status;
-  }
-
-  // This value is not used here, but will be fetched again by
-  // CreateTunnelIfNeeded. This check may or may not be helpful.
-  if (!add_egress_response_) {
-    LOG(ERROR) << "AddEgress was successful, but could not fetch details";
-    auto status =
-        absl::FailedPreconditionError("AddEgressResponse is not initialized");
-    SetState(State::kSessionError, status);
-    return status;
-  }
 
   auto tunnel_status = CreateTunnelIfNeeded();
   if (!tunnel_status.ok()) {
@@ -714,7 +698,7 @@ absl::Status Session::ConnectDatapath(const NetworkInfo& network_info) {
     if (IsTunnelCreationErrorPermanent(tunnel_status)) {
       SetState(State::kPermanentError, tunnel_status);
     } else {
-      SetState(State::kSessionError, tunnel_status);
+      NotifyDatapathDisconnected(NetworkInfo(), tunnel_status);
     }
     return tunnel_status;
   }
@@ -725,7 +709,7 @@ absl::Status Session::ConnectDatapath(const NetworkInfo& network_info) {
   auto ip = datapath_address_selector_.SelectDatapathAddress();
   if (!ip.ok()) {
     LOG(ERROR) << "Failed to select a datapath address: " << ip.status();
-    SetState(State::kSessionError, ip.status());
+    NotifyDatapathDisconnected(NetworkInfo(), ip.status());
     return ip.status();
   }
 

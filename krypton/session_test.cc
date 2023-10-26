@@ -342,6 +342,30 @@ TEST_F(SessionTest, DatapathInitFailure) {
 
 TEST_F(SessionTest, DatapathConnectSuccessful) { BringDatapathToConnected(); }
 
+TEST_F(SessionTest, DatapathConnectFailsWithoutDatapathAddress) {
+  HttpResponse add_egress_response = utils::CreateAddEgressHttpResponse();
+  ASSERT_OK_AND_ASSIGN(nlohmann::json json,
+                       utils::StringToJson(add_egress_response.json_body()));
+  json[JsonKeys::kPpnDataplane].erase(JsonKeys::kEgressPointSockAddr);
+  add_egress_response.set_json_body(utils::JsonToString(json));
+
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("initial_data")));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("auth")));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
+      .WillOnce(Return(add_egress_response));
+
+  ConnectControlPlaneWithoutSettingNetwork();
+
+  EXPECT_CALL(notification_, DatapathConnecting());
+
+  EXPECT_CALL(
+      notification_,
+      DatapathDisconnected(_, StatusIs(absl::StatusCode::kFailedPrecondition)));
+
+  EXPECT_THAT(session_->SetNetwork(NetworkInfo()),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
 TEST_F(SessionTest, DatapathConnectStartsTimers) {
   // Expect the rekey timer to be started
   EXPECT_CALL(timer_interface_, StartTimer(_, absl::Hours(24)));
@@ -857,8 +881,6 @@ TEST_F(SessionTest, UplinkMtuUpdateHandlerFailureCreatingTunnel) {
   EXPECT_CALL(vpn_service_, CreateTunnel(_))
       .WillOnce(Return(absl::InternalError("Error")));
   EXPECT_CALL(*datapath_, SwitchTunnel()).Times(0);
-  EXPECT_CALL(notification_,
-              SessionError(StatusIs(absl::StatusCode::kInternal, "Error")));
 
   session_->DoUplinkMtuUpdate(/*uplink_mtu=*/123, /*tunnel_mtu=*/456);
 }
@@ -974,6 +996,19 @@ TEST_F(SessionTest, ForceTunnelUpdate) {
   session_->ForceTunnelUpdate();
 }
 
+TEST_F(SessionTest, ForceTunnelUpdateFailure) {
+  BringDatapathToConnected();
+
+  EXPECT_CALL(vpn_service_, CreateTunnel(EqualsProto(GetTunFdData())))
+      .WillOnce(Return(absl::FailedPreconditionError("Error")));
+
+  EXPECT_CALL(
+      notification_,
+      DatapathDisconnected(_, StatusIs(absl::StatusCode::kFailedPrecondition)));
+
+  session_->ForceTunnelUpdate();
+}
+
 TEST_F(SessionTest, ForceTunnelUpdatePermanentFailure) {
   BringDatapathToConnected();
 
@@ -1002,8 +1037,9 @@ TEST_F(SessionTest, CreateTunnelFailure) {
       .WillOnce(
           Return(absl::FailedPreconditionError("unable to create tunnel")));
 
-  EXPECT_CALL(notification_,
-              SessionError(StatusIs(absl::StatusCode::kFailedPrecondition)));
+  EXPECT_CALL(
+      notification_,
+      DatapathDisconnected(_, StatusIs(absl::StatusCode::kFailedPrecondition)));
 
   NetworkInfo network_info;
   network_info.set_network_id(123);
