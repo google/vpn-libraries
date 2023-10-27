@@ -169,22 +169,24 @@ absl::Status IpSecDatapath::SwitchNetwork(uint32_t session_id,
 
   network_socket_ = *std::move(network_socket);
 
-  forwarder_ = std::make_unique<IpSecPacketForwarder>(
-      *tunnel, network_socket_.get(), &looper_, this, ++curr_forwarder_id_);
-  LOG(INFO) << "Starting packet forwarder with ID=" << curr_forwarder_id_;
-  forwarder_->Start();
-
   health_check_.IncrementNetworkSwitchCounter();
 
   // TODO: Make the rekey process smoother for network switches
   // Rekey is not necessary for the initial network switch.
-  if (rekey_needed_) {
-    // Start a rekey because the IPsec sequence number has been reset by the
-    // network switch.
-    auto notification = notification_;
-    notification_thread_->Post([notification]() { notification->DoRekey(); });
+  if (std::exchange(rekey_needed_, true)) {
+    LOG(INFO) << "Delaying start of packet forwarder until after rekey.";
+    if (!std::exchange(rekey_in_progress_, true)) {
+      // Start a rekey because the IPsec sequence number has been reset by the
+      // network switch.
+      auto notification = notification_;
+      notification_thread_->Post([notification]() { notification->DoRekey(); });
+    }
+  } else {
+    forwarder_ = std::make_unique<IpSecPacketForwarder>(
+        *tunnel, network_socket_.get(), &looper_, this, ++curr_forwarder_id_);
+    LOG(INFO) << "Starting packet forwarder with ID=" << curr_forwarder_id_;
+    forwarder_->Start();
   }
-  rekey_needed_ = true;
 
   return absl::OkStatus();
 }
@@ -203,6 +205,7 @@ void IpSecDatapath::SwitchTunnel() {
 
 absl::Status IpSecDatapath::SetKeyMaterials(const TransformParams& params) {
   absl::MutexLock l(&mutex_);
+  rekey_in_progress_ = false;
 
   if (!params.has_ipsec()) {
     LOG(ERROR) << "Received key material that is not of type IpSec";
@@ -249,6 +252,13 @@ void IpSecDatapath::StopInternal() {
 }
 
 void IpSecDatapath::StartUpIpSecPacketForwarder() {
+  // If the datapath initiated a rekey we will wait for it to finish before
+  // starting the packet forwarder.
+  if (rekey_in_progress_) {
+    LOG(INFO) << "Delaying start of packet forwarder until after rekey.";
+    return;
+  }
+
   absl::StatusOr<TunnelInterface*> tunnel = vpn_service_->GetTunnel();
   if (!tunnel.ok()) {
     NotifyDatapathPermanentFailure(tunnel.status());

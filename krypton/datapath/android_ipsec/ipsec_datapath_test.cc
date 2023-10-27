@@ -282,7 +282,7 @@ TEST_F(IpSecDatapathTest, SecondSwitchNetworkRekeys) {
 
   EXPECT_CALL(vpn_service_,
               ConfigureIpSec(testing::EqualsProto(params_.ipsec())))
-      .Times(2);
+      .Times(3);
 
   absl::Notification established;
   EXPECT_CALL(notification_, DatapathEstablished).WillOnce([&established]() {
@@ -343,10 +343,16 @@ TEST_F(IpSecDatapathTest, SecondSwitchNetworkRekeys) {
   EXPECT_CALL(vpn_service_, GetTunnel()).WillRepeatedly(Return(&tunnel_));
   EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
 
-  EXPECT_TRUE(
-      established.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
+  established.WaitForNotification();
 
   EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+
+  // Switching the tunnel would normally start the packet forwarder, but this
+  // should be ignored since rekey is still in progress.
+  datapath_->PrepareForTunnelSwitch();
+  datapath_->SwitchTunnel();
+
+  EXPECT_OK(datapath_->SetKeyMaterials(params_));
 
   datapath_->Stop();
 }
