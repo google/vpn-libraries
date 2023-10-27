@@ -62,6 +62,13 @@ public final class VpnNetworkCallbackMonitor {
                   + network
                   + ", networkCapabilities: "
                   + networkCapabilities);
+          if (isVpnNetwork(networkCapabilities)) {
+            if (isVpnConnected(networkCapabilities)) {
+              IkePpnStateTracker.getInstance().setConnected();
+            } else {
+              IkePpnStateTracker.getInstance().setDisconnected();
+            }
+          }
         }
 
         @Override
@@ -77,6 +84,18 @@ public final class VpnNetworkCallbackMonitor {
         @Override
         public void onBlockedStatusChanged(Network network, boolean blocked) {
           Log.v(TAG, "onBlockedStatusChanged(), network: " + network + ", blocked: " + blocked);
+        }
+
+        private boolean isVpnNetwork(NetworkCapabilities networkCapabilities) {
+          return networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN);
+        }
+
+        private boolean isVpnConnected(NetworkCapabilities networkCapabilities) {
+          return (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                  || networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                  || networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))
+              && networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+              && networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
         }
       };
 

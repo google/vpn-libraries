@@ -28,6 +28,7 @@ import android.net.VpnProfileState;
 import android.os.IBinder;
 import android.util.Log;
 import androidx.annotation.Nullable;
+import com.google.android.libraries.privacy.ppn.PpnStatus;
 
 /** Service to receive VpnManager events. */
 @TargetApi(33)
@@ -63,12 +64,19 @@ public final class VpnManagerEventReceiverService extends Service {
 
     if (intent.getCategories().contains(VpnManager.CATEGORY_EVENT_IKE_ERROR)) {
       Log.v(TAG, "onStartCommand(): CATEGORY_EVENT_IKE_ERROR");
+      if (errorClass == VpnManager.ERROR_CLASS_RECOVERABLE) {
+        IkePpnStateTracker.getInstance().setDisconnected();
+      } else {
+        IkePpnStateTracker.getInstance().setFailed();
+      }
     } else if (intent.getCategories().contains(VpnManager.CATEGORY_EVENT_DEACTIVATED_BY_USER)) {
       Log.v(TAG, "onStartCommand(): CATEGORY_EVENT_DEACTIVATED_BY_USER");
+      IkePpnStateTracker.getInstance().setStopped(PpnStatus.STATUS_OK);
     } else if (intent.getCategories().contains(VpnManager.CATEGORY_EVENT_ALWAYS_ON_STATE_CHANGED)) {
       Log.v(TAG, "onStartCommand(): CATEGORY_EVENT_ALWAYS_ON_STATE_CHANGED");
     } else if (intent.getCategories().contains(VpnManager.CATEGORY_EVENT_NETWORK_ERROR)) {
       Log.v(TAG, "onStartCommand(): CATEGORY_EVENT_NETWORK_ERROR");
+      IkePpnStateTracker.getInstance().setDisconnected();
     } else {
       Log.v(TAG, "onStartCommand(): CATEGORY_UNKNOWN");
     }

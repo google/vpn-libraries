@@ -204,6 +204,7 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
   public void start(Account account) throws PpnException {
     Log.i(TAG, "Starting ppn.");
     accountCache.setAccount(account);
+    IkePpnStateTracker.getInstance().setStarted(account);
     provision.start();
   }
 
@@ -216,6 +217,7 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
   @Override
   public void stop() {
     Log.i(TAG, "Stopping ppn.");
+    IkePpnStateTracker.getInstance().setStopped(PpnStatus.STATUS_OK);
     vpnManager.stopProvisionedVpnProfile();
   }
 
@@ -275,6 +277,7 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
   @Override
   public void setPpnListener(PpnListener listener) {
     Log.i(TAG, "Setting PpnListener.");
+    IkePpnStateTracker.getInstance().setListener(listener);
   }
 
   @Override
@@ -307,11 +310,13 @@ public class IkePpnImpl implements Ppn, Provision.Listener {
   @Override
   public void onProvisioned(PpnIkeResponse ikeResponse) {
     Log.i(TAG, "Provisioned.");
+    IkePpnStateTracker.getInstance().setProvisioned();
     setUpIke(ikeResponse);
   }
 
   @Override
   public void onProvisioningFailure(PpnStatus status, boolean permanent) {
     Log.e(TAG, "Provisioning failed: " + status.getCode() + ": " + status.getMessage());
+    IkePpnStateTracker.getInstance().setProvisionFailed(status, permanent);
   }
 }
