@@ -154,13 +154,14 @@ struct KryptonCache {
   KryptonCache(jobject krypton_instance, jobject http_fetcher_instance,
                jobject oauth_token_provider_instance,
                jobject timer_manager_id_instance) {
-    http_fetcher = std::make_unique<HttpFetcher>(http_fetcher_instance);
-    notification = std::make_unique<KryptonNotification>(krypton_instance);
-    vpn_service = std::make_unique<VpnService>(krypton_instance);
-    oauth = std::make_unique<OAuth>(oauth_token_provider_instance);
     jni_timer_interface =
         std::make_unique<JniTimerInterfaceImpl>(timer_manager_id_instance);
     timer_manager = std::make_unique<TimerManager>(jni_timer_interface.get());
+    http_fetcher = std::make_unique<HttpFetcher>(http_fetcher_instance);
+    notification = std::make_unique<KryptonNotification>(krypton_instance);
+    vpn_service =
+        std::make_unique<VpnService>(krypton_instance, timer_manager.get());
+    oauth = std::make_unique<OAuth>(oauth_token_provider_instance);
   }
 
   ~KryptonCache() {
@@ -171,10 +172,10 @@ struct KryptonCache {
     vpn_service.reset();
     oauth.reset();
     http_fetcher.reset();
+    timer_manager.reset();
     // jni_timer_interface needs to be reset so that we don't get notifications
     // from Java.
     jni_timer_interface.reset();
-    timer_manager.reset();
   }
   std::unique_ptr<JniTimerInterfaceImpl> jni_timer_interface;
   std::unique_ptr<TimerManager> timer_manager;

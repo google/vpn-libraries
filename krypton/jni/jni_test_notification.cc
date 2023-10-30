@@ -18,14 +18,19 @@
 #include <string>
 
 #include "privacy/net/common/proto/ppn_status.proto.h"
+#include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
 #include "privacy/net/krypton/jni/jni_utils.h"
 #include "privacy/net/krypton/jni/krypton_notification.h"
 #include "privacy/net/krypton/jni/vpn_service.h"
+#include "privacy/net/krypton/pal/timer_interface.h"
 #include "privacy/net/krypton/proto/network_info.proto.h"
 #include "privacy/net/krypton/proto/tun_fd_data.proto.h"
+#include "privacy/net/krypton/timer_manager.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/time/time.h"
 
 using privacy::krypton::ConnectingStatus;
 using privacy::krypton::ConnectionStatus;
@@ -43,6 +48,20 @@ using privacy::krypton::jni::KryptonNotification;
 using privacy::krypton::jni::VpnService;
 using privacy::krypton::utils::SetPpnStatusDetails;
 using privacy::ppn::PpnStatusDetails;
+
+namespace {
+
+class FakeTimerInterface : public privacy::krypton::TimerInterface {
+  absl::Status StartTimer(int /*timer_id*/,
+                          absl::Duration /*duration*/) override {
+    return absl::OkStatus();
+  }
+
+  // Cancels a running timer.
+  void CancelTimer(int timer_id) override {}
+};
+
+}  // namespace
 
 // Implementations of native methods from JniTestNotification.java.
 // LINT.IfChange
@@ -227,7 +246,24 @@ JNIEXPORT jint JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_createTunFdNative(
     JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
     jbyteArray tun_fd_data_byte_array) {
-  VpnService service(krypton_instance);
+  FakeTimerInterface fake_timer_interface;
+  privacy::krypton::TimerManager timer_manager(&fake_timer_interface);
+  VpnService service(krypton_instance, &timer_manager);
+  // Check that the tunnel fd and tunnel objects are not created yet.
+  absl::StatusOr<int> fd = service.GetTunnelFd();
+  if (fd.ok()) {
+    JniCache::Get()->ThrowKryptonException(
+        "GetTunnelFd returned OK before calling CreateTunnel");
+    return -1;
+  }
+  absl::StatusOr<privacy::krypton::datapath::android::TunnelInterface*> tunnel =
+      service.GetTunnel();
+  if (tunnel.ok()) {
+    JniCache::Get()->ThrowKryptonException(
+        "GetTunnel returned OK before calling CreateTunnel");
+    return -1;
+  }
+
   std::string tun_fd_data_bytes =
       ConvertJavaByteArrayToString(env, tun_fd_data_byte_array);
   TunFdData tun_fd_data;
@@ -235,12 +271,12 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
     JniCache::Get()->ThrowKryptonException("invalid TunFdData bytes");
     return -1;
   }
-  auto status = service.CreateTunnel(tun_fd_data);
+  absl::Status status = service.CreateTunnel(tun_fd_data);
   if (!status.ok()) {
     JniCache::Get()->ThrowKryptonException(status.ToString());
     return -1;
   }
-  auto tunnel = service.GetTunnel();
+  tunnel = service.GetTunnel();
   if (!tunnel.ok()) {
     JniCache::Get()->ThrowKryptonException(tunnel.status().ToString());
     return -1;
@@ -249,7 +285,7 @@ Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_create
     JniCache::Get()->ThrowKryptonException("Tunnel pointer is null");
     return -1;
   }
-  auto fd = service.GetTunnelFd();
+  fd = service.GetTunnelFd();
   if (!fd.ok()) {
     JniCache::Get()->ThrowKryptonException(fd.status().ToString());
     return -1;
@@ -264,7 +300,9 @@ JNIEXPORT jint JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_createNetworkFdNative(
     JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
     jbyteArray network_info_byte_array) {
-  VpnService service(krypton_instance);
+  FakeTimerInterface fake_timer_interface;
+  privacy::krypton::TimerManager timer_manager(&fake_timer_interface);
+  VpnService service(krypton_instance, &timer_manager);
   std::string network_info_bytes =
       ConvertJavaByteArrayToString(env, network_info_byte_array);
   NetworkInfo network_info;
@@ -284,7 +322,9 @@ JNIEXPORT jint JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_createTcpFdNative(
     JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
     jbyteArray network_info_byte_array) {
-  VpnService service(krypton_instance);
+  FakeTimerInterface fake_timer_interface;
+  privacy::krypton::TimerManager timer_manager(&fake_timer_interface);
+  VpnService service(krypton_instance, &timer_manager);
   std::string network_info_bytes =
       ConvertJavaByteArrayToString(env, network_info_byte_array);
   NetworkInfo network_info;
@@ -304,7 +344,9 @@ JNIEXPORT jboolean JNICALL
 Java_com_google_android_libraries_privacy_ppn_krypton_JniTestNotification_configureIpSecNative(
     JNIEnv* env, jobject /*instance*/, jobject krypton_instance,
     jbyteArray ipsec_transform_params_byte_array) {
-  VpnService service(krypton_instance);
+  FakeTimerInterface fake_timer_interface;
+  privacy::krypton::TimerManager timer_manager(&fake_timer_interface);
+  VpnService service(krypton_instance, &timer_manager);
   std::string ipsec_transform_params_bytes =
       ConvertJavaByteArrayToString(env, ipsec_transform_params_byte_array);
   IpSecTransformParams params;

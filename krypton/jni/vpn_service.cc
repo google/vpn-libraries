@@ -121,25 +121,36 @@ absl::Status VpnService::CreateTunnel(const TunFdData& tun_fd_data) {
   }
 
   absl::MutexLock l(&mutex_);
-  if (tunnel_fd_ != -1) {
-    LOG(WARNING) << "Old tunnel with fd=" << tunnel_fd_
-                 << " was still open. Closing now.";
-    CloseTunnelInternal();
+  LOG(INFO) << "Created new tunnel with fd=" << fd;
+  // If we have an IpSecTunnel that will handle closing old fds
+  if (tunnel_ == nullptr) {
+    if (tunnel_fd_ != -1) {
+      LOG(WARNING) << "Old tunnel with fd=" << tunnel_fd_
+                   << " was still open. Closing now.";
+      CloseTunnelInternal();
+    }
+  } else {
+    // After the tunnel adopts the FD it takes responsibility for closing it.
+    PPN_RETURN_IF_ERROR(tunnel_->AdoptFd(fd));
   }
 
-  LOG(INFO) << "Creating new tunnel with fd=" << fd;
   tunnel_fd_ = fd;
   return absl::OkStatus();
 }
 
 absl::StatusOr<datapath::android::TunnelInterface*> VpnService::GetTunnel() {
   absl::MutexLock l(&mutex_);
-  // Create a new wrapper for the tunnel to use with a new packet forwarder.
-  // This will prevent any old events from being processed.
-  PPN_ASSIGN_OR_RETURN(auto tunnel,
-                       datapath::android::IpSecTunnel::Create(tunnel_fd_));
-  tunnel_ = std::move(tunnel);
-  UpdateKeepaliveInterval();
+  if (tunnel_ == nullptr) {
+    if (tunnel_fd_ < 0) {
+      return absl::FailedPreconditionError("Tunnel is closed");
+    }
+    PPN_ASSIGN_OR_RETURN(auto tunnel, datapath::android::IpSecTunnel::Create(
+                                          tunnel_fd_, timer_manager_));
+    tunnel_ = std::move(tunnel);
+    UpdateKeepaliveInterval();
+  }
+  // Reinit tunnel to ensure no old events will be processed
+  PPN_RETURN_IF_ERROR(tunnel_->Reset());
   return tunnel_.get();
 }
 
@@ -288,21 +299,24 @@ absl::Status VpnService::ConfigureNetworkSocket(
 }
 
 void VpnService::CloseTunnelInternal() {
-  tunnel_ = nullptr;
   if (tunnel_fd_ == -1) {
     LOG(WARNING) << "Tunnel already closed.";
     return;
   }
   int tunnel_fd = std::exchange(tunnel_fd_, -1);
   LOG(INFO) << "Closing tunnel fd=" << tunnel_fd;
-
-  auto status = CloseFd(tunnel_fd);
-
-  if (!status.ok()) {
-    LOG(ERROR) << "Error closing tunnel fd=" << tunnel_fd << ": " << status;
-    return;
+  if (tunnel_ == nullptr) {
+    auto status = CloseFd(tunnel_fd);
+    if (!status.ok()) {
+      LOG(ERROR) << "Error closing tunnel fd=" << tunnel_fd << ": " << status;
+      return;
+    }
+    LOG(INFO) << "Successfully closed tunnel fd=" << tunnel_fd;
+  } else {
+    tunnel_->Close();
+    tunnel_ = nullptr;
+    LOG(INFO) << "Closed tunnel fd=" << tunnel_fd;
   }
-  LOG(INFO) << "Successfully closed tunnel fd=" << tunnel_fd;
 }
 
 void VpnService::UpdateKeepaliveInterval() {

@@ -48,8 +48,9 @@ class VpnService
     : public datapath::android::IpSecDatapath::IpSecVpnServiceInterface
  {
  public:
-  explicit VpnService(jobject krypton_instance)
+  explicit VpnService(jobject krypton_instance, TimerManager* timer_manager)
       : krypton_instance_(std::make_unique<JavaObject>(krypton_instance)),
+        timer_manager_(timer_manager),
         tunnel_(nullptr),
         tunnel_fd_(-1),
         keepalive_interval_ipv4_(absl::ZeroDuration()),
@@ -64,9 +65,6 @@ class VpnService
   // TUN fd creation
   absl::Status CreateTunnel(const TunFdData& tun_fd_data)
       ABSL_LOCKS_EXCLUDED(mutex_) override;
-  // Every call to this will return a new TunnelInterface object and delete the
-  // previous instance. Make sure the previous instance is no longer being used
-  // before calling.
   absl::StatusOr<datapath::android::TunnelInterface*> GetTunnel()
       ABSL_LOCKS_EXCLUDED(mutex_) override;
   absl::StatusOr<int> GetTunnelFd() ABSL_LOCKS_EXCLUDED(mutex_) override;
@@ -101,6 +99,7 @@ class VpnService
   void UpdateKeepaliveInterval() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   std::unique_ptr<JavaObject> krypton_instance_;
+  TimerManager* timer_manager_;  // Not owned.
 
   absl::Mutex mutex_;
   std::unique_ptr<datapath::android::IpSecTunnel> tunnel_
