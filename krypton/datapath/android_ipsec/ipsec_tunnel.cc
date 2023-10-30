@@ -14,12 +14,22 @@
 
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_tunnel.h"
 
+#include <sys/poll.h>
+
+#include <cerrno>
+#include <cstdint>
+#include <cstring>
 #include <memory>
 #include <vector>
 
 #include "base/logging.h"
+#include "privacy/net/krypton/datapath/android_ipsec/event_fd.h"
+#include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
+#include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/substitute.h"
 #include "third_party/absl/time/time.h"
 
@@ -50,12 +60,17 @@ IpSecTunnel::IpSecTunnel(int tunnel_fd)
 IpSecTunnel::~IpSecTunnel() {
   LOG(INFO) << "Destroying IpSecTunnel[" << this << "] with FD=" << tunnel_fd_;
   PPN_LOG_IF_ERROR(events_helper_.RemoveFile(tunnel_fd_));
-  PPN_LOG_IF_ERROR(events_helper_.RemoveFile(close_event_.fd()));
+  PPN_LOG_IF_ERROR(events_helper_.RemoveFile(cancel_read_event_.fd()));
 }
 
-absl::Status IpSecTunnel::CancelReadPackets() {
+absl::Status IpSecTunnel::Reset() {
+  LOG(INFO) << "Reset called on tunnel FD=" << tunnel_fd_;
+  return ClearEventFd(cancel_read_event_);
+}
+
+void IpSecTunnel::CancelReadPackets() {
   LOG(INFO) << "CancelReadPackets called on tunnel FD=" << tunnel_fd_;
-  return close_event_.Notify(1);
+  PPN_LOG_IF_ERROR(cancel_read_event_.Notify(1));
 }
 
 absl::StatusOr<std::vector<Packet>> IpSecTunnel::ReadPackets() {
@@ -81,7 +96,7 @@ absl::StatusOr<std::vector<Packet>> IpSecTunnel::ReadPackets() {
     return packets;
   }
   int notified_fd = datapath::android::EventsHelper::FileFromEvent(event);
-  if (notified_fd == close_event_.fd()) {
+  if (notified_fd == cancel_read_event_.fd()) {
     // An empty vector without an error status should be interpreted as a close
     LOG(INFO) << "Close event received on tunnel FD=" << fd;
     return std::vector<Packet>();
@@ -160,7 +175,7 @@ absl::Status IpSecTunnel::Init() {
 
   auto status = events_helper_.AddFile(fd, EventsHelper::EventReadableFlags());
   if (status.ok()) {
-    status = events_helper_.AddFile(close_event_.fd(),
+    status = events_helper_.AddFile(cancel_read_event_.fd(),
                                     EventsHelper::EventReadableFlags());
     if (!status.ok()) {
       LOG(ERROR) << "Failed to add close event for fd " << fd
@@ -174,6 +189,31 @@ absl::Status IpSecTunnel::Init() {
     return status;
   }
 
+  return absl::OkStatus();
+}
+
+absl::Status IpSecTunnel::ClearEventFd(const EventFd& event_fd) {
+  int fd = event_fd.fd();
+  LOG(INFO) << "ClearEventFd called on FD=" << fd;
+  pollfd event_pollfd;
+  event_pollfd.fd = fd;
+  event_pollfd.events = POLLIN;
+
+  // Go through and read all events currently there to clear them.
+  int ret = poll(&event_pollfd, /*nfds=*/1, /*timeout=*/0);
+  while (ret > 0) {
+    uint64_t tmp;
+    if (read(fd, &tmp, sizeof(tmp)) == -1) {
+      return absl::InternalError(absl::StrCat("Failed to read from EventFd ",
+                                              fd, ": ", strerror(errno)));
+    }
+    ret = poll(&event_pollfd, /*nfds=*/1, /*timeout=*/0);
+  }
+
+  if (ret < 0) {
+    return absl::InternalError(
+        absl::StrCat("Failed to poll EventFd ", fd, ": ", strerror(errno)));
+  }
   return absl::OkStatus();
 }
 

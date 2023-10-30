@@ -101,7 +101,7 @@ void IpSecPacketForwarder::IpSecPacketForwarder::Stop() {
     shutdown_ = true;
   }
 
-  PPN_LOG_IF_ERROR(utun_interface_->CancelReadPackets());
+  utun_interface_->CancelReadPackets();
 
   uplink_thread_.Stop();
   uplink_thread_.Join();

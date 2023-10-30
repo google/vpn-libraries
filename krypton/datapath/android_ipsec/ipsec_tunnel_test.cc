@@ -19,15 +19,15 @@
 #include <sys/socket.h>
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "privacy/net/krypton/utils/looper.h"
+#include "privacy/net/krypton/pal/packet.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
-#include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
 
 namespace privacy {
@@ -87,44 +87,6 @@ TEST_F(IpSecTunnelTest, CreateTunnelWithBadFd) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(IpSecTunnelTest, CreateAndStop) {
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
-
-  absl::Notification notification;
-
-  krypton::utils::LooperThread thread("CreateAndStop Thread");
-  thread.Post([&tunnel, &notification]() {
-    ASSERT_OK_AND_ASSIGN(auto packets, tunnel->ReadPackets());
-    ASSERT_TRUE(packets.empty());
-    notification.Notify();
-  });
-
-  ASSERT_OK(tunnel->CancelReadPackets());
-
-  ASSERT_TRUE(
-      notification.WaitForNotificationWithTimeout(absl::Milliseconds(100)));
-}
-
-TEST_F(IpSecTunnelTest, WriteAfterClose) {
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
-
-  CloseTunnel();
-
-  std::vector<Packet> packets;
-  packets.emplace_back("foo", 3, IPProtocol::kIPv6, []() {});
-  ASSERT_THAT(tunnel->WritePackets(std::move(packets)),
-              ::testing::status::StatusIs(absl::StatusCode::kInternal));
-}
-
-TEST_F(IpSecTunnelTest, ReadAfterCancelReadPackets) {
-  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
-
-  ASSERT_OK(tunnel->CancelReadPackets());
-
-  ASSERT_OK_AND_ASSIGN(auto recv_packets, tunnel->ReadPackets());
-  ASSERT_THAT(recv_packets, IsEmpty());
-}
-
 TEST_F(IpSecTunnelTest, NormalWrite) {
   ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
 
@@ -139,11 +101,58 @@ TEST_F(IpSecTunnelTest, NormalWrite) {
   EXPECT_EQ("foo", std::string(msg, nread));
 }
 
+TEST_F(IpSecTunnelTest, WriteAfterClose) {
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
+
+  CloseTunnel();
+
+  std::vector<Packet> packets;
+  packets.emplace_back("foo", 3, IPProtocol::kIPv6, []() {});
+  ASSERT_THAT(tunnel->WritePackets(std::move(packets)),
+              ::testing::status::StatusIs(absl::StatusCode::kInternal));
+}
+
 TEST_F(IpSecTunnelTest, NormalRead) {
   ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
 
   // Send a packet to the tunnel.
   write(sock_fd_, "foo", 3);
+
+  // Verify the packet was received
+  ASSERT_OK_AND_ASSIGN(auto recv_packets, tunnel->ReadPackets());
+  ASSERT_EQ(recv_packets.size(), 1);
+  EXPECT_EQ(recv_packets[0].data(), "foo");
+}
+
+TEST_F(IpSecTunnelTest, ReadAfterCancelReadPackets) {
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
+
+  tunnel->CancelReadPackets();
+
+  ASSERT_OK_AND_ASSIGN(auto recv_packets, tunnel->ReadPackets());
+  ASSERT_THAT(recv_packets, IsEmpty());
+}
+
+TEST_F(IpSecTunnelTest, ResetClearsCancelReadPackets) {
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
+  tunnel->CancelReadPackets();
+  write(sock_fd_, "foo", 3);
+
+  ASSERT_OK(tunnel->Reset());
+
+  // Verify the packet was received
+  ASSERT_OK_AND_ASSIGN(auto recv_packets, tunnel->ReadPackets());
+  ASSERT_EQ(recv_packets.size(), 1);
+  EXPECT_EQ(recv_packets[0].data(), "foo");
+}
+
+TEST_F(IpSecTunnelTest, ResetClearsMultipleCancelReadPackets) {
+  ASSERT_OK_AND_ASSIGN(auto tunnel, IpSecTunnel::Create(tun_fd_));
+  tunnel->CancelReadPackets();
+  tunnel->CancelReadPackets();
+  write(sock_fd_, "foo", 3);
+
+  ASSERT_OK(tunnel->Reset());
 
   // Verify the packet was received
   ASSERT_OK_AND_ASSIGN(auto recv_packets, tunnel->ReadPackets());

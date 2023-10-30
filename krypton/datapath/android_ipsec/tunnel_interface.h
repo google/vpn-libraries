@@ -31,8 +31,12 @@ class TunnelInterface {
  public:
   virtual ~TunnelInterface() = default;
 
+  // Cleans up any state that may be left over from the last time the tunnel was
+  // used. This should be called before each new use of the tunnel.
+  virtual absl::Status Reset() = 0;
+
   // Stops reading from the tunnel, but does not close the underlying fd.
-  virtual absl::Status CancelReadPackets() = 0;
+  virtual void CancelReadPackets() = 0;
 
   // Make a blocking read from the tunnel.
   // Returns an error if the read fails.

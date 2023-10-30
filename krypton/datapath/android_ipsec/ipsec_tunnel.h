@@ -22,7 +22,9 @@
 #include "privacy/net/krypton/datapath/android_ipsec/events_helper.h"
 #include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
 #include "privacy/net/krypton/pal/packet.h"
+#include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -40,8 +42,11 @@ class IpSecTunnel : public TunnelInterface {
   IpSecTunnel(const IpSecTunnel&) = delete;
   IpSecTunnel(IpSecTunnel&&) = delete;
 
+  // Clears any previous cancel read events.
+  absl::Status Reset() override;
+
   // Stops all current reads on the tunnel, but does not close the fd.
-  absl::Status CancelReadPackets() override;
+  void CancelReadPackets() override;
 
   // Reads packets from the tunnel interface.
   absl::StatusOr<std::vector<Packet>> ReadPackets() override;
@@ -65,12 +70,12 @@ class IpSecTunnel : public TunnelInterface {
   // Performs some one-time initialization.
   absl::Status Init();
 
+  // Reads all events from the provided EventFd.
+  absl::Status ClearEventFd(const EventFd& event_fd);
+
   int tunnel_fd_;
-
-  EventFd close_event_;
-
+  EventFd cancel_read_event_;
   EventsHelper events_helper_;
-
   int keepalive_interval_millis_;
 };
 

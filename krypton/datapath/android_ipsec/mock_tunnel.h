@@ -15,7 +15,10 @@
 #ifndef PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MOCK_TUNNEL_H_
 #define PRIVACY_NET_KRYPTON_DATAPATH_ANDROID_IPSEC_MOCK_TUNNEL_H_
 
+#include <vector>
+
 #include "privacy/net/krypton/datapath/android_ipsec/tunnel_interface.h"
+#include "privacy/net/krypton/pal/packet.h"
 #include "testing/base/public/gmock.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
@@ -27,7 +30,8 @@ namespace android {
 
 class MockTunnel : public TunnelInterface {
  public:
-  MOCK_METHOD(absl::Status, CancelReadPackets, (), (override));
+  MOCK_METHOD(absl::Status, Reset, (), (override));
+  MOCK_METHOD(void, CancelReadPackets, (), (override));
   MOCK_METHOD(absl::StatusOr<std::vector<Packet>>, ReadPackets, (), (override));
   MOCK_METHOD(absl::Status, WritePackets, (std::vector<Packet>), (override));
 };
