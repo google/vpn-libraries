@@ -27,10 +27,10 @@ import java.util.List;
 import org.json.JSONObject;
 
 /** Basic Xenon Implementation that will be used by PpnImpl. */
-public final class XenonImpl implements Xenon {
+public final class XenonV2Impl implements Xenon {
   private final PpnNetworkManager ppnNetworkManager;
 
-  public XenonImpl(
+  public XenonV2Impl(
       Context context,
       PpnNetworkListener listener,
       HttpFetcher httpFetcher,

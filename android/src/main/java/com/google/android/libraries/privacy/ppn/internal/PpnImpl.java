@@ -69,6 +69,7 @@ import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener;
 import com.google.android.libraries.privacy.ppn.xenon.Xenon;
 import com.google.android.libraries.privacy.ppn.xenon.impl.XenonImpl;
+import com.google.android.libraries.privacy.ppn.xenon.impl.v2.XenonV2Impl;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -406,7 +407,11 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     this.accountManager = options.getAccountManager().orElseGet(GoogleAccountManager::new);
     this.accountCache = new AccountCache(context, backgroundExecutor, accountManager);
 
-    this.xenon = new XenonImpl(context, this, httpFetcher, options);
+    if (options.isXenonV2Enabled()) {
+      this.xenon = new XenonV2Impl(context, this, httpFetcher, options);
+    } else {
+      this.xenon = new XenonImpl(context, this, httpFetcher, options);
+    }
 
     ConnectivityManager connectivityManager =
         (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -824,6 +829,12 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
   @VisibleForTesting
   VpnManager getVpnManager() {
     return vpnManager;
+  }
+
+  /** Returns the Xenon instance being used. For testing only. */
+  @VisibleForTesting
+  Xenon getXenon() {
+    return xenon;
   }
 
   /** Changes the Xenon instance used. For testing only. */

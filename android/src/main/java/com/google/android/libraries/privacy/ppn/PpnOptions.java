@@ -121,6 +121,8 @@ public class PpnOptions {
   private final boolean attestationNetworkOverrideEnabled;
   private final boolean forceDisallowPlayStoreForAttestationEnabled;
 
+  private final boolean xenonV2Enabled;
+
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
     this.zincPublicSigningKeyUrl = builder.zincPublicSigningKeyUrl;
@@ -188,6 +190,8 @@ public class PpnOptions {
     this.attestationNetworkOverrideEnabled = builder.attestationNetworkOverrideEnabled;
     this.forceDisallowPlayStoreForAttestationEnabled =
         builder.forceDisallowPlayStoreForAttestationEnabled;
+
+    this.xenonV2Enabled = builder.xenonV2Enabled;
   }
 
   public String getZincUrl() {
@@ -394,6 +398,10 @@ public class PpnOptions {
     return forceDisallowPlayStoreForAttestationEnabled;
   }
 
+  public boolean isXenonV2Enabled() {
+    return xenonV2Enabled;
+  }
+
   /** Creates a KryptonConfig.Builder using the current options. */
   public KryptonConfig.Builder createKryptonConfigBuilder() {
     ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
@@ -595,6 +603,8 @@ public class PpnOptions {
 
     private boolean attestationNetworkOverrideEnabled = false;
     private boolean forceDisallowPlayStoreForAttestationEnabled = false;
+
+    private boolean xenonV2Enabled = false;
 
     public Builder() {}
 
@@ -1112,6 +1122,13 @@ public class PpnOptions {
     @CanIgnoreReturnValue
     public Builder setForceDisallowPlayStoreForAttestationEnabled(boolean enabled) {
       this.forceDisallowPlayStoreForAttestationEnabled = enabled;
+      return this;
+    }
+
+    /** Sets whether to use the new version of Xenon. */
+    @CanIgnoreReturnValue
+    public Builder setXenonV2Enabled(boolean enabled) {
+      this.xenonV2Enabled = enabled;
       return this;
     }
 

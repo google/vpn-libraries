@@ -683,6 +683,20 @@ public class PpnOptionsTest {
   }
 
   @Test
+  public void setXenonV2Enabled_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+
+    assertThat(options.isXenonV2Enabled()).isFalse();
+  }
+
+  @Test
+  public void setXenonV2Enabled_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setXenonV2Enabled(true).build();
+
+    assertThat(options.isXenonV2Enabled()).isTrue();
+  }
+
+  @Test
   public void createKryptonConfig_setsValues() {
     PpnOptions options =
         new PpnOptions.Builder()

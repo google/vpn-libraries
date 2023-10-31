@@ -51,6 +51,8 @@ import com.google.android.libraries.privacy.ppn.krypton.KryptonException;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener.NetworkUnavailableReason;
 import com.google.android.libraries.privacy.ppn.xenon.Xenon;
+import com.google.android.libraries.privacy.ppn.xenon.impl.XenonImpl;
+import com.google.android.libraries.privacy.ppn.xenon.impl.v2.XenonV2Impl;
 import com.google.common.collect.ImmutableSet;
 import com.google.testing.mockito.Mocks;
 import java.time.Duration;
@@ -106,6 +108,24 @@ public class PpnImplTest {
     ppn.setKryptonFactory((ignored1, ignored2) -> mockKrypton);
     ppn.setXenon(mockXenon);
     return ppn;
+  }
+
+  @Test
+  public void constructor_withXenonV2EnabledFalse_createsXenonImpl() throws Exception {
+    PpnOptions ppnOptions = new PpnOptions.Builder().setXenonV2Enabled(false).build();
+
+    PpnImpl ppn = new PpnImpl(ApplicationProvider.getApplicationContext(), ppnOptions);
+
+    assertThat(ppn.getXenon()).isInstanceOf(XenonImpl.class);
+  }
+
+  @Test
+  public void constructor_withXenonV2EnabledTrue_createsXenonV2Impl() throws Exception {
+    PpnOptions ppnOptions = new PpnOptions.Builder().setXenonV2Enabled(true).build();
+
+    PpnImpl ppn = new PpnImpl(ApplicationProvider.getApplicationContext(), ppnOptions);
+
+    assertThat(ppn.getXenon()).isInstanceOf(XenonV2Impl.class);
   }
 
   @Test
