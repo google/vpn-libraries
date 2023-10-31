@@ -39,12 +39,13 @@
 #include "third_party/tink/cc/binary_keyset_writer.h"
 #include "third_party/tink/cc/keyset_handle.h"
 #include "third_party/tink/cc/public_key_sign.h"
-#include "third_party/tink/cc/signature/signature_config.h"
 #include "third_party/tink/cc/signature/signature_key_templates.h"
 #include "third_party/tink/cc/subtle/common_enums.h"
 #include "third_party/tink/cc/subtle/hkdf.h"
 #include "third_party/tink/cc/subtle/random.h"
 #include "third_party/tink/cc/util/secret_data.h"
+#include "third_party/tink/integration/cc/config/signature_defaults.h"
+#include "third_party/tink/integration/cc/config/signature_key_gen_defaults.h"
 
 namespace privacy {
 namespace krypton {
@@ -76,7 +77,9 @@ absl::StatusOr<std::string> SerializePublicKeyset(
                            std::make_unique<std::ostream>(&string_buf)));
 
   // We only serialize the public value of the keyset.
-  PPN_ASSIGN_OR_RETURN(auto public_key, keyset_handle.GetPublicKeysetHandle());
+  PPN_ASSIGN_OR_RETURN(auto public_key,
+                       keyset_handle.GetPublicKeysetHandle(
+                           ::crypto::tink::SignatureKeyGenDefaults()));
   PPN_RETURN_IF_ERROR(public_key->WriteNoSecret(keyset_writer_result.get()));
   return string_buf.str();
 }
@@ -107,9 +110,9 @@ absl::StatusOr<std::string> SessionCrypto::GetRekeyVerificationKey() const {
 
 absl::StatusOr<std::string> SessionCrypto::GenerateSignature(
     absl::string_view data) {
-  PPN_ASSIGN_OR_RETURN(
-      auto public_sign_primitive,
-      key_handle_->GetPrimitive<::crypto::tink::PublicKeySign>());
+  PPN_ASSIGN_OR_RETURN(auto public_sign_primitive,
+                       key_handle_->GetPrimitive<::crypto::tink::PublicKeySign>(
+                           ::crypto::tink::SignatureDefaults()));
   return public_sign_primitive->Sign(data);
 }
 
@@ -178,13 +181,10 @@ absl::Status SessionCrypto::Init() {
 
   downlink_spi_ = ::crypto::tink::subtle::Random::GetRandomUInt32();
 
-  if (!::crypto::tink::SignatureConfig::Register().ok()) {
-    return absl::InternalError("Error registering with signature config");
-  }
-
   // NOTE: This is a crypto::tink::util::StatusOr, not an absl::StatusOr.
   auto key_handle = ::crypto::tink::KeysetHandle::GenerateNew(
-      ::crypto::tink::SignatureKeyTemplates::Ed25519());
+      ::crypto::tink::SignatureKeyTemplates::Ed25519(),
+      ::crypto::tink::SignatureKeyGenDefaults());
   if (!key_handle.ok()) {
     LOG(ERROR) << "Error generating Ed25519 key handle" << key_handle.status();
     return key_handle.status();

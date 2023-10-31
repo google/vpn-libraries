@@ -24,6 +24,7 @@
 #include "third_party/openssl/curve25519.h"
 #include "third_party/tink/cc/keyset_handle.h"
 #include "third_party/tink/cc/public_key_verify.h"
+#include "third_party/tink/integration/cc/config/signature_defaults.h"
 
 namespace privacy {
 namespace krypton {
@@ -285,7 +286,8 @@ TEST_F(SessionCryptoTest, VerifyRekey) {
       const auto handle,
       ::crypto::tink::KeysetHandle::ReadNoSecret(verification_key));
   ASSERT_OK_AND_ASSIGN(const auto verifier,
-                       handle->GetPrimitive<::crypto::tink::PublicKeyVerify>());
+                       handle->GetPrimitive<::crypto::tink::PublicKeyVerify>(
+                           ::crypto::tink::SignatureDefaults()));
   EXPECT_OK(
       verifier->Verify(signature, current->GetMyKeyMaterial().public_value));
 }
@@ -302,7 +304,8 @@ TEST_F(SessionCryptoTest, VerifySignature) {
       const auto handle,
       ::crypto::tink::KeysetHandle::ReadNoSecret(verification_key));
   ASSERT_OK_AND_ASSIGN(const auto verifier,
-                       handle->GetPrimitive<::crypto::tink::PublicKeyVerify>());
+                       handle->GetPrimitive<::crypto::tink::PublicKeyVerify>(
+                           ::crypto::tink::SignatureDefaults()));
   EXPECT_OK(verifier->Verify(signature, data));
 }
 
