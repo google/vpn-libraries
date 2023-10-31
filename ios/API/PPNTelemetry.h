@@ -62,6 +62,30 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property(nonatomic, readonly) NSInteger networkSwitches;
 
+@property(nonatomic, readonly) NSInteger successfulNetworkSwitches;
+
+@property(nonatomic, readonly) NSArray<NSNumber *> *networkSwitchLatency;
+
+@property(nonatomic, readonly) NSInteger controlPlaneAttempts;
+
+@property(nonatomic, readonly) NSInteger controlPlaneSuccesses;
+
+@property(nonatomic, readonly) NSArray<NSNumber *> *controlPlaneSuccessLatency;
+
+@property(nonatomic, readonly) NSArray<NSNumber *> *controlPlaneFailureLatency;
+
+@property(nonatomic, readonly) NSInteger dataPlaneConnectingAttempts;
+
+@property(nonatomic, readonly) NSInteger dataPlaneConnectingSuccesses;
+
+@property(nonatomic, readonly) NSArray<NSNumber *> *dataPlaneConnectingLatency;
+
+@property(nonatomic, readonly) NSInteger healthCheckAttempts;
+
+@property(nonatomic, readonly) NSInteger healthCheckSuccesses;
+
+@property(nonatomic, readonly) NSInteger tokenUnblindFailureCount;
+
 @end
 
 NS_ASSUME_NONNULL_END

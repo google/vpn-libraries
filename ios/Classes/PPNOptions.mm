@@ -46,6 +46,8 @@ PPNOptionKey const PPNOptionCrashDebugLoggingEnabled = @"crashDebugLoggingEnable
 
 PPNOptionKey const PPNPublicMetadataEnabled = @"publicMetadataEnabled";
 
+PPNOptionKey const PPNEnablePpnAdditionalTelemetryLogging = @"enablePpnAdditionalTelemetryLogging";
+
 #pragma mark - Optional Options
 
 PPNOptionKey const PPNOptionZincOAuthScope = @"zincOAuthScope";

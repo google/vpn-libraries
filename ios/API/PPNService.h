@@ -46,6 +46,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly, getter=isRunning) BOOL running;
 
 /**
+ * Whether the PPN Options enables logging of additional PPN telemetry fields.
+ */
+@property(nonatomic, readonly, getter=isPpnAdditionalTelemetryLoggingEnabled)
+    BOOL enableAdditionalTelemetryLogging;
+
+/**
  * The debug information about the PPN service.
  */
 @property(nonatomic, readonly) NSDictionary<NSString *, id> *debugInfo;

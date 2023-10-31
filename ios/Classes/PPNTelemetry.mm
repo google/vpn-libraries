@@ -52,6 +52,26 @@
       [mutableEgressLatency addObject:[self convertDurationToNSNumber:latency]];
     }
     _egressLatency = mutableEgressLatency;
+    NSMutableArray<NSNumber *> *mutableNetworkSwitchLatency = [[NSMutableArray alloc] init];
+    for (const auto &latency : kryptonTelemetry.network_switch_latency()) {
+      [mutableNetworkSwitchLatency addObject:[self convertDurationToNSNumber:latency]];
+    }
+    _networkSwitchLatency = mutableNetworkSwitchLatency;
+    NSMutableArray<NSNumber *> *mutableControlPlaneSuccessLatency = [[NSMutableArray alloc] init];
+    for (const auto &latency : kryptonTelemetry.control_plane_success_latency()) {
+      [mutableControlPlaneSuccessLatency addObject:[self convertDurationToNSNumber:latency]];
+    }
+    _controlPlaneSuccessLatency = mutableControlPlaneSuccessLatency;
+    NSMutableArray<NSNumber *> *mutableControlPlaneFailureLatency = [[NSMutableArray alloc] init];
+    for (const auto &latency : kryptonTelemetry.control_plane_failure_latency()) {
+      [mutableControlPlaneFailureLatency addObject:[self convertDurationToNSNumber:latency]];
+    }
+    _controlPlaneFailureLatency = mutableControlPlaneFailureLatency;
+    NSMutableArray<NSNumber *> *mutableDataPlaneConnectingLatency = [[NSMutableArray alloc] init];
+    for (const auto &latency : kryptonTelemetry.data_plane_connecting_latency()) {
+      [mutableDataPlaneConnectingLatency addObject:[self convertDurationToNSNumber:latency]];
+    }
+    _dataPlaneConnectingLatency = mutableDataPlaneConnectingLatency;
     _networkSwitches = kryptonTelemetry.network_switches();
     _successfulRekeys = kryptonTelemetry.successful_rekeys();
     _ppnServiceUptime = serviceUptime;
@@ -59,6 +79,14 @@
     _networkUptime = networkUptime;
     _disconnectionDurations = disconnectionDurations;
     _disconnectionCount = disconnectionCount;
+    _successfulNetworkSwitches = kryptonTelemetry.successful_network_switches();
+    _controlPlaneAttempts = kryptonTelemetry.control_plane_attempts();
+    _controlPlaneSuccesses = kryptonTelemetry.control_plane_successes();
+    _dataPlaneConnectingAttempts = kryptonTelemetry.data_plane_connecting_attempts();
+    _dataPlaneConnectingSuccesses = kryptonTelemetry.data_plane_connecting_successes();
+    _healthCheckAttempts = kryptonTelemetry.health_check_attempts();
+    _healthCheckSuccesses = kryptonTelemetry.health_check_successes();
+    _tokenUnblindFailureCount = kryptonTelemetry.token_unblind_failure_count();
   }
   return self;
 }

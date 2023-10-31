@@ -215,4 +215,9 @@ FOUNDATION_EXTERN PPNOptionKey const PPNDebugModeAllowed;
  */
 FOUNDATION_EXTERN PPNOptionKey const PPNMacOSConnectionTimeout;
 
+/**
+ * Sets the level of granularity for IP-geo mapping.
+ */
+FOUNDATION_EXTERN PPNOptionKey const PPNEnablePpnAdditionalTelemetryLogging;
+
 NS_ASSUME_NONNULL_END
