@@ -724,11 +724,7 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
     Intent intent = new Intent(VpnService.SERVICE_INTERFACE);
     intent.setPackage(context.getApplicationContext().getPackageName());
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      context.startForegroundService(intent);
-    } else {
-      context.startService(intent);
-    }
+    context.startForegroundService(intent);
   }
 
   @Override

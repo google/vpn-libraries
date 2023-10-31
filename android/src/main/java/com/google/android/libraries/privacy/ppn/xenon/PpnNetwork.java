@@ -15,15 +15,12 @@
 package com.google.android.libraries.privacy.ppn.xenon;
 
 import android.net.Network;
-import android.os.Build;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import java.util.concurrent.atomic.AtomicLong;
 
 /** PpnNetwork used for a PpnConnection. */
 public final class PpnNetwork {
-  // Used to generate a network ID on older versions of Android.
-  private static final AtomicLong nextNetworkId = new AtomicLong(0);
   private static final AtomicLong nextCreationIndex = new AtomicLong(1);
 
   private final NetworkType networkType;
@@ -97,10 +94,6 @@ public final class PpnNetwork {
    * network handle.
    */
   private static long generateNetworkId(Network network) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      return network.getNetworkHandle();
-    } else {
-      return nextNetworkId.incrementAndGet();
-    }
+    return network.getNetworkHandle();
   }
 }

@@ -21,7 +21,6 @@ import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Build.VERSION;
 import android.util.Log;
-import androidx.core.app.NotificationManagerCompat;
 import javax.annotation.Nullable;
 
 /**
@@ -79,12 +78,7 @@ public class PpnNotificationManager {
         Log.e(TAG, "stopService() called with null service.");
         return;
       }
-      if (VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        service.stopForeground(Service.STOP_FOREGROUND_REMOVE);
-      } else {
-        NotificationManagerCompat manager = NotificationManagerCompat.from(service);
-        manager.cancel(notificationId);
-      }
+      service.stopForeground(Service.STOP_FOREGROUND_REMOVE);
       service = null;
       notification = null;
     }
@@ -128,11 +122,8 @@ public class PpnNotificationManager {
         // Including the foregroundServiceType for Android U & above.
         service.startForeground(
             notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-      } else if (VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        service.startForeground(notificationId, notification);
       } else {
-        NotificationManagerCompat manager = NotificationManagerCompat.from(service);
-        manager.notify(notificationId, notification);
+        service.startForeground(notificationId, notification);
       }
     }
   }
