@@ -152,7 +152,25 @@ class PpnTelemetryManager {
               .setZincLatency(convertDurationList(kryptonTelemetry.getZincLatencyList()))
               .setEgressLatency(convertDurationList(kryptonTelemetry.getEgressLatencyList()))
               .setSuccessfulRekeys(kryptonTelemetry.getSuccessfulRekeys())
-              .setNetworkSwitches(kryptonTelemetry.getNetworkSwitches());
+              .setNetworkSwitches(kryptonTelemetry.getNetworkSwitches())
+              .setSuccessfulNetworkSwitches(kryptonTelemetry.getSuccessfulNetworkSwitches())
+              .setNetworkSwitchLatency(
+                  convertDurationList(kryptonTelemetry.getNetworkSwitchLatencyList()))
+              .setControlPlaneAttempts(kryptonTelemetry.getControlPlaneAttempts())
+              .setControlPlaneSuccesses(kryptonTelemetry.getControlPlaneSuccesses())
+              .setControlPlaneSuccessLatency(
+                  convertDurationList(kryptonTelemetry.getControlPlaneSuccessLatencyList()))
+              .setControlPlaneFailureLatency(
+                  convertDurationList(kryptonTelemetry.getControlPlaneFailureLatencyList()))
+              .setDataPlaneConnectingAttempts(kryptonTelemetry.getDataPlaneConnectingAttempts())
+              .setDataPlaneConnectingSuccesses(kryptonTelemetry.getDataPlaneConnectingSuccesses())
+              .setDataPlaneConnectingLatency(
+                  convertDurationList(kryptonTelemetry.getDataPlaneConnectingLatencyList()))
+              .setHealthCheckAttempts(kryptonTelemetry.getHealthCheckAttempts())
+              .setHealthCheckSuccesses(kryptonTelemetry.getHealthCheckSuccesses())
+              .setTokenUnblindFailureCount(kryptonTelemetry.getTokenUnblindFailureCount());
+      // TODO Add tunnel disagreement count to collection when it is tracked
+      // on the platform.
     }
 
     return builder.build();
