@@ -117,10 +117,8 @@ absl::StatusOr<std::vector<Packet>> IpSecTunnel::ReadPackets() {
   auto status =
       events_helper_.Wait(&event, 1, keepalive_timeout_ms_, &num_events);
   if (!status.ok()) {
-    char buf[256];
-    strerror_r(errno, buf, sizeof(buf));
     return absl::InternalError(
-        absl::StrCat("Failed to listen for events on tunnel: ", buf));
+        absl::StrCat("Failed to listen for events on tunnel: ", errno));
   }
 
   // Send a keepalive packet if we time out
@@ -155,10 +153,8 @@ absl::StatusOr<std::vector<Packet>> IpSecTunnel::ReadPackets() {
 
     if (read_bytes <= 0) {
       delete[] buffer;
-      char buf[256];
-      strerror_r(errno, buf, sizeof(buf));
       return absl::AbortedError(
-          absl::Substitute("Reading from fd $0: $1", fd, buf));
+          absl::Substitute("Reading from fd $0: $1", fd, errno));
     }
 
     std::vector<Packet> packets;
@@ -184,10 +180,8 @@ absl::Status IpSecTunnel::WritePackets(std::vector<Packet> packets) {
           write(*write_fd, packet.data().data(), packet.data().size());
     } while (write_bytes == -1 && errno == EINTR);
     if (write_bytes != packet.data().size()) {
-      char buf[256];
-      strerror_r(errno, buf, sizeof(buf));
       return absl::InternalError(
-          absl::StrCat("Error writing to fd=", *write_fd, ": ", buf));
+          absl::StrCat("Error writing to fd=", *write_fd, ": ", errno));
     }
   }
   return absl::OkStatus();
@@ -224,9 +218,7 @@ bool IpSecTunnel::TunnelFdHasData(int fd) {
     // If there is no data left on this fd, or there was an error in the
     // poll, we will close it.
     if (ret < 0) {
-      char buf[256];
-      strerror_r(errno, buf, sizeof(buf));
-      LOG(ERROR) << "Failed to poll fd " << fd << ": " << buf;
+      LOG(ERROR) << "Failed to poll fd " << fd << ": " << errno;
     } else {
       LOG(INFO) << "The tunnel fd " << fd << " has been flushed.";
     }
@@ -269,19 +261,15 @@ absl::Status IpSecTunnel::ClearEventFd(const EventFd& event_fd) {
   while (ret > 0) {
     uint64_t tmp;
     if (read(fd, &tmp, sizeof(tmp)) == -1) {
-      char buf[256];
-      strerror_r(errno, buf, sizeof(buf));
       return absl::InternalError(
-          absl::StrCat("Failed to read from EventFd ", fd, ": ", buf));
+          absl::StrCat("Failed to read from EventFd ", fd, ": ", errno));
     }
     ret = poll(&event_pollfd, /*nfds=*/1, /*timeout=*/0);
   }
 
   if (ret < 0) {
-    char buf[256];
-    strerror_r(errno, buf, sizeof(buf));
     return absl::InternalError(
-        absl::StrCat("Failed to poll EventFd ", fd, ": ", buf));
+        absl::StrCat("Failed to poll EventFd ", fd, ": ", errno));
   }
   return absl::OkStatus();
 }
