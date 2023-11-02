@@ -33,6 +33,9 @@ func Equal(t *testing.T, a, b []byte) {
 	if bmA.GetServiceType() != bmB.GetServiceType() {
 		t.Errorf("-want %v, got %v", bmA.GetServiceType(), bmB.GetServiceType())
 	}
+	if bmA.GetProxyLayer() != bmB.GetProxyLayer() {
+		t.Errorf("-want %v, got %v", bmA.GetProxyLayer(), bmB.GetProxyLayer())
+	}
 }
 
 // Serialize is a test only way to serialize binary metadata.

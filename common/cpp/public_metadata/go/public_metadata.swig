@@ -32,6 +32,7 @@ OPTIONAL_TYPEMAP(uint64_t, uint64, uint64, Uint64Optional)
 %unignore privacy::ppn::BinaryPublicMetadata::city;
 %unignore privacy::ppn::BinaryPublicMetadata::expiration_epoch_seconds;
 %unignore privacy::ppn::BinaryPublicMetadata::debug_mode;
+%unignore privacy::ppn::BinaryPublicMetadata::proxy_layer;
 
 %unignore privacy::ppn::PublicMetadataProtoToStruct(const privacy::ppn::PublicMetadata&);
 
