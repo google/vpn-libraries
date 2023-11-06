@@ -226,7 +226,7 @@ public class VpnManager {
       // devices, Play Store may not have permission to bypass the VPN, so in order to be able to
       // reconnect when the VPN is not working, we have to add the Play Store to the bypass list.
       try {
-        Log.e(TAG, "Adding com.android.vending to disallowed applications for Play Integrity.");
+        Log.w(TAG, "Adding com.android.vending to disallowed applications for Play Integrity.");
         builder.addDisallowedApplication("com.android.vending");
       } catch (NameNotFoundException e) {
         Log.e(TAG, "Disallowed application package not found: com.android.vending", e);
