@@ -17,7 +17,6 @@ package com.google.android.libraries.privacy.ppn.xenon.impl.v2;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
-import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
@@ -29,7 +28,6 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import com.google.android.gms.tasks.Task;
-import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.gms.tasks.Tasks;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
@@ -44,13 +42,6 @@ import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkListener.Network
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkManager;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetworkSelector;
 import com.google.common.collect.ImmutableList;
-import java.io.IOException;
-import java.net.DatagramSocket;
-import java.net.Inet4Address;
-import java.net.Inet6Address;
-import java.net.InetAddress;
-import java.net.SocketException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -61,12 +52,11 @@ import org.json.JSONObject;
  * available networks. It includes the core logic for handling when a network is available, lost,
  * and changed.
  */
-final class PpnNetworkManagerImpl implements PpnNetworkManager {
+final class PpnNetworkManagerImpl
+    implements PpnNetworkManager, PpnNetworkValidator.NetworkValidationListener {
   private static final String TAG = "PpnNetworkManagerImpl";
 
   private final Context context;
-  private final PpnOptions ppnOptions;
-  private final HttpFetcher httpFetcher;
   // Mutex that guards the networks and the callbacks.
   private final Object lock = new Object();
 
@@ -79,6 +69,7 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
   private final Handler mainHandler = new Handler(Looper.getMainLooper());
   private final PpnNetworkListener listener;
   private final PpnNetworkSelector ppnNetworkSelector;
+  private final PpnNetworkValidator ppnNetworkValidator;
 
   // Set to keep track of the pending available networks to add to our available list.
   // Every network is added to this set when it is first discovered.
@@ -125,11 +116,10 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
       PpnOptions ppnOptions) {
     this.context = context;
     this.listener = listener;
-    this.ppnOptions = ppnOptions;
     this.availableNetworks = new HashSet<>();
     this.pendingNetworks = new HashSet<>();
     this.ppnNetworkSelector = new PpnNetworkSelectorImpl(context);
-    this.httpFetcher = httpFetcher;
+    this.ppnNetworkValidator = new PpnNetworkValidator(context, this, httpFetcher, ppnOptions);
   }
 
   @Override
@@ -189,42 +179,9 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
         return Tasks.forResult(false);
       }
 
-      // For WiFi networks, go ahead and asynchronously start a connectivity check.
-      return evaluatePendingNetworkConnectivityAsync(ppnNetwork);
+      // For WiFi networks, go ahead and start network validation.
+      return ppnNetworkValidator.validateNetwork(ppnNetwork);
     }
-  }
-
-  /** Returns a Task that is resolved after the given duration. */
-  private Task<Void> delay(Duration duration) {
-    TaskCompletionSource<Void> tcs = new TaskCompletionSource<>();
-    mainHandler.postDelayed(
-        () -> {
-          tcs.setResult(null);
-        },
-        duration.toMillis());
-    return tcs.getTask();
-  }
-
-  /** Schedules a retry of a network that has failed a connectivity check. */
-  private Task<Boolean> recheckConnectivityLaterAsync(PpnNetwork network, int retries) {
-    if (retries <= 0) {
-      Log.w(TAG, "Giving up connectivity check retries for " + network);
-      return Tasks.forResult(false);
-    }
-
-    Log.w(
-        TAG,
-        "Retrying connectivity check for "
-            + network
-            + " in "
-            + ppnOptions.getConnectivityCheckRetryDelay());
-
-    return delay(ppnOptions.getConnectivityCheckRetryDelay())
-        .continueWithTask(
-            (task) -> {
-              Log.w(TAG, "Retrying connectivity check for " + network + " now");
-              return evaluatePendingNetworkConnectivityAsync(network, retries - 1);
-            });
   }
 
   @Override
@@ -273,7 +230,8 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
         return Tasks.forResult(false);
       }
 
-      return evaluatePendingNetworkConnectivityAsync(ppnNetwork)
+      return ppnNetworkValidator
+          .validateNetwork(ppnNetwork)
           .continueWithTask(
               (task) -> {
                 updateConnectionQuality(ppnNetwork, networkCapabilities);
@@ -332,7 +290,7 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
             "onLinkPropertiesChanged with network: %s with linkProperties: %s",
             ppnNetwork, linkProperties));
 
-    return evaluatePendingNetworkConnectivityAsync(ppnNetwork);
+    return ppnNetworkValidator.validateNetwork(ppnNetwork);
   }
 
   @Override
@@ -406,232 +364,14 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
     }
   }
 
-  private static boolean isGlobalAddress(InetAddress address) {
-    return !(address.isLoopbackAddress()
-        || address.isMulticastAddress()
-        || address.isAnyLocalAddress()
-        || (address instanceof Inet6Address && address.isLinkLocalAddress())
-        || (address instanceof Inet6Address && address.isSiteLocalAddress()));
-  }
-
-  /**
-   * Checks if the provided PpnNetwork is a pending Network. If it is, verify if the network has
-   * connectivity. If so, remove it from pending and add it to our available network map.
-   *
-   * <p>Returns a Task that is resolved as true if the network was promoted.
-   */
-  private Task<Boolean> evaluatePendingNetworkConnectivityAsync(PpnNetwork ppnNetwork) {
-    return evaluatePendingNetworkConnectivityAsync(
-        ppnNetwork, ppnOptions.getConnectivityCheckMaxRetries());
-  }
-
-  /**
-   * Checks if the provided PpnNetwork is a pending Network. If it is, verify if the network has
-   * connectivity. If so, remove it from pending and add it to our available network map.
-   *
-   * @param retries The number of times to retry if the connection fails. For example, if this is
-   *     zero, the connection will only be attempted once.
-   * @return a Task that is resolved as true if the network was promoted.
-   */
-  private Task<Boolean> evaluatePendingNetworkConnectivityAsync(
-      PpnNetwork ppnNetwork, int retries) {
+  @Override
+  public void validationPassed(PpnNetwork ppnNetwork, AddressFamily addressFamily) {
     synchronized (lock) {
-      if (!pendingNetworks.contains(ppnNetwork)) {
-        Log.w(
-            TAG,
-            String.format(
-                "Pending Network %s is no longer pending. "
-                    + "Skipping further connectivity checks.",
-                ppnNetwork));
-        return Tasks.forResult(false);
-      }
+      promoteNetwork(ppnNetwork, addressFamily);
+      // We need to blindly call evaluateNetworkStrategy to handle cleaning up disconnected.
+      evaluateNetworkStrategy();
+      printAvailableNetworkMap();
     }
-
-    Log.w(TAG, String.format("Evaluating Pending Network: %s", ppnNetwork));
-
-    boolean hasIPv4 = false;
-    boolean hasIPv6 = false;
-    ConnectivityManager manager = getConnectivityManager();
-    LinkProperties linkProperties = manager.getLinkProperties(ppnNetwork.getNetwork());
-    if (linkProperties != null) {
-      for (LinkAddress linkAddress : linkProperties.getLinkAddresses()) {
-        InetAddress address = linkAddress.getAddress();
-        if (!isGlobalAddress(address)) {
-          continue;
-        }
-        if (address instanceof Inet4Address) {
-          hasIPv4 = true;
-        } else if (address instanceof Inet6Address) {
-          hasIPv6 = true;
-        }
-      }
-    } else {
-      hasIPv4 = true;
-      hasIPv6 = true;
-    }
-
-    Task<Boolean> ipv4ConnectivityTask;
-    if (hasIPv4) {
-      ipv4ConnectivityTask = canConnectToInternetAsync(ppnNetwork, AddressFamily.V4);
-    } else {
-      ipv4ConnectivityTask = Tasks.forResult(false);
-    }
-
-    Task<Boolean> ipv6ConnectivityTask;
-    if (hasIPv6) {
-      ipv6ConnectivityTask = canConnectToInternetAsync(ppnNetwork, AddressFamily.V6);
-    } else {
-      ipv6ConnectivityTask = Tasks.forResult(false);
-    }
-
-    // Check if this PpnNetwork can successfully connect to the internet. There are cases where
-    // this does not work due to multiple Cellular networks and dual SIMs, or the Wifi network has
-    // a captive portal.
-    return Tasks.whenAllComplete(ipv4ConnectivityTask, ipv6ConnectivityTask)
-        .continueWithTask(
-            (task) -> {
-              boolean ipv4Connectivity = false;
-              boolean ipv6Connectivity = false;
-
-              if (ipv4ConnectivityTask.isSuccessful()) {
-                ipv4Connectivity = ipv4ConnectivityTask.getResult();
-              } else {
-                Log.w(
-                    TAG,
-                    String.format(
-                        "Pending Network %s encountered exception in IPv4 connectivity check.",
-                        ppnNetwork),
-                    ipv4ConnectivityTask.getException());
-              }
-              if (ipv6ConnectivityTask.isSuccessful()) {
-                ipv6Connectivity = ipv6ConnectivityTask.getResult();
-              } else {
-                Log.w(
-                    TAG,
-                    String.format(
-                        "Pending Network %s encountered exception in IPv6 connectivity check.",
-                        ppnNetwork),
-                    ipv6ConnectivityTask.getException());
-              }
-
-              if (!(ipv4Connectivity || ipv6Connectivity)) {
-                Log.w(
-                    TAG,
-                    String.format("Pending Network %s FAILED connectivity check.", ppnNetwork));
-                // Connectivity was not good, so leave it in pending and try again later.
-                return recheckConnectivityLaterAsync(ppnNetwork, retries);
-              }
-
-              Log.w(
-                  TAG,
-                  String.format(
-                      "Pending Network %s PASSES Connectivity check. Moving from Pending to"
-                          + " Available Map.",
-                      ppnNetwork));
-
-              AddressFamily addressFamily;
-              if (ipv4Connectivity && ipv6Connectivity) {
-                addressFamily = AddressFamily.V4V6;
-              } else if (ipv4Connectivity) {
-                addressFamily = AddressFamily.V4;
-              } else {
-                addressFamily = AddressFamily.V6;
-              }
-
-              synchronized (lock) {
-                promoteNetwork(ppnNetwork, addressFamily);
-                // We need to blindly call evaluateNetworkStrategy to handle cleaning up
-                // disconnected.
-                evaluateNetworkStrategy();
-
-                this.printAvailableNetworkMap();
-              }
-
-              return Tasks.forResult(true);
-            });
-  }
-
-  /**
-   * Checks whether the PpnNetwork has internet checking whether we can bind a socket to this
-   * PpnNetwork and in the case of Wifi, whether we can establish a quick Url connection.
-   */
-  private Task<Boolean> canConnectToInternetAsync(
-      PpnNetwork ppnNetwork, AddressFamily addressFamily) {
-    TaskCompletionSource<Boolean> tcs = new TaskCompletionSource<>();
-    ppnOptions
-        .getBackgroundExecutor()
-        .execute(
-            () -> {
-              try {
-                tcs.setResult(canConnectToInternet(ppnNetwork, addressFamily));
-              } finally {
-                // This shouldn't happen, but if we somehow have a RuntimeException or missed some
-                // case in the code above, this will mark the connectivity check as failed so that
-                // it doesn't silently hang forever.
-                tcs.trySetException(
-                    new IllegalStateException(
-                        "Connectivity check failed to complete task. Marking as failed."));
-              }
-            });
-    return tcs.getTask();
-  }
-
-  /**
-   * Checks whether the PpnNetwork has internet checking whether we can bind a socket to this
-   * PpnNetwork and in the case of Wifi, whether we can establish a quick Url connection.
-   */
-  private boolean canConnectToInternet(PpnNetwork ppnNetwork, AddressFamily addressFamily) {
-    // Try to create a socket.
-    DatagramSocket socket;
-    try {
-      socket = new DatagramSocket();
-    } catch (SocketException e) {
-      Log.w(
-          TAG,
-          String.format(
-              "Unable to create socket to check whether PpnNetwork %s has Internet.", ppnNetwork),
-          e);
-      return false;
-    }
-
-    // Try to bind that socket to the network.
-    try {
-      ppnNetwork.getNetwork().bindSocket(socket);
-    } catch (IOException e) {
-      Log.w(
-          TAG,
-          String.format(
-              "Unable to bind socket to check whether PpnNetwork %s has Internet.", ppnNetwork),
-          e);
-      return false;
-    } finally {
-      socket.close();
-    }
-
-    // If this is a WiFi network, try a reachability check on that network.
-    if (ppnNetwork.getNetworkType() == NetworkType.WIFI) {
-      Log.w(TAG, String.format("Checking WiFi Connectivity for network %s", ppnNetwork));
-      boolean pingSuccessful =
-          httpFetcher.checkGet(
-              ppnOptions.getConnectivityCheckUrl(), ppnNetwork.getNetwork(), addressFamily);
-
-      if (!pingSuccessful) {
-        Log.w(
-            TAG,
-            String.format(
-                "PpnNetwork %s FAILS WiFi Connectivity check (%s).",
-                ppnNetwork, addressFamily.name()));
-        return false;
-      }
-      Log.w(
-          TAG,
-          String.format(
-              "PpnNetwork %s PASSES WiFi Connectivity check (%s).",
-              ppnNetwork, addressFamily.name()));
-    }
-
-    Log.w(TAG, String.format("PpnNetwork %s CAN connect to Internet.", ppnNetwork));
-    return true;
   }
 
   private static ConnectionStatus createConnectionStatus(
