@@ -68,7 +68,8 @@ absl::Status VpnService::CreateTunnel(const TunFdData& /*tun_fd_data*/) {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "Creating tunnel";
   if (tunnel_interface_index_ >= 0) {
-    return absl::AlreadyExistsError("Tunnel is already created");
+    LOG(INFO) << "Tunnel is already created with interface index "
+              << tunnel_interface_index_;
   }
 
   // Add default route to Wintun adapter.
