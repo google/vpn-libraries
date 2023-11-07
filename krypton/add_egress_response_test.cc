@@ -14,19 +14,18 @@
 
 #include "privacy/net/krypton/add_egress_response.h"
 
-#include <tuple>
-#include <type_traits>
-
 #include "google/protobuf/timestamp.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
-#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/status/status.h"
 
 namespace privacy {
 namespace krypton {
 
 using ::testing::EqualsProto;
+using ::testing::UnorderedElementsAre;
 using ::testing::proto::Partially;
+using ::testing::status::StatusIs;
 
 TEST(AddEgressResponse, TestAddEgressResponse) {
   HttpResponse proto;
@@ -40,7 +39,8 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
         {"ipv6_range": "fe80::1"}
       ],
       "egress_point_sock_addr": [
-        "addr1"
+        "addr1",
+        "addr2"
       ],
       "egress_point_public_value": "MTIzNDU2Nzg5MGFiY2RlZg==",
       "server_nonce": "YWJjZA==",
@@ -61,6 +61,7 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
                 user_private_ip: { ipv4_range: "127.0.0.1" },
                 user_private_ip: { ipv6_range: "fe80::1" },
                 egress_point_sock_addr: "addr1",
+                egress_point_sock_addr: "addr2",
                 egress_point_public_value: "1234567890abcdef",
                 server_nonce: "abcd",
                 uplink_spi: 123,
@@ -69,12 +70,12 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
               )pb"));
 
   EXPECT_THAT(ppn_response.user_private_ip(),
-              ::testing::UnorderedElementsAre(
+              UnorderedElementsAre(
                   Partially(EqualsProto(R"pb(ipv4_range: "127.0.0.1")pb")),
                   Partially(EqualsProto(R"pb(ipv6_range: "fe80::1")pb"))));
 
-  EXPECT_EQ(ppn_response.egress_point_sock_addr_size(), 1);
-  EXPECT_EQ(ppn_response.egress_point_sock_addr(0), "addr1");
+  EXPECT_THAT(ppn_response.egress_point_sock_addr(),
+              UnorderedElementsAre("addr1", "addr2"));
   EXPECT_EQ(ppn_response.egress_point_public_value(), "1234567890abcdef");
   EXPECT_EQ(ppn_response.server_nonce(), "abcd");
   EXPECT_EQ(ppn_response.uplink_spi(), 123);
@@ -121,7 +122,7 @@ TEST(AddEgressResponse, TestAddEgressMalformedJsonBody) {
   {}})string");
 
   EXPECT_THAT(AddEgressResponse::FromProto(proto),
-              testing::status::StatusIs(absl::StatusCode::kInternal));
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 }  // namespace krypton

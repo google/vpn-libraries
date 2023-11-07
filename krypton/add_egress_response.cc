@@ -14,7 +14,8 @@
 
 #include "privacy/net/krypton/add_egress_response.h"
 
-#include <memory>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,14 +26,13 @@
 #include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "privacy/net/krypton/utils/time_util.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
-#include "third_party/absl/strings/escaping.h"
-#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/time/time.h"
-#include "third_party/absl/types/optional.h"
 #include "third_party/json/include/nlohmann/json.hpp"
+#include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
 namespace krypton {
@@ -41,80 +41,6 @@ using privacy::ppn::PpnDataplaneResponse;
 using privacy::ppn::PpnIkeResponse;
 
 namespace {
-
-// Fill proto repeated field containing string values from a json array.
-absl::Status CopyStringArray(nlohmann::json object, const std::string& key,
-                             ::proto2::RepeatedPtrField<std::string>* output) {
-  output->Clear();
-  if (!object.contains(key)) {
-    // Proto 3 doesn't distinguish between a missing field and an empty field,
-    // so if it's missing, we won't count that as an error.
-    return absl::OkStatus();
-  }
-  auto array = object[key];
-  if (!array.is_array()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat(key, " is not of array type"));
-  }
-
-  for (const auto& element : array) {
-    if (!element.is_string()) {
-      return absl::InvalidArgumentError(
-          absl::StrCat(key, " element is not of type string"));
-    }
-    output->Add(element);
-  }
-  return absl::OkStatus();
-}
-
-// Helper macro to copy a string array from json to proto, with error checking.
-#define COPY_STRING_ARRAY(json_obj, json_key, proto, proto_field)   \
-  PPN_RETURN_IF_ERROR(CopyStringArray(json_obj, JsonKeys::json_key, \
-                                      proto.mutable_##proto_field()))
-
-// Helper macros to copy values from json to proto, with error checking.
-// Proto 3 doesn't distinguish between a missing field and a default value, so
-// if it's missing, leave it as the default value.
-#define COPY_SCALAR_VALUE(json_obj, json_key, proto, proto_field, type_check, \
-                          type)                                               \
-  do {                                                                        \
-    if (!json_obj.contains(JsonKeys::json_key)) {                             \
-      break;                                                                  \
-    }                                                                         \
-    if (!json_obj[JsonKeys::json_key].type_check()) {                         \
-      return absl::InvalidArgumentError(                                      \
-          absl::StrCat(JsonKeys::json_key, " value is incorrect type"));      \
-    }                                                                         \
-    type value = json_obj[JsonKeys::json_key];                                \
-    proto.set_##proto_field(value);                                           \
-  } while (0)
-
-#define COPY_INT_VALUE(json_obj, json_key, proto, proto_field)                 \
-  COPY_SCALAR_VALUE(json_obj, json_key, proto, proto_field, is_number_integer, \
-                    int)
-
-#define COPY_STRING_VALUE(json_obj, json_key, proto, proto_field)      \
-  COPY_SCALAR_VALUE(json_obj, json_key, proto, proto_field, is_string, \
-                    std::string)
-
-// Similar to COPY_STRING_VALUE, but decodes base64 strings as bytes.
-#define COPY_BYTES_VALUE(json_obj, json_key, proto, proto_field)           \
-  do {                                                                     \
-    if (!json_obj.contains(JsonKeys::json_key)) {                          \
-      break;                                                               \
-    }                                                                      \
-    if (!json_obj[JsonKeys::json_key].is_string()) {                       \
-      return absl::InvalidArgumentError(                                   \
-          absl::StrCat(JsonKeys::json_key, " value is not a string"));     \
-    }                                                                      \
-    std::string encoded = json_obj[JsonKeys::json_key];                    \
-    std::string decoded;                                                   \
-    if (!absl::Base64Unescape(encoded, &decoded)) {                        \
-      return absl::InvalidArgumentError(                                   \
-          absl::StrCat(JsonKeys::json_key, " value is not valid base64")); \
-    }                                                                      \
-    proto.set_##proto_field(decoded);                                      \
-  } while (0)
 
 absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
     nlohmann::json json) {
@@ -140,17 +66,40 @@ absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
     }
   }
 
-  COPY_STRING_ARRAY(json, kEgressPointSockAddr, response,
-                    egress_point_sock_addr);
+  PPN_ASSIGN_OR_RETURN(
+      std::optional<std::vector<std::string>> egress_point_sock_addr,
+      utils::JsonGetStringArray(json, JsonKeys::kEgressPointSockAddr));
+  if (egress_point_sock_addr) {
+    *response.mutable_egress_point_sock_addr() = {
+        egress_point_sock_addr->begin(), egress_point_sock_addr->end()};
+  }
 
-  COPY_BYTES_VALUE(json, kEgressPointPublicValue, response,
-                   egress_point_public_value);
-  COPY_BYTES_VALUE(json, kServerNonce, response, server_nonce);
+  PPN_ASSIGN_OR_RETURN(
+      std::optional<std::string> egress_point_public_value,
+      utils::JsonGetBytes(json, JsonKeys::kEgressPointPublicValue));
+  if (egress_point_public_value) {
+    response.set_egress_point_public_value(*egress_point_public_value);
+  }
 
-  COPY_INT_VALUE(json, kUplinkSpi, response, uplink_spi);
+  PPN_ASSIGN_OR_RETURN(std::optional<std::string> server_nonce,
+                       utils::JsonGetBytes(json, JsonKeys::kServerNonce));
+  if (server_nonce) {
+    response.set_server_nonce(*server_nonce);
+  }
 
-  COPY_STRING_ARRAY(json, kMssDetectionSockAddr, response,
-                    mss_detection_sock_addr);
+  PPN_ASSIGN_OR_RETURN(std::optional<int64_t> uplink_spi,
+                       utils::JsonGetInt64(json, JsonKeys::kUplinkSpi));
+  if (uplink_spi) {
+    response.set_uplink_spi(*uplink_spi);
+  }
+
+  PPN_ASSIGN_OR_RETURN(
+      std::optional<std::vector<std::string>> mss_detection_sock_addr,
+      utils::JsonGetStringArray(json, JsonKeys::kMssDetectionSockAddr));
+  if (mss_detection_sock_addr) {
+    *response.mutable_mss_detection_sock_addr() = {
+        mss_detection_sock_addr->begin(), mss_detection_sock_addr->end()};
+  }
 
   // This is the only Timestamp value, so there's no need for a helper macro.
   if (json.contains(JsonKeys::kExpiry)) {
@@ -169,19 +118,26 @@ absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
 absl::StatusOr<PpnIkeResponse> ParseIkeResponse(nlohmann::json json) {
   PpnIkeResponse response;
 
-  COPY_BYTES_VALUE(json, kClientId, response, client_id);
-  COPY_BYTES_VALUE(json, kSharedSecret, response, shared_secret);
+  PPN_ASSIGN_OR_RETURN(std::optional<std::string> client_id,
+                       utils::JsonGetBytes(json, JsonKeys::kClientId));
+  if (client_id) {
+    response.set_client_id(*client_id);
+  }
 
-  COPY_STRING_VALUE(json, kServerAddress, response, server_address);
+  PPN_ASSIGN_OR_RETURN(std::optional<std::string> shared_secret,
+                       utils::JsonGetBytes(json, JsonKeys::kSharedSecret));
+  if (shared_secret) {
+    response.set_shared_secret(*shared_secret);
+  }
+
+  PPN_ASSIGN_OR_RETURN(std::optional<std::string> server_address,
+                       utils::JsonGetString(json, JsonKeys::kServerAddress));
+  if (server_address) {
+    response.set_server_address(*server_address);
+  }
 
   return response;
 }
-
-#undef COPY_STRING_VALUE
-#undef COPY_INT_VALUE
-#undef COPY_SCALAR_VALUE
-#undef COPY_STRING_ARRAY
-#undef COPY_BYTES_VALUE
 
 }  // namespace
 

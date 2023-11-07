@@ -14,12 +14,16 @@
 
 #include "privacy/net/krypton/utils/json_util.h"
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "net/proto2/contrib/parse_proto/parse_text_proto.h"
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
-#include "third_party/absl/status/statusor.h"
+#include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 
@@ -28,6 +32,9 @@ namespace krypton {
 namespace utils {
 namespace {
 
+using ::proto2::contrib::parse_proto::ParseTextProtoOrDie;
+using ::testing::ElementsAre;
+using ::testing::EqualsProto;
 using ::testing::status::StatusIs;
 
 TEST(JsonUtilTest, JsonToStringString) {
@@ -230,42 +237,199 @@ TEST(JsonUtilTest, StringToJsonExtraBracket) {
               StatusIs(absl::StatusCode::kInternal));
 }
 
-TEST(JsonContains, StringCheck) {
-  std::string key_missing = R"string({"foo":"bar"})string";
-  absl::string_view wrong_type = R"string({"use_case":7})string";
-  absl::string_view valid = R"string({"use_case":"bar"})string";
-  std::string json_key = "use_case";
+TEST(JsonUtilTest, JsonGetInt64IgnoresEmptyField) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
 
-  absl::StatusOr<nlohmann::json> body = StringToJson(key_missing);
-  auto status = JsonGetString(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+  ASSERT_OK_AND_ASSIGN(std::optional<int64_t> int_value,
+                       JsonGetInt64(json_obj, json_key));
 
-  body = StringToJson(wrong_type);
-  status = JsonGetString(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
-
-  body = StringToJson(valid);
-  status = JsonGetString(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kOk));
+  EXPECT_FALSE(int_value);
 }
 
-TEST(JsonContains, IntCheck) {
-  std::string key_missing = R"string({"foo":"bar"})string";
-  absl::string_view wrong_type = R"string({"foo_int":"bar"})string";
-  absl::string_view valid = R"string({"foo_int":7})string";
-  char json_key[] = "foo_int";
+TEST(JsonContains, JsonGetInt64FailsOnTheWrongType) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  json_obj[json_key] = "foo";
 
-  absl::StatusOr<nlohmann::json> body = StringToJson(key_missing);
-  auto status = JsonGetInt(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+  ASSERT_THAT(JsonGetInt64(json_obj, json_key),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
 
-  body = StringToJson(wrong_type);
-  status = JsonGetInt(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+TEST(JsonContains, JsonGetInt64ReturnsInt64) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  json_obj[json_key] = 123;
 
-  body = StringToJson(valid);
-  status = JsonGetInt(body.value(), json_key);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kOk));
+  ASSERT_OK_AND_ASSIGN(std::optional<int64_t> int_value,
+                       JsonGetInt64(json_obj, json_key));
+
+  ASSERT_TRUE(int_value);
+  EXPECT_EQ(*int_value, 123);
+}
+
+TEST(JsonUtilTest, JsonGetStringIgnoresEmptyField) {
+  nlohmann::json json_obj;
+  std::string json_key = "test";
+
+  ASSERT_OK_AND_ASSIGN(std::optional<std::string> value,
+                       JsonGetString(json_obj, json_key));
+
+  EXPECT_FALSE(value);
+}
+
+TEST(JsonUtilTest, JsonGetStringFailsOnTheWrongType) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  json_obj[json_key] = 0;
+
+  ASSERT_THAT(JsonGetString(json_obj, json_key),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(JsonUtilTest, JsonGetStringReturnsString) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  json_obj[json_key] = "foo";
+
+  ASSERT_OK_AND_ASSIGN(std::optional<std::string> value,
+                       JsonGetString(json_obj, json_key));
+
+  ASSERT_TRUE(value);
+  ASSERT_EQ(*value, "foo");
+}
+
+TEST(JsonUtilTest, JsonGetBytesIgnoresEmptyField) {
+  nlohmann::json json_obj;
+  std::string json_key = "test";
+
+  ASSERT_OK_AND_ASSIGN(std::optional<std::string> value,
+                       JsonGetBytes(json_obj, json_key));
+
+  EXPECT_FALSE(value);
+}
+
+TEST(JsonUtilTest, JsonGetBytesFailsOnTheWrongType) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  json_obj[json_key] = 0;
+
+  ASSERT_THAT(JsonGetBytes(json_obj, json_key),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(JsonUtilTest, JsonGetBytesFailsWithFieldNotBase64Encoded) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  json_obj[json_key] = ":foo:";
+
+  ASSERT_THAT(JsonGetBytes(json_obj, json_key),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(JsonUtilTest, JsonGetBytesReturnsBytes) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  json_obj[json_key] = "Zm9v";
+
+  ASSERT_OK_AND_ASSIGN(std::optional<std::string> value,
+                       JsonGetBytes(json_obj, json_key));
+
+  ASSERT_TRUE(value);
+  ASSERT_EQ(*value, "foo");
+}
+
+TEST(JsonUtilTest, JsonGetStringArrayIgnoresEmptyField) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+
+  ASSERT_OK_AND_ASSIGN(std::optional<std::vector<std::string>> value,
+                       JsonGetStringArray(json_obj, json_key));
+
+  EXPECT_FALSE(value);
+}
+
+TEST(JsonUtilTest, JsonGetStringArrayIgnoresFieldNotArray) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  json_obj[json_key] = "foo";
+
+  ASSERT_THAT(JsonGetStringArray(json_obj, json_key),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(JsonUtilTest, JsonGetStringArrayIgnoresArrayOfWrongType) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  json_obj[json_key] = nlohmann::json::array({0, 1});
+
+  ASSERT_THAT(JsonGetStringArray(json_obj, json_key),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(JsonUtilTest, JsonGetStringArrayReturnsStringArray) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  json_obj[json_key] = nlohmann::json::array({"foo", "bar"});
+
+  ASSERT_OK_AND_ASSIGN(std::optional<std::vector<std::string>> value,
+                       JsonGetStringArray(json_obj, json_key));
+
+  ASSERT_TRUE(value);
+  EXPECT_THAT(*value, ElementsAre("foo", "bar"));
+}
+
+TEST(JsonUtilTest, JsonGetIpRangeArrayIgnoresEmptyField) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::optional<std::vector<net::common::proto::IpRange>> value,
+      JsonGetIpRangeArray(json_obj, json_key));
+
+  EXPECT_FALSE(value);
+}
+
+TEST(JsonUtilTest, JsonGetIpRangeArrayIgnoresFieldNotArray) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  nlohmann::json ipv4_range;
+  ipv4_range["ipv4_range"] = "127.0.0.1";
+  json_obj[json_key] = ipv4_range;
+
+  ASSERT_THAT(JsonGetIpRangeArray(json_obj, json_key),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(JsonUtilTest, JsonGetIpRangeArrayIgnoresArrayOfWrongType) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  json_obj[json_key] = nlohmann::json::array({0, 1});
+
+  ASSERT_THAT(JsonGetIpRangeArray(json_obj, json_key),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(JsonUtilTest, JsonGetIpRangeArrayCopiesIpRangeArray) {
+  std::string json_key = "test";
+  nlohmann::json json_obj;
+  nlohmann::json ipv4_range;
+  nlohmann::json ipv6_range;
+  ipv4_range["ipv4_range"] = "127.0.0.1";
+  ipv6_range["ipv6_range"] = "fe80::1";
+  json_obj[json_key] = nlohmann::json::array({ipv4_range, ipv6_range});
+
+  ASSERT_OK_AND_ASSIGN(
+      std::optional<std::vector<net::common::proto::IpRange>> value,
+      JsonGetIpRangeArray(json_obj, json_key));
+
+  ASSERT_TRUE(value);
+  net::common::proto::IpRange ipv4_range_proto =
+      ParseTextProtoOrDie(R"pb(ipv4_range: "127.0.0.1")pb");
+  net::common::proto::IpRange ipv6_range_proto =
+      ParseTextProtoOrDie(R"pb(ipv6_range: "fe80::1")pb");
+  EXPECT_THAT(*value, ElementsAre(EqualsProto(ipv4_range_proto),
+                                  EqualsProto(ipv6_range_proto)));
 }
 
 }  // namespace
