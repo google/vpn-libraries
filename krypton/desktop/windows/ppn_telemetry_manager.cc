@@ -132,6 +132,27 @@ desktop::PpnTelemetry PpnTelemetryManager::Collect(Krypton* krypton) {
   }
   telemetry.set_disconnection_count(disconnection_count_);
   disconnection_count_ = 0;
+  telemetry.set_successful_network_switches(
+      krypton_telemetry.successful_network_switches());
+  telemetry.mutable_network_switch_latency()->CopyFrom(
+      krypton_telemetry.network_switch_latency());
+  telemetry.set_control_plane_attempts(
+      krypton_telemetry.control_plane_attempts());
+  telemetry.set_control_plane_successes(
+      krypton_telemetry.control_plane_successes());
+  telemetry.mutable_control_plane_success_latency()->CopyFrom(
+      krypton_telemetry.control_plane_success_latency());
+  telemetry.mutable_control_plane_failure_latency()->CopyFrom(
+      krypton_telemetry.control_plane_failure_latency());
+  telemetry.set_data_plane_connecting_attempts(
+      krypton_telemetry.data_plane_connecting_attempts());
+  telemetry.set_data_plane_connecting_successes(
+      krypton_telemetry.data_plane_connecting_successes());
+  telemetry.mutable_data_plane_connecting_latency()->CopyFrom(
+      krypton_telemetry.data_plane_connecting_latency());
+  telemetry.set_token_unblind_failure_count(
+      krypton_telemetry.token_unblind_failure_count());
+
   return telemetry;
 }
 

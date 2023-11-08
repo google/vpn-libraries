@@ -60,6 +60,16 @@ TEST_F(PpnTelemetryManagerTest, TestCollect_DefaultsToZero) {
   ASSERT_EQ(telemetry.network_uptime().seconds(), 0);
   ASSERT_EQ(telemetry.disconnection_durations_size(), 0);
   ASSERT_EQ(telemetry.disconnection_count(), 0);
+  ASSERT_EQ(telemetry.successful_network_switches(), 0);
+  ASSERT_EQ(telemetry.network_switch_latency_size(), 0);
+  ASSERT_EQ(telemetry.control_plane_attempts(), 0);
+  ASSERT_EQ(telemetry.control_plane_successes(), 0);
+  ASSERT_EQ(telemetry.control_plane_success_latency_size(), 0);
+  ASSERT_EQ(telemetry.control_plane_failure_latency_size(), 0);
+  ASSERT_EQ(telemetry.data_plane_connecting_attempts(), 0);
+  ASSERT_EQ(telemetry.data_plane_connecting_successes(), 0);
+  ASSERT_EQ(telemetry.data_plane_connecting_latency_size(), 0);
+  ASSERT_EQ(telemetry.token_unblind_failure_count(), 0);
 }
 
 TEST_F(PpnTelemetryManagerTest, TestCollect_ReturnsCorrectValues) {
@@ -85,6 +95,40 @@ TEST_F(PpnTelemetryManagerTest, TestCollect_ReturnsCorrectValues) {
   ASSERT_EQ(telemetry.network_uptime().seconds(), 3);
   ASSERT_EQ(telemetry.disconnection_durations_size(), 1);
   ASSERT_EQ(telemetry.disconnection_count(), 1);
+}
+
+TEST_F(PpnTelemetryManagerTest, TestCollect_CollectionResetsValuesToZero) {
+  clock_.AdvanceBy(absl::Seconds(1));
+  ppn_telemetry_manager_->NotifyStarted();
+  clock_.AdvanceBy(absl::Seconds(1));
+  ppn_telemetry_manager_->NotifyNetworkAvailable();
+  clock_.AdvanceBy(absl::Seconds(1));
+  ppn_telemetry_manager_->NotifyConnected();
+  clock_.AdvanceBy(absl::Seconds(1));
+  ppn_telemetry_manager_->NotifyDisconnected();
+  clock_.AdvanceBy(absl::Seconds(1));
+  ppn_telemetry_manager_->NotifyNetworkUnavailable();
+  clock_.AdvanceBy(absl::Seconds(1));
+  ppn_telemetry_manager_->NotifyStopped();
+  clock_.AdvanceBy(absl::Seconds(1));
+
+  privacy::krypton::desktop::PpnTelemetry telemetry =
+      ppn_telemetry_manager_->Collect(&krypton_);
+
+  ASSERT_EQ(telemetry.ppn_service_uptime().seconds(), 5);
+  ASSERT_EQ(telemetry.ppn_connection_uptime().seconds(), 1);
+  ASSERT_EQ(telemetry.network_uptime().seconds(), 3);
+  ASSERT_EQ(telemetry.disconnection_durations_size(), 1);
+  ASSERT_EQ(telemetry.disconnection_count(), 1);
+
+  telemetry.Clear();
+  telemetry = ppn_telemetry_manager_->Collect(&krypton_);
+
+  ASSERT_EQ(telemetry.ppn_service_uptime().seconds(), 0);
+  ASSERT_EQ(telemetry.ppn_connection_uptime().seconds(), 0);
+  ASSERT_EQ(telemetry.network_uptime().seconds(), 0);
+  ASSERT_EQ(telemetry.disconnection_durations_size(), 0);
+  ASSERT_EQ(telemetry.disconnection_count(), 0);
 }
 
 TEST_F(PpnTelemetryManagerTest, TestCollect_ReturnsOneDisconnection) {

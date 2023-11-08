@@ -22,9 +22,10 @@ import "google/protobuf/duration.proto";
 
 option cc_api_version = 2;
 
-// Collection of metrics for how PPN is running.
-// This proto is currently used only for PPN Windows client.
-// TODO: Consider using this proto for other PPN clients as well.
+// PpnTelemetry is used for collection of metrics for how PPN is running. This
+// proto is only used for the PPN Windows client. Native Krypton telemetry is
+// defined in: krypton/proto/krypton_telemetry.proto
+// Next ID: 24
 message PpnTelemetry {
   // Duration for how long some network was available since the last time
   // telemetry was collected.
@@ -64,4 +65,42 @@ message PpnTelemetry {
 
   // Number of disconnections since the last time telemetry was collected.
   optional uint32 disconnection_count = 11;
+
+  // Number of successful network switches since the last telemetery collection
+  // event.
+  optional uint32 successful_network_switches = 12;
+
+  // Provides latency for each network switch that is successful.
+  repeated google.protobuf.Duration network_switch_latency = 13;
+
+  // The number of times a client attempts provisioning.
+  optional uint32 control_plane_attempts = 14;
+
+  // The number of times the client is successfully provisioned.
+  optional uint32 control_plane_successes = 15;
+
+  // Provides latency from start of provisioning until fully provisioned.
+  repeated google.protobuf.Duration control_plane_success_latency = 16;
+
+  // Provides latency from start of provisioning until failure.
+  repeated google.protobuf.Duration control_plane_failure_latency = 17;
+
+  // The number of attempts to connect a datapath.
+  optional uint32 data_plane_connecting_attempts = 18;
+
+  // The number of times a datapath was successfully connected.
+  optional uint32 data_plane_connecting_successes = 19;
+
+  // Provides latency from start of connecting a datapath until fully connected.
+  repeated google.protobuf.Duration data_plane_connecting_latency = 20;
+
+  // The number of times a health check is performed.
+  optional uint32 health_check_attempts = 21;
+
+  // The number of times a health check confirms connection.
+  optional uint32 health_check_successes = 22;
+
+  // The number of times anonymous token unblinding fails, leading to
+  // authentication failure.
+  optional uint32 token_unblind_failure_count = 23;
 }
