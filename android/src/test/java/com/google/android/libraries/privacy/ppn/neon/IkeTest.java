@@ -32,8 +32,8 @@ import com.google.android.gms.tasks.Tasks;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnOptions.DatapathProtocol;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
+import com.google.android.libraries.privacy.ppn.krypton.FakeAuthServer;
 import com.google.android.libraries.privacy.ppn.krypton.MockBrass;
-import com.google.android.libraries.privacy.ppn.krypton.MockZinc;
 import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -48,7 +48,7 @@ import org.robolectric.RobolectricTestRunner;
 
 @RunWith(RobolectricTestRunner.class)
 public class IkeTest {
-  private final MockZinc mockZinc = new MockZinc();
+  private final FakeAuthServer fakeAuthServer = new FakeAuthServer();
   private final MockBrass mockBrass = new MockBrass();
 
   @Rule public final MockitoRule mockito = MockitoJUnit.rule();
@@ -56,8 +56,8 @@ public class IkeTest {
 
   private PpnOptions createOptions() {
     return new PpnOptions.Builder()
-        .setZincUrl(mockZinc.url())
-        .setZincPublicSigningKeyUrl(mockZinc.url())
+        .setZincUrl(fakeAuthServer.authUrl())
+        .setZincPublicSigningKeyUrl(fakeAuthServer.publicKeyUrl())
         .setBrassUrl(mockBrass.url())
         .setZincServiceType("some_service_type")
         .setDatapathProtocol(DatapathProtocol.IKE)
@@ -67,9 +67,9 @@ public class IkeTest {
 
   @Test
   public void provision_successful() throws Exception {
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveJsonAuthResponse();
+    fakeAuthServer.start();
+    fakeAuthServer.enqueuePositivePublicKeyResponse();
+    fakeAuthServer.enqueuePositiveAuthResponse();
 
     mockBrass.start();
     mockBrass.enqueuePositiveIkeResponse();
@@ -87,9 +87,9 @@ public class IkeTest {
 
   @Test
   public void start_failedProvision() throws Exception {
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveJsonAuthResponse();
+    fakeAuthServer.start();
+    fakeAuthServer.enqueuePositivePublicKeyResponse();
+    fakeAuthServer.enqueuePositiveAuthResponse();
 
     mockBrass.start();
     mockBrass.enqueueNegativeResponseWithCode(500, "unavailable");
@@ -117,9 +117,9 @@ public class IkeTest {
 
   @Test
   public void provision_successfulWithNetworkOverride() throws Exception {
-    mockZinc.start();
-    mockZinc.enqueuePositivePublicKeyResponse();
-    mockZinc.enqueuePositiveJsonAuthResponse();
+    fakeAuthServer.start();
+    fakeAuthServer.enqueuePositivePublicKeyResponse();
+    fakeAuthServer.enqueuePositiveAuthResponse();
 
     mockBrass.start();
     mockBrass.enqueuePositiveIkeResponse();
