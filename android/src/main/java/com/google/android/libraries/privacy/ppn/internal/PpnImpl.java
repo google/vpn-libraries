@@ -1023,11 +1023,6 @@ public class PpnImpl implements Ppn, KryptonListener, PpnNetworkListener {
         });
   }
 
-  @Override
-  public void onNetworkStatusChanged(PpnNetwork ppnNetwork, ConnectionStatus connectionStatus) {
-    Log.w(TAG, "Received network status changed - this is a no-op.");
-  }
-
   private static void ensureBackgroundThread() {
     if (Looper.getMainLooper().isCurrentThread()) {
       throw new IllegalStateException("Must not be called on the main thread.");

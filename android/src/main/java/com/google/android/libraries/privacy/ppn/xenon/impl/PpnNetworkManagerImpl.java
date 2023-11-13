@@ -32,7 +32,6 @@ import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.gms.tasks.Tasks;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
-import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus.ConnectionQuality;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
@@ -313,11 +312,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
               TAG,
               "ConnectionQuality Changed! New ConnectionQuality: " + newConnectionQuality.name());
           connectionQuality = newConnectionQuality;
-          mainHandler.post(
-              () ->
-                  listener.onNetworkStatusChanged(
-                      ppnNetwork,
-                      createConnectionStatus(ppnNetwork.getNetworkType(), connectionQuality)));
         }
       }
     }
@@ -634,14 +628,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
     return true;
   }
 
-  private static ConnectionStatus createConnectionStatus(
-      NetworkType networkType, ConnectionQuality connectionQuality) {
-    return ConnectionStatus.newBuilder()
-        .setNetworkType(networkType)
-        .setQuality(connectionQuality)
-        .build();
-  }
-
   private void releaseAllNetworkRequests() {
     if (this.wifiCallback != null) {
       releaseNetworkRequest(this.wifiCallback);
@@ -687,11 +673,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
           // published from Android to publish a change upwards via our listener.
           connectionQuality = ConnectionQuality.UNKNOWN_QUALITY;
           Log.w(TAG, "[EvaluateNetworkStrategy] Network selected: " + activeNetwork);
-          mainHandler.post(
-              () ->
-                  listener.onNetworkStatusChanged(
-                      bestNetwork,
-                      createConnectionStatus(bestNetwork.getNetworkType(), connectionQuality)));
         } else {
           Log.w(
               TAG,
@@ -840,14 +821,6 @@ final class PpnNetworkManagerImpl implements PpnNetworkManager {
         clearActiveNetwork();
 
         mainHandler.post(() -> listener.onNetworkUnavailable(NetworkUnavailableReason.UNKNOWN));
-
-        // When there are no availableNetworks, we need to update the connection quality for the
-        // last known Network to be NO_SIGNAL.
-        mainHandler.post(
-            () ->
-                listener.onNetworkStatusChanged(
-                    ppnNetwork,
-                    createConnectionStatus(NetworkType.UNKNOWN_TYPE, ConnectionQuality.NO_SIGNAL)));
       } else if (activeNetwork == null) {
         // We only need to evaluate the NetworkStrategy again if there are availableNetworks and
         // we did NOT remove the current active network.

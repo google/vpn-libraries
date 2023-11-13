@@ -41,7 +41,6 @@ import android.os.Looper;
 import androidx.test.core.app.ApplicationProvider;
 import com.google.android.gms.tasks.Task;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
-import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
 import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus.ConnectionQuality;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
@@ -66,7 +65,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
@@ -248,15 +246,6 @@ public final class PpnNetworkManagerImplTest {
 
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     verify(mockListener).onNetworkAvailable(wifiNetwork);
-
-    // Verify that we publish the new ConnectionStatus of UNKNOWN_QUALITY as we have a network
-    // switch.
-    ArgumentCaptor<ConnectionStatus> argConnectionStatus =
-        ArgumentCaptor.forClass(ConnectionStatus.class);
-    verify(mockListener)
-        .onNetworkStatusChanged(any(PpnNetwork.class), argConnectionStatus.capture());
-    assertThat(argConnectionStatus.getValue().getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
   }
 
   @Test
@@ -352,16 +341,6 @@ public final class PpnNetworkManagerImplTest {
     // The wifiNetwork should still be the active network.
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
         .isEqualTo(wifiNetwork);
-
-    // Verify that we publish the new ConnectionStatus of UNKNOWN_QUALITY only once as we only have
-    // 1
-    // network switch (initial switch) since the new network was not better.
-    ArgumentCaptor<ConnectionStatus> argConnectionStatus =
-        ArgumentCaptor.forClass(ConnectionStatus.class);
-    verify(mockListener)
-        .onNetworkStatusChanged(any(PpnNetwork.class), argConnectionStatus.capture());
-    assertThat(argConnectionStatus.getValue().getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
   }
 
   @Test
@@ -385,17 +364,6 @@ public final class PpnNetworkManagerImplTest {
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
         .isEqualTo(wifiNetwork);
     verify(mockListener).onNetworkAvailable(wifiNetwork);
-
-    // Verify that we publish the new ConnectionStatus of UNKNOWN_QUALITY twice as we have 2
-    // network switches: initial switch + new better network switch.
-    ArgumentCaptor<ConnectionStatus> argConnectionStatus =
-        ArgumentCaptor.forClass(ConnectionStatus.class);
-    verify(mockListener, times(2))
-        .onNetworkStatusChanged(any(PpnNetwork.class), argConnectionStatus.capture());
-    assertThat(argConnectionStatus.getAllValues().get(0).getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
-    assertThat(argConnectionStatus.getAllValues().get(1).getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
   }
 
   @Test
@@ -450,15 +418,6 @@ public final class PpnNetworkManagerImplTest {
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
         .isEqualTo(wifiNetwork);
-
-    // Verify that we publish the new ConnectionStatus of UNKNOWN_QUALITY as we have a network
-    // switch.
-    ArgumentCaptor<ConnectionStatus> argConnectionStatus =
-        ArgumentCaptor.forClass(ConnectionStatus.class);
-    verify(mockListener)
-        .onNetworkStatusChanged(any(PpnNetwork.class), argConnectionStatus.capture());
-    assertThat(argConnectionStatus.getValue().getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
   }
 
   @Test
@@ -513,15 +472,6 @@ public final class PpnNetworkManagerImplTest {
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
         .isEqualTo(wifiNetwork);
-
-    // Verify that we publish the new ConnectionStatus of UNKNOWN_QUALITY as we have a network
-    // switch.
-    ArgumentCaptor<ConnectionStatus> argConnectionStatus =
-        ArgumentCaptor.forClass(ConnectionStatus.class);
-    verify(mockListener)
-        .onNetworkStatusChanged(any(PpnNetwork.class), argConnectionStatus.capture());
-    assertThat(argConnectionStatus.getValue().getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
   }
 
   @Test
@@ -560,17 +510,6 @@ public final class PpnNetworkManagerImplTest {
 
     // We expect the wifiNetwork to have only been available ONCE from the beginning when added.
     verify(mockListener).onNetworkAvailable(wifiNetwork);
-
-    // Verify that we publish the new ConnectionStatus of UNKNOWN_QUALITY twice as we have 2
-    // network switches: initial switch + network switch due to active network lost.
-    ArgumentCaptor<ConnectionStatus> argConnectionStatus =
-        ArgumentCaptor.forClass(ConnectionStatus.class);
-    verify(mockListener, times(2))
-        .onNetworkStatusChanged(any(PpnNetwork.class), argConnectionStatus.capture());
-    assertThat(argConnectionStatus.getAllValues().get(0).getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
-    assertThat(argConnectionStatus.getAllValues().get(1).getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
   }
 
   @Test
@@ -609,15 +548,6 @@ public final class PpnNetworkManagerImplTest {
     // onNetworkAvailable should have only happened ONCE for wifiNetwork from earlier.
     // No additional calls
     verify(mockListener).onNetworkAvailable(wifiNetwork);
-
-    // Verify that we publish the new ConnectionStatus of UNKNOWN_QUALITY once due to initial
-    // network switch.
-    ArgumentCaptor<ConnectionStatus> argConnectionStatus =
-        ArgumentCaptor.forClass(ConnectionStatus.class);
-    verify(mockListener)
-        .onNetworkStatusChanged(any(PpnNetwork.class), argConnectionStatus.capture());
-    assertThat(argConnectionStatus.getValue().getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
   }
 
   @Test
@@ -635,18 +565,6 @@ public final class PpnNetworkManagerImplTest {
     assertThat(ppnNetworkManager.getAllNetworks()).isEmpty();
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork()).isNull();
     verify(mockListener).onNetworkUnavailable(NetworkUnavailableReason.UNKNOWN);
-
-    // Verify that we publish the new ConnectionStatus 2 times:
-    //  1. When we did a network switch. ConnectionQuality should be UNKNOWN_QUALITY.
-    //  2. When we lost our last available network. ConnectionQuality should be NO_SIGNAL.
-    ArgumentCaptor<ConnectionStatus> argConnectionStatus =
-        ArgumentCaptor.forClass(ConnectionStatus.class);
-    verify(mockListener, times(2))
-        .onNetworkStatusChanged(any(PpnNetwork.class), argConnectionStatus.capture());
-    assertThat(argConnectionStatus.getAllValues().get(0).getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
-    assertThat(argConnectionStatus.getAllValues().get(1).getQuality())
-        .isEqualTo(ConnectionQuality.NO_SIGNAL);
   }
 
   @Test
@@ -708,15 +626,6 @@ public final class PpnNetworkManagerImplTest {
     assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getConnectionQuality())
         .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
     verify(mockListener).onNetworkAvailable(wifiNetwork);
-
-    // Verify that we publish the new ConnectionStatus of UNKNOWN_QUALITY when a new Network is
-    // available.
-    ArgumentCaptor<ConnectionStatus> argConnectionStatus =
-        ArgumentCaptor.forClass(ConnectionStatus.class);
-    verify(mockListener)
-        .onNetworkStatusChanged(any(PpnNetwork.class), argConnectionStatus.capture());
-    assertThat(argConnectionStatus.getValue().getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
   }
 
   @Test
@@ -753,21 +662,6 @@ public final class PpnNetworkManagerImplTest {
     shadowWifiNetworkCapabilities.addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
 
     await(ppnNetworkManager.handleNetworkCapabilitiesChanged(wifiNetwork, wifiNetworkCapabilities));
-
-    // Verify that the ConnectionStatus object has an UPDATED ConnectionQuality of FAIR, as
-    // according to the RSSI we mocked to return.
-    ArgumentCaptor<ConnectionStatus> argConnectionStatus =
-        ArgumentCaptor.forClass(ConnectionStatus.class);
-
-    // We expect 2 status change listener calls:
-    //  1. When we did a network switch. ConnectionQuality should be UNKNOWN_QUALITY
-    //  2. When we got a new NetworkCapabilityChange. ConnectionQuality should be FAIR.
-    verify(mockListener, times(2))
-        .onNetworkStatusChanged(any(PpnNetwork.class), argConnectionStatus.capture());
-    assertThat(argConnectionStatus.getAllValues().get(0).getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
-    assertThat(argConnectionStatus.getAllValues().get(1).getQuality())
-        .isEqualTo(ConnectionQuality.FAIR);
   }
 
   @Test
@@ -806,15 +700,6 @@ public final class PpnNetworkManagerImplTest {
 
     await(ppnNetworkManager.handleNetworkCapabilitiesChanged(wifiNetwork, wifiNetworkCapabilities));
     shadowOf(Looper.getMainLooper()).idle();
-
-    // Verify that the we only publish a NetworkStatus change ONCE for the initial NetworkSwitch.
-    // And that we do NOT publish another NetworkStatus change as the status change is the same.
-    ArgumentCaptor<ConnectionStatus> argConnectionStatus =
-        ArgumentCaptor.forClass(ConnectionStatus.class);
-    verify(mockListener)
-        .onNetworkStatusChanged(any(PpnNetwork.class), argConnectionStatus.capture());
-    assertThat(argConnectionStatus.getValue().getQuality())
-        .isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);
   }
 
   @Test

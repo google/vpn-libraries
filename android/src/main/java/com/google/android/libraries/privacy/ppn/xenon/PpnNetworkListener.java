@@ -14,8 +14,6 @@
 
 package com.google.android.libraries.privacy.ppn.xenon;
 
-import com.google.android.libraries.privacy.ppn.internal.ConnectionStatus;
-
 /**
  * A callback listener for PpnNetworks. Whenever a new network is available, as deemed by Xenon, it
  * will call here so that interested services can get a callback.
@@ -40,12 +38,4 @@ public interface PpnNetworkListener {
    * @param reason Reason all networks are unavailable.
    */
   void onNetworkUnavailable(NetworkUnavailableReason reason);
-
-  /**
-   * Called when there is a Network Status Change.
-   *
-   * @param ppnNetwork The Network we are publishing the ConnectionStatus for.
-   * @param connectionStatus The current ConnectionStatus of the PpnNetwork.
-   */
-  void onNetworkStatusChanged(PpnNetwork ppnNetwork, ConnectionStatus connectionStatus);
 }
