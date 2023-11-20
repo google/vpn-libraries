@@ -291,9 +291,15 @@ void PPNDatapath::HandleHealthCheckTimerExpired() {
       LOG(INFO) << "HealthCheck timeout occurred after it was cancelled";
       return;
     }
+    // Notify Krypton of health check attempt.
+    auto* notification = notification_;
+    notification_thread_->Post([notification]() { notification->DatapathHealthCheckStarting(); });
     SaveHealthCheckInfo(status.ok());
     LOG(INFO) << "HealthCheck finished with status: " << status;
     if (status.ok()) {
+      auto* notification = notification_;
+      notification_thread_->Post(
+          [notification]() { notification->DatapathHealthCheckSucceeded(); });
       StartHealthCheckTimer();
       return;
     }

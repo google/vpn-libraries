@@ -55,6 +55,14 @@ class TestNotification : public DatapathInterface::NotificationInterface {
     return AddExpectation(@"DatapathPermanentFailure", _permanentFailureExpectations);
   }
 
+  XCTestExpectation *ExpectHealthCheckStarting() {
+    return AddExpectation(@"HealthCheckStarting", _healthCheckStartedExpectations);
+  }
+
+  XCTestExpectation *ExpectHealthCheckSucceeded() {
+    return AddExpectation(@"HealthCheckSucceeded", _healthCheckSucceededExpectations);
+  }
+
   void DatapathEstablished() override {
     FulfillExpectation(@"DatapathEstablished", _establishedExpectations);
   }
@@ -73,9 +81,13 @@ class TestNotification : public DatapathInterface::NotificationInterface {
 
   void DoDownlinkMtuUpdate(int downlink_mtu) override {}
 
-  void DatapathHealthCheckSucceeded() override {}
+  void DatapathHealthCheckSucceeded() override {
+    FulfillExpectation(@"HealthCheckSucceeded", _healthCheckSucceededExpectations);
+  }
 
-  void DatapathHealthCheckStarting() override {}
+  void DatapathHealthCheckStarting() override {
+    FulfillExpectation(@"HealthCheckStarting", _healthCheckStartedExpectations);
+  }
 
   void VerifyNoMoreNotifications() {
     if (_unexpectedNotifications.count > 0) {
@@ -106,6 +118,8 @@ class TestNotification : public DatapathInterface::NotificationInterface {
   NSMutableArray<XCTestExpectation *> *_establishedExpectations = [NSMutableArray array];
   NSMutableArray<XCTestExpectation *> *_failedExpectations = [NSMutableArray array];
   NSMutableArray<XCTestExpectation *> *_permanentFailureExpectations = [NSMutableArray array];
+  NSMutableArray<XCTestExpectation *> *_healthCheckStartedExpectations = [NSMutableArray array];
+  NSMutableArray<XCTestExpectation *> *_healthCheckSucceededExpectations = [NSMutableArray array];
   NSMutableArray<NSString *> *_unexpectedNotifications = [NSMutableArray array];
 };
 
@@ -364,6 +378,7 @@ KryptonConfig CreateTestConfig() {
 
   // Simulate some network traffic, so that we know everything is running.
   XCTestExpectation *established = _notification->ExpectDatapathEstablished();
+  XCTestExpectation *starting = _notification->ExpectHealthCheckStarting();
 
   // Make a fake packet to send back to the datapath from the backend.
   ASSERT_OK_AND_ASSIGN(auto encryptor,
@@ -394,10 +409,109 @@ KryptonConfig CreateTestConfig() {
   XCTestExpectation *failed = _notification->ExpectDatapathFailed();
   _timerInterface->TimerExpiry(1);
   _VPNService->FulfillHealthCheck(absl::UnknownError("test error"));
+  [self waitForExpectations:@[ starting ] timeout:kTimeout];
   [self waitForExpectations:@[ failed ] timeout:kTimeout];
 
   LOG(INFO) << "Stopping datapath...";
   _datapath->Stop();
+}
+
+- (void)testHealthCheckSucceeded {
+  ::privacy::krypton::TransformParams params;
+  params.mutable_ipsec()->set_uplink_key(std::string(32, 'z'));
+  params.mutable_ipsec()->set_downlink_key(std::string(32, 'z'));
+  params.mutable_ipsec()->set_uplink_salt(std::string(4, 'a'));
+  params.mutable_ipsec()->set_downlink_salt(std::string(4, 'a'));
+
+  LOG(INFO) << "Starting datapath...";
+  XCTAssertTrue(_datapath->Start(_fakeAddEgressResponse, params).ok());
+
+  // Simulate some network traffic, so that we know everything is running.
+  XCTestExpectation *established = _notification->ExpectDatapathEstablished();
+  XCTestExpectation *starting = _notification->ExpectHealthCheckStarting();
+
+  // Make a fake packet to send back to the datapath from the backend.
+  ASSERT_OK_AND_ASSIGN(auto encryptor,
+                       privacy::krypton::datapath::ipsec::Encryptor::Create(2, params));
+  privacy::krypton::Packet unencrypted("foo", 3, privacy::krypton::IPProtocol::kIPv4, [] {});
+  ASSERT_OK_AND_ASSIGN(auto encrypted, encryptor->Process(unencrypted));
+  NSArray<NSData *> *datagrams = @[ [NSData dataWithBytes:encrypted.data().data()
+                                                   length:encrypted.data().size()] ];
+
+  // Set up the mock pipe to receive the packet
+  OCMExpect([_mockUDPSession state]).andReturn(NWUDPSessionStateReady);
+  OCMStub([_mockUDPSession
+      setReadHandler:([OCMArg invokeBlockWithArgs:datagrams, [NSNull null], nil])
+        maxDatagrams:64]);
+  OCMExpect([_mockPacketTunnelFlow writePacketObjects:[OCMArg any]]).andReturn(YES);
+  privacy::krypton::Endpoint endpoint{"192.0.2.0:8080", "192.0.2.0", 8080,
+                                      privacy::krypton::IPProtocol::kIPv4};
+  privacy::krypton::NetworkInfo network_info;
+  LOG(INFO) << "Switching network...";
+  XCTAssertTrue(_datapath->SwitchNetwork(1, endpoint, network_info, 1).ok());
+
+  // Wait for the datapath to be connected.
+  LOG(INFO) << "Waiting for establishment...";
+  [self waitForExpectations:@[ established ] timeout:kTimeout];
+
+  // Verify that the passing health check triggers a notification.
+  LOG(INFO) << "Attempting health check...";
+  XCTestExpectation *succeeded = _notification->ExpectHealthCheckSucceeded();
+  _timerInterface->TimerExpiry(1);
+  _VPNService->FulfillHealthCheck(absl::OkStatus());
+  [self waitForExpectations:@[ starting ] timeout:kTimeout];
+  [self waitForExpectations:@[ succeeded ] timeout:kTimeout];
+
+  LOG(INFO) << "Stopping datapath...";
+  _datapath->Stop();
+}
+
+- (void)testNoHealthCheckNotificationsIfCancelled {
+  ::privacy::krypton::TransformParams params;
+  params.mutable_ipsec()->set_uplink_key(std::string(32, 'z'));
+  params.mutable_ipsec()->set_downlink_key(std::string(32, 'z'));
+  params.mutable_ipsec()->set_uplink_salt(std::string(4, 'a'));
+  params.mutable_ipsec()->set_downlink_salt(std::string(4, 'a'));
+
+  LOG(INFO) << "Starting datapath...";
+  XCTAssertTrue(_datapath->Start(_fakeAddEgressResponse, params).ok());
+
+  // Simulate some network traffic, so that we know everything is running.
+  XCTestExpectation *established = _notification->ExpectDatapathEstablished();
+
+  // Make a fake packet to send back to the datapath from the backend.
+  ASSERT_OK_AND_ASSIGN(auto encryptor,
+                       privacy::krypton::datapath::ipsec::Encryptor::Create(2, params));
+  privacy::krypton::Packet unencrypted("foo", 3, privacy::krypton::IPProtocol::kIPv4, [] {});
+  ASSERT_OK_AND_ASSIGN(auto encrypted, encryptor->Process(unencrypted));
+  NSArray<NSData *> *datagrams = @[ [NSData dataWithBytes:encrypted.data().data()
+                                                   length:encrypted.data().size()] ];
+
+  // Set up the mock pipe to receive the packet
+  OCMExpect([_mockUDPSession state]).andReturn(NWUDPSessionStateReady);
+  OCMStub([_mockUDPSession
+      setReadHandler:([OCMArg invokeBlockWithArgs:datagrams, [NSNull null], nil])
+        maxDatagrams:64]);
+  OCMExpect([_mockPacketTunnelFlow writePacketObjects:[OCMArg any]]).andReturn(YES);
+  privacy::krypton::Endpoint endpoint{"192.0.2.0:8080", "192.0.2.0", 8080,
+                                      privacy::krypton::IPProtocol::kIPv4};
+  privacy::krypton::NetworkInfo network_info;
+  LOG(INFO) << "Switching network...";
+  XCTAssertTrue(_datapath->SwitchNetwork(1, endpoint, network_info, 1).ok());
+
+  // Wait for the datapath to be connected.
+  LOG(INFO) << "Waiting for establishment...";
+  [self waitForExpectations:@[ established ] timeout:kTimeout];
+
+  // Cancel HealthCheck timer by stopping datapath.
+  LOG(INFO) << "Stopping datapath...";
+  _datapath->Stop();
+
+  // HealthCheck timer expires without notifying start of health check, because
+  // the health check isn't started if the timer is canceled.
+  _timerInterface->TimerExpiry(1);
+  _VPNService->FulfillHealthCheck(absl::OkStatus());
+  _notification->VerifyNoMoreNotifications();
 }
 
 - (void)testSwitchNetworkWhenHealthCheckIsInProgress {
@@ -513,6 +627,7 @@ KryptonConfig CreateTestConfig() {
 
   // Simulate some network traffic, so that we know everything is running.
   XCTestExpectation *established = _notification->ExpectDatapathEstablished();
+  XCTestExpectation *starting = _notification->ExpectHealthCheckStarting();
 
   // Make a fake packet to send back to the datapath from the backend.
   ASSERT_OK_AND_ASSIGN(auto encryptor,
@@ -543,6 +658,7 @@ KryptonConfig CreateTestConfig() {
   XCTestExpectation *failed = _notification->ExpectDatapathFailed();
   _timerInterface->TimerExpiry(1);
   _VPNService->FulfillHealthCheck(absl::UnknownError("test error"));
+  [self waitForExpectations:@[ starting ] timeout:kTimeout];
   [self waitForExpectations:@[ failed ] timeout:kTimeout];
 
   // Get debug info from datapath.
