@@ -31,6 +31,6 @@ int main(int argc, char* argv[]) {
 
   // NetworkMonitor will log all changes to IP interfaces.
   LOG(INFO) << "NetworkMonitor started. Hit any key to stop...";
-  auto ch = getchar();
+  (void)getchar();
   monitor.Stop();
 }

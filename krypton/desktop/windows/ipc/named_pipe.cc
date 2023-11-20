@@ -103,7 +103,7 @@ absl::Status NamedPipe::IpcSendSyncMessage(
   DWORD last_error = GetLastError();
   switch (last_error) {
     case ERROR_IO_PENDING: {
-      WaitOnHandles(stop_pipe_event_, write_state_.hEvent);
+      (void)WaitOnHandles(stop_pipe_event_, write_state_.hEvent);
       if (!GetOverlappedResult(pipe_, &write_state_, &bytes_written, false)) {
         return privacy::krypton::windows::utils::GetStatusForError(
             "Failed waiting for client to connect with error", GetLastError());
@@ -165,7 +165,7 @@ absl::StatusOr<std::string> NamedPipe::ReadSync(LPOVERLAPPED overlapped) {
                   message.size()),
               last_error);
         }
-        WaitOnHandles(stop_pipe_event_, overlapped->hEvent);
+        (void)WaitOnHandles(stop_pipe_event_, overlapped->hEvent);
         continue;
       } else {
         return privacy::krypton::windows::utils::GetStatusForError(

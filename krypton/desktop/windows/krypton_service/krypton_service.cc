@@ -97,7 +97,7 @@ void KryptonService::ServiceMain(DWORD dwArgc, LPTSTR* lpszArgv) {
   if (dwArgc > 1) {
     auto local_app_data_dir = std::filesystem::path(lpszArgv[1]);
     auto debug_log_dir = local_app_data_dir / kDebugLogFolderName;
-    utils::CreateDirectoryRecursively(debug_log_dir);
+    (void)utils::CreateDirectoryRecursively(debug_log_dir);
     krypton_service_->logger_ =
         std::make_unique<FileLogger>(debug_log_dir, kDebugFilePrefix);
     krypton_service_->log_sink_ =
@@ -136,8 +136,9 @@ void KryptonService::ServiceMain(DWORD dwArgc, LPTSTR* lpszArgv) {
   krypton_service_->InitializeKrypton();
   LOG(INFO) << "Krypton initialised successfully";
 
-  krypton_service_->ipc_looper_.Post(
-      [] { krypton_service_->app_to_service_pipe_ipc_handler_->PollOnPipe(); });
+  krypton_service_->ipc_looper_.Post([] {
+    (void)krypton_service_->app_to_service_pipe_ipc_handler_->PollOnPipe();
+  });
 
   krypton_service_->ReportServiceStatus(SERVICE_RUNNING, NO_ERROR, 1000);
 
@@ -239,7 +240,7 @@ void KryptonService::SetServiceToAppIpcHandler(NamedPipeInterface* pipe) {
 }
 
 void KryptonService::Start(const KryptonConfig& config) {
-  auto ppn_notification = ppn_notification_.get();
+  (void)ppn_notification_.get();
   ppn_telemetry_manager_->NotifyStarted();
   {
     absl::MutexLock lock(&mutex_);

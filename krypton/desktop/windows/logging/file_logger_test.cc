@@ -147,7 +147,7 @@ TEST_F(FileLoggerTest, NonExistentDirectoryNoLogsAreWritten) {
 // Keep this test in the last as new directory is created
 TEST_F(FileLoggerTest, CorrectOrderOfLogsWithFolderHavingSpecialCharacter) {
   std::wstring debug_directory_japanese = debug_directory_ + L"/" + L"要らない";
-  privacy::krypton::windows::utils::CreateDirectoryRecursively(
+  (void)privacy::krypton::windows::utils::CreateDirectoryRecursively(
       debug_directory_japanese);
   FileLogger file_logger(debug_directory_japanese, "Log");
   auto clear_log_result = file_logger.ClearLogs();

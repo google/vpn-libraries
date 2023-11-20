@@ -48,7 +48,7 @@ class PpnServiceTest : public ::testing::Test {
 TEST_F(PpnServiceTest, PpnServiceCreateFailsFatalOnPipes) {
   ON_CALL(mock_named_pipe_factory_, CreateNamedPipeInstance(testing::_))
       .WillByDefault([] { return absl::InternalError(""); });
-  EXPECT_DEATH(windows::PpnService::Create(nullptr, nullptr, nullptr,
+  EXPECT_DEATH((void)windows::PpnService::Create(nullptr, nullptr, nullptr,
                                            mock_named_pipe_factory_),
                testing::HasSubstr("Check failed: app_to_service_pipe"));
 }
@@ -63,7 +63,7 @@ TEST_F(PpnServiceTest, PpnServiceCreateFailsFatalOnService) {
       .WillByDefault([] { return std::make_unique<NamedPipe>(); });
 
   EXPECT_DEATH(
-      windows::PpnService::Create(nullptr, nullptr, nullptr,
+      (void)windows::PpnService::Create(nullptr, nullptr, nullptr,
                                   mock_named_pipe_factory_),
       testing::HasSubstr("Failed to create a service handle with error"));
 }

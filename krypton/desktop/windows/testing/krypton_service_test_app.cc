@@ -145,13 +145,13 @@ int main(int argc, char* argv[]) {
         status->set_code(google::rpc::Code::OK);
         response.mutable_response()->set_allocated_status(status);
       }
-      service_to_app_named_pipe->IpcSendSyncMessage(response);
+      (void)service_to_app_named_pipe->IpcSendSyncMessage(response);
       LOG(INFO) << "Sent a message." << response.DebugString();
     }
   });
 
   LOG(INFO) << "Client App is running. Press any key to stop....";
-  auto ch = getchar();
+  (void)getchar();
   SetEvent(close_loop_event);
   client_thread->Stop();
   client_thread->Join();

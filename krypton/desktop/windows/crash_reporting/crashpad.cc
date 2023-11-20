@@ -61,7 +61,7 @@ bool CrashReporting::StartCrashHandler() {
 
   auto local_app_data_dir = utils::CreateLocalAppDataPath();
   auto crash_db_path = local_app_data_dir.value() / kCrashFolderName;
-  utils::CreateDirectoryRecursively(crash_db_path);
+  (void)utils::CreateDirectoryRecursively(crash_db_path);
 
   auto googleone_directory_path_temp_buffer = GetExecutableDirectoryPath();
   std::filesystem::path googleone_directory_path(

@@ -107,10 +107,12 @@ void PpnService::StartWithKryptonService(const KryptonConfig& config) {
       [ppn_notification] { ppn_notification->PpnStarted(); });
   auto app_to_service_pipe = app_to_service_pipe_.get();
   auto service_to_app_pipe = service_to_app_pipe_.get();
-  app_to_service_looper_.Post(
-      [app_to_service_pipe] { app_to_service_pipe->WaitForClientToConnect(); });
-  service_to_app_looper_.Post(
-      [service_to_app_pipe] { service_to_app_pipe->WaitForClientToConnect(); });
+  app_to_service_looper_.Post([app_to_service_pipe] {
+    (void)app_to_service_pipe->WaitForClientToConnect();
+  });
+  service_to_app_looper_.Post([service_to_app_pipe] {
+    (void)service_to_app_pipe->WaitForClientToConnect();
+  });
   absl::Status status = manager_->StartKryptonService();
   if (!status.ok()) {
     ppn_notification_looper_->Post(
@@ -189,10 +191,10 @@ void PpnService::StopWithKryptonService(const absl::Status& status) {
   service_to_app_pipe_handler_->Stop();
 
   app_to_service_looper_.Post([app_to_service_pipe] {
-    app_to_service_pipe->WaitForClientToDisconnect();
+    (void)app_to_service_pipe->WaitForClientToDisconnect();
   });
   service_to_app_looper_.Post([service_to_app_pipe] {
-    service_to_app_pipe->WaitForClientToDisconnect();
+    (void)service_to_app_pipe->WaitForClientToDisconnect();
   });
 
   absl::Status stop_status = manager_->StopKryptonService();
@@ -210,7 +212,7 @@ void PpnService::StopWithKryptonService(const absl::Status& status) {
 
 absl::StatusOr<desktop::PpnTelemetry> PpnService::CollectTelemetry() {
   LOG(INFO) << "PpnService(C++): PpnService.CollectTelemetry method invoked";
-  auto app_to_service_pipe = app_to_service_pipe_.get();
+  (void)app_to_service_pipe_.get();
 
   desktop::KryptonControlMessage request;
   request.set_type(desktop::KryptonControlMessage::COLLECT_TELEMETRY);
@@ -234,7 +236,7 @@ absl::StatusOr<desktop::PpnTelemetry> PpnService::CollectTelemetry() {
 
 absl::Status PpnService::SetIpGeoLevel(ppn::IpGeoLevel level) {
   LOG(INFO) << "PpnService(C++): PpnService.SetIpGeoLevel method invoked";
-  auto app_to_service_pipe = app_to_service_pipe_.get();
+  (void)app_to_service_pipe_.get();
 
   desktop::KryptonControlMessage request;
   request.set_type(desktop::KryptonControlMessage::SET_IP_GEO_LEVEL);
@@ -273,10 +275,10 @@ void PpnService::ServiceStopped() {
   auto service_to_app_pipe = service_to_app_pipe_.get();
 
   app_to_service_looper_.Post([app_to_service_pipe] {
-    app_to_service_pipe->WaitForClientToDisconnect();
+    (void)app_to_service_pipe->WaitForClientToDisconnect();
   });
   service_to_app_looper_.Post([service_to_app_pipe] {
-    service_to_app_pipe->WaitForClientToDisconnect();
+    (void)service_to_app_pipe->WaitForClientToDisconnect();
   });
 
   absl::MutexLock l(&mutex_);
@@ -303,13 +305,13 @@ void PpnService::HandlePipeFailure(const absl::Status& status) {
   service_to_app_pipe_handler_->Stop();
 
   app_to_service_looper_.Post([app_to_service_pipe] {
-    app_to_service_pipe->WaitForClientToDisconnect();
+    (void)app_to_service_pipe->WaitForClientToDisconnect();
   });
   service_to_app_looper_.Post([service_to_app_pipe] {
-    service_to_app_pipe->WaitForClientToDisconnect();
+    (void)service_to_app_pipe->WaitForClientToDisconnect();
   });
 
-  manager_->StopKryptonService();
+  (void)manager_->StopKryptonService();
   absl::Status ipc_failure_status = absl::InternalError("IPC failure");
   ppn::PpnStatusDetails details;
   details.set_detailed_error_code(ppn::PpnStatusDetails::IPC_FAILURE);

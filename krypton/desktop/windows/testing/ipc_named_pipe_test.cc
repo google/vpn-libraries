@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
   });
 
   LOG(INFO) << "Ipc Named Pipe Test is running. Press any key to stop....";
-  auto ch = getchar();
+  (void)getchar();
   client_thread->Stop();
   client_thread->Join();
   server_thread->Stop();

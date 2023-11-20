@@ -175,7 +175,7 @@ absl::Status RioSocket::Close() {
 
 absl::StatusOr<std::vector<Packet>> RioSocket::ReadPackets() {
   // Call RIONotify to receive notifications when a completion occurs.
-  int notify_result = rio_table_.RIONotify(receive_completion_queue_);
+  (void)rio_table_.RIONotify(receive_completion_queue_);
 
   // Wait on completion event and stop event.
   HANDLE handles[2] = {close_handle_, receive_completion_.Event.EventHandle};

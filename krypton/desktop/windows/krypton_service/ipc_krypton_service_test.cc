@@ -108,7 +108,7 @@ TEST_F(IpcKryptonServiceTest, TestReadAndWriteToPipe_ValidStartKryptonMessage) {
   EXPECT_CALL(mock_ppn_service, Start(testing::_)).Times(1);
   ON_CALL(mock_named_pipe, IpcReadSyncMessage())
       .WillByDefault(testing::Return(request));
-  ipc_krypton_service->ReadAndWriteToPipe();
+  (void)ipc_krypton_service->ReadAndWriteToPipe();
 }
 
 TEST_F(IpcKryptonServiceTest, TestReadAndWriteToPipe_SendToPipeFailed) {
