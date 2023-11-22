@@ -130,10 +130,8 @@ public final class PpnNetworkValidatorTest {
     await(ppnNetworkValidator.validateNetwork(cellPpnNetwork));
 
     verify(networkValidationListener).validationPassed(eq(cellPpnNetwork), eq(AddressFamily.V4V6));
-    verify(mockHttpFetcher, never())
-        .checkGet(CONNECTIVITY_CHECK_URL, cellAndroidNetwork, AddressFamily.V4);
-    verify(mockHttpFetcher, never())
-        .checkGet(CONNECTIVITY_CHECK_URL, cellAndroidNetwork, AddressFamily.V6);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, cellAndroidNetwork, AddressFamily.V4);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, cellAndroidNetwork, AddressFamily.V6);
   }
 
   @Test

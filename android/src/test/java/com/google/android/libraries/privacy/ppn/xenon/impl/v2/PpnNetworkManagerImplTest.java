@@ -261,10 +261,8 @@ public final class PpnNetworkManagerImplTest {
     assertThat(activeNetwork).isEqualTo(cellularNetwork);
     assertThat(activeNetwork.getAddressFamily()).isEqualTo(AddressFamily.V4V6);
 
-    verify(mockHttpFetcher, times(0))
-        .checkGet(CONNECTIVITY_CHECK_URL, cellAndroidNetwork, AddressFamily.V4);
-    verify(mockHttpFetcher, times(0))
-        .checkGet(CONNECTIVITY_CHECK_URL, cellAndroidNetwork, AddressFamily.V6);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, cellAndroidNetwork, AddressFamily.V4);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, cellAndroidNetwork, AddressFamily.V6);
   }
 
   @Test

@@ -26,7 +26,6 @@ import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.gms.tasks.Tasks;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
-import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.android.libraries.privacy.ppn.xenon.PpnNetwork;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -304,27 +303,23 @@ final class PpnNetworkValidator {
       socket.close();
     }
 
-    // If this is a WiFi network, try a reachability check on that network.
-    if (ppnNetwork.getNetworkType() == NetworkType.WIFI) {
-      Log.w(TAG, String.format("Checking WiFi Connectivity for network %s", ppnNetwork));
-      boolean pingSuccessful =
-          httpFetcher.checkGet(
-              ppnOptions.getConnectivityCheckUrl(), ppnNetwork.getNetwork(), addressFamily);
+    // Try a reachability check on the network.
+    Log.w(TAG, String.format("Checking connectivity for network %s", ppnNetwork));
+    boolean pingSuccessful =
+        httpFetcher.checkGet(
+            ppnOptions.getConnectivityCheckUrl(), ppnNetwork.getNetwork(), addressFamily);
 
-      if (!pingSuccessful) {
-        Log.w(
-            TAG,
-            String.format(
-                "PpnNetwork %s FAILS WiFi Connectivity check (%s).",
-                ppnNetwork, addressFamily.name()));
-        return false;
-      }
+    if (!pingSuccessful) {
       Log.w(
           TAG,
           String.format(
-              "PpnNetwork %s PASSES WiFi Connectivity check (%s).",
-              ppnNetwork, addressFamily.name()));
+              "PpnNetwork %s FAILS connectivity check (%s).", ppnNetwork, addressFamily.name()));
+      return false;
     }
+    Log.w(
+        TAG,
+        String.format(
+            "PpnNetwork %s PASSES connectivity check (%s).", ppnNetwork, addressFamily.name()));
 
     Log.w(TAG, String.format("PpnNetwork %s CAN connect to Internet.", ppnNetwork));
     return true;
