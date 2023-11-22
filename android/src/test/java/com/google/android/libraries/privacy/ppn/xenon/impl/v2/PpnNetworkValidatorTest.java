@@ -334,6 +334,38 @@ public final class PpnNetworkValidatorTest {
   }
 
   @Test
+  public void validateNetwork_validationNotHandledIfClearNetworkValidationCalled()
+      throws Exception {
+    ConditionVariable checkGetStarted = new ConditionVariable(false);
+    ConditionVariable clearValidationCalled = new ConditionVariable(false);
+    when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6))
+        .thenAnswer(
+            invocation -> {
+              checkGetStarted.open();
+              clearValidationCalled.block();
+              return true;
+            });
+
+    Task<Boolean> task = ppnNetworkValidator.validateNetwork(wifiPpnNetwork);
+    checkGetStarted.block();
+    ppnNetworkValidator.clearNetworkValidation(wifiPpnNetwork);
+    clearValidationCalled.open();
+    assertThat(await(task)).isFalse();
+
+    verify(networkValidationListener, never()).validationPassed(any(), any());
+  }
+
+  @Test
+  public void validateNetwork_willNotValidateNetworkTwice() throws Exception {
+    assertThat(await(ppnNetworkValidator.validateNetwork(wifiPpnNetwork))).isTrue();
+    assertThat(await(ppnNetworkValidator.validateNetwork(wifiPpnNetwork))).isTrue();
+
+    verify(networkValidationListener).validationPassed(any(), any());
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
+    verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
+  }
+
+  @Test
   public void validateNetwork_withSuccessfulValidation_resultIsTrue() throws Exception {
     assertThat(await(ppnNetworkValidator.validateNetwork(wifiPpnNetwork))).isTrue();
   }
@@ -347,7 +379,7 @@ public final class PpnNetworkValidatorTest {
   }
 
   @Test
-  public void cancelPendingValidations_cancelsAllPendingValidations() throws Exception {
+  public void clearNetworkValidation_cancelsAllPendingValidations() throws Exception {
     ConditionVariable checkGetStarted = new ConditionVariable(false);
     when(mockHttpFetcher.checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4))
         .thenReturn(false);
@@ -360,12 +392,25 @@ public final class PpnNetworkValidatorTest {
 
     Task<Boolean> task = ppnNetworkValidator.validateNetwork(wifiPpnNetwork);
     checkGetStarted.block();
-    ppnNetworkValidator.cancelPendingValidations(wifiPpnNetwork);
+    ppnNetworkValidator.clearNetworkValidation(wifiPpnNetwork);
     await(task);
 
     verify(networkValidationListener, never()).validationPassed(any(), any());
     verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
     verify(mockHttpFetcher).checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
+  }
+
+  @Test
+  public void clearNetworkValidation_allowsNetworkToBeValidatedAgain() throws Exception {
+    await(ppnNetworkValidator.validateNetwork(wifiPpnNetwork));
+    ppnNetworkValidator.clearNetworkValidation(wifiPpnNetwork);
+    await(ppnNetworkValidator.validateNetwork(wifiPpnNetwork));
+
+    verify(networkValidationListener, times(2)).validationPassed(eq(wifiPpnNetwork), any());
+    verify(mockHttpFetcher, times(2))
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
+    verify(mockHttpFetcher, times(2))
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
   }
 
   /**

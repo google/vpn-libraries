@@ -154,6 +154,7 @@ final class PpnNetworkManagerImpl
   public void stopNetworkRequests() {
     synchronized (lock) {
       Log.w(TAG, "Stopping NetworkRequests");
+      ppnNetworkValidator.clearAllNetworkValidation();
       pendingNetworks.clear();
       releaseAllNetworkRequests();
       clearState();
@@ -187,6 +188,8 @@ final class PpnNetworkManagerImpl
   public void handleNetworkLost(PpnNetwork ppnNetwork) {
     synchronized (lock) {
       Log.w(TAG, String.format("Network Lost with network: %s", ppnNetwork));
+
+      ppnNetworkValidator.clearNetworkValidation(ppnNetwork);
 
       // If the lost network is pending, remove it.
       if (pendingNetworks.contains(ppnNetwork)) {
@@ -308,6 +311,9 @@ final class PpnNetworkManagerImpl
       }
 
       Log.w(TAG, String.format("Deprioritizing Network %s", networkId));
+      // After deprioritizing we will remove the network validation for that network. The next time
+      // we see the NetworkCapabilities or LinkProperties change we will reevaluate it.
+      ppnNetworkValidator.clearNetworkValidation(ppnNetwork);
       removeNetwork(ppnNetwork);
       pendingNetworks.add(ppnNetwork);
       return true;

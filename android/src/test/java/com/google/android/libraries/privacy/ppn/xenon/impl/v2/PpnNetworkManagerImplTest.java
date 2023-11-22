@@ -566,6 +566,25 @@ public final class PpnNetworkManagerImplTest {
   }
 
   @Test
+  public void handleNetworkLost_clearsNetworkValidation() throws Exception {
+    PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
+    assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
+        .isEqualTo(wifiNetwork);
+    ppnNetworkManager.handleNetworkLost(wifiNetwork);
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
+    assertThat(((PpnNetworkManagerImpl) ppnNetworkManager).getActiveNetwork())
+        .isEqualTo(wifiNetwork);
+
+    // The network should have been validated twice since the original validation is cleared when
+    // the network is lost.
+    verify(mockHttpFetcher, times(2))
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
+    verify(mockHttpFetcher, times(2))
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
+  }
+
+  @Test
   public void testHandleNetworkCapabilitiesChanged() throws Exception {
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
     NetworkCapabilities wifiNetworkCapabilities = ShadowNetworkCapabilities.newInstance();
@@ -785,15 +804,13 @@ public final class PpnNetworkManagerImplTest {
   }
 
   @Test
-  public void testDeprioritize_noNetworks() {
+  public void deprioritize_noNetworks() {
     assertThat(ppnNetworkManager.deprioritize(createNetworkInfo(/* networkId= */ 12345L)))
         .isFalse();
   }
 
   @Test
-  public void testDeprioritize_onlyNetwork() {
-    final long networkId = 11111L;
-
+  public void deprioritize_incorrectNetworkId() {
     PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
 
     await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
@@ -801,15 +818,63 @@ public final class PpnNetworkManagerImplTest {
     assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
     verify(mockListener).onNetworkAvailable(wifiNetwork);
 
-    assertThat(ppnNetworkManager.deprioritize(createNetworkInfo(networkId))).isFalse();
+    assertThat(ppnNetworkManager.deprioritize(createNetworkInfo(/* networkId= */ 0))).isFalse();
   }
 
   @Test
-  public void testDeprioritize_success() {
-    // This is currently quite difficult to test as we cannot set the handle Network Id in the
-    // real Network test objects. But then if we use a mock network test object, we cannot set it up
-    // to return the necessary NetworkInfo via ConnectivityManager. Let's address later when we
-    // clean up Xenon so not every method triggers many state checks.
+  public void deprioritize_onlyNetworkNotDeprioritized() {
+    PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
+    long wifiNetworkId = wifiNetwork.getNetworkId();
+
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
+
+    assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
+    verify(mockListener).onNetworkAvailable(wifiNetwork);
+
+    assertThat(ppnNetworkManager.deprioritize(createNetworkInfo(wifiNetworkId))).isFalse();
+  }
+
+  @Test
+  public void deprioritize_deprioritizeRemovesNetworkFromAvailable() {
+    PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
+    PpnNetwork cellularNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR);
+    long wifiNetworkId = wifiNetwork.getNetworkId();
+
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
+    await(
+        ppnNetworkManager.handleNetworkLinkPropertiesChanged(
+            cellularNetwork, new LinkProperties()));
+    assertThat(ppnNetworkManager.getAllNetworks()).hasSize(2);
+
+    assertThat(ppnNetworkManager.deprioritize(createNetworkInfo(wifiNetworkId))).isTrue();
+    assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
+  }
+
+  @Test
+  public void deprioritize_deprioritizeClearsNetworkValidation() {
+    PpnNetwork wifiNetwork = new PpnNetwork(wifiAndroidNetwork, NetworkType.WIFI);
+    PpnNetwork cellularNetwork = new PpnNetwork(cellAndroidNetwork, NetworkType.CELLULAR);
+    long wifiNetworkId = wifiNetwork.getNetworkId();
+
+    await(ppnNetworkManager.handleNetworkAvailable(wifiNetwork));
+    await(ppnNetworkManager.handleNetworkAvailable(cellularNetwork));
+    await(
+        ppnNetworkManager.handleNetworkLinkPropertiesChanged(
+            cellularNetwork, new LinkProperties()));
+    assertThat(ppnNetworkManager.getAllNetworks()).hasSize(2);
+    assertThat(ppnNetworkManager.deprioritize(createNetworkInfo(wifiNetworkId))).isTrue();
+    assertThat(ppnNetworkManager.getAllNetworks()).hasSize(1);
+
+    await(ppnNetworkManager.handleNetworkLinkPropertiesChanged(wifiNetwork, new LinkProperties()));
+    assertThat(ppnNetworkManager.getAllNetworks()).hasSize(2);
+
+    // Verify that the network validation was cleared when it was deprioritized and that the network
+    // is validated twice.
+    verify(mockHttpFetcher, times(2))
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
+    verify(mockHttpFetcher, times(2))
+        .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
   }
 
   @Test
