@@ -96,6 +96,12 @@ func (bs *BinaryStruct) GetGeoHint() *tokentypes.GeoHint {
 	}
 }
 
+// String produces a stringified version of the extensions for debugging purposes.
+func (bs *BinaryStruct) String() string {
+	return fmt.Sprintf("{Version: %d\n ServiceType: %s\n Expiration: %s\n DebugMode: %s\n ProxyLayer: %s\n GeoHint (country): %s\n GeoHint (region): %s\n GeoHint (city): %s}",
+		bs.metadata.GetVersion(), bs.GetServiceType(), bs.GetExpiration().String(), bs.GetDebugMode().String(), bs.GetProxyLayer().String(), bs.GetGeoHint().Country, bs.GetGeoHint().Region, bs.GetGeoHint().City)
+}
+
 // NewBinaryFields contains all the data for creating a binary representation for public metadata.
 type NewBinaryFields struct {
 	Version     int32
