@@ -17,7 +17,7 @@
 
 #include <optional>
 
-#include "privacy/net/brass/rpc/brass.proto.h"
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
@@ -41,15 +41,15 @@ class AddEgressResponse {
 
   AddEgressResponse() = default;
 
-  absl::StatusOr<::privacy::ppn::PpnDataplaneResponse> ppn_dataplane_response()
-      const {
+  absl::StatusOr<net::common::proto::PpnDataplaneResponse>
+  ppn_dataplane_response() const {
     if (ppn_dataplane_response_ == std::nullopt) {
       return absl::FailedPreconditionError("No dataplane response found");
     }
     return *ppn_dataplane_response_;
   }
 
-  absl::StatusOr<::privacy::ppn::PpnIkeResponse> ike_response() const {
+  absl::StatusOr<net::common::proto::PpnIkeResponse> ike_response() const {
     if (ike_response_ == std::nullopt) {
       return absl::FailedPreconditionError("No IKE response found");
     }
@@ -64,10 +64,11 @@ class AddEgressResponse {
   absl::Status DecodeJsonBody(nlohmann::json json_obj);
 
   // PPN data plane response.
-  std::optional<::privacy::ppn::PpnDataplaneResponse> ppn_dataplane_response_;
+  std::optional<net::common::proto::PpnDataplaneResponse>
+      ppn_dataplane_response_;
 
   // IKE response.
-  std::optional<::privacy::ppn::PpnIkeResponse> ike_response_;
+  std::optional<net::common::proto::PpnIkeResponse> ike_response_;
 
   absl::Status parsing_status_ =
       absl::UnknownError("Initialized, no parsing status set");

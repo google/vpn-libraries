@@ -22,7 +22,7 @@
 #include <string>
 #include <utility>
 
-#include "privacy/net/brass/rpc/brass.proto.h"
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/common/proto/update_path_info.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
@@ -118,11 +118,11 @@ absl::StatusOr<TunFdData::IpRange> ProtoIpRange(absl::string_view ip_address) {
 }
 
 absl::StatusOr<TunFdData::IpRange> ToTunFdIpRange(
-    const privacy::ppn::IpRange& ip_range) {
+    const net::common::proto::IpRange& ip_range) {
   switch (ip_range.ip_case()) {
-    case privacy::ppn::IpRange::kIpv4Range:
+    case net::common::proto::IpRange::kIpv4Range:
       return ProtoIpRange(ip_range.ipv4_range());
-    case privacy::ppn::IpRange::kIpv6Range:
+    case net::common::proto::IpRange::kIpv6Range:
       return ProtoIpRange(ip_range.ipv6_range());
     default:
       return absl::InvalidArgumentError("ip range is neither IPv4 nor IPv6");

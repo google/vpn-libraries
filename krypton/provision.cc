@@ -19,7 +19,7 @@
 #include <utility>
 
 #include "google/protobuf/timestamp.proto.h"
-#include "privacy/net/brass/rpc/brass.proto.h"
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/add_egress_response.h"
@@ -204,8 +204,8 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
   params.control_plane_sockaddr = control_plane_sockaddr_;
   params.is_rekey = is_rekey;
   params.suite = config_.cipher_suite_key_length() == 256
-                     ? ppn::PpnDataplaneRequest::AES256_GCM
-                     : ppn::PpnDataplaneRequest::AES128_GCM;
+                     ? net::common::proto::PpnDataplaneRequest::AES256_GCM
+                     : net::common::proto::PpnDataplaneRequest::AES128_GCM;
   params.dataplane_protocol = config_.datapath_protocol();
   // Always send the region token and sig even if it's empty.
   params.region_token_and_signature =

@@ -17,7 +17,7 @@
 #include <optional>
 #include <string>
 
-#include "privacy/net/brass/rpc/brass.proto.h"
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
@@ -96,7 +96,7 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
   ppn[JsonKeys::kDataplaneProtocol] =
       KryptonConfig::DatapathProtocol_Name(params.dataplane_protocol);
   ppn[JsonKeys::kSuite] =
-      ppn::PpnDataplaneRequest::CryptoSuite_Name(params.suite);
+      net::common::proto::PpnDataplaneRequest::CryptoSuite_Name(params.suite);
 
   ppn[JsonKeys::kControlPlaneSockAddr] = params.control_plane_sockaddr;
 

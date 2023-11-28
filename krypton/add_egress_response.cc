@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "privacy/net/brass/rpc/brass.proto.h"
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/utils/json_util.h"
@@ -37,8 +37,8 @@
 namespace privacy {
 namespace krypton {
 
-using privacy::ppn::PpnDataplaneResponse;
-using privacy::ppn::PpnIkeResponse;
+using net::common::proto::PpnDataplaneResponse;
+using net::common::proto::PpnIkeResponse;
 
 namespace {
 

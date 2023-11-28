@@ -18,7 +18,7 @@
 #include <memory>
 #include <string>
 
-#include "privacy/net/brass/rpc/brass.proto.h"
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "privacy/net/krypton/add_egress_request.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/json_keys.h"
@@ -256,7 +256,7 @@ TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
   params.crypto = crypto_.get();
   params.control_plane_sockaddr = "192.168.0.10:1849";
   params.dataplane_protocol = KryptonConfig::IPSEC;
-  params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
+  params.suite = net::common::proto::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;
   params.apn_type = "ppn";
 
@@ -299,7 +299,7 @@ TEST_F(EgressManagerTest, GetEgressNodeForPpnIpSecWithBerylliumFields) {
   params.crypto = crypto_.get();
   params.control_plane_sockaddr = "192.168.0.10:1849";
   params.dataplane_protocol = KryptonConfig::IPSEC;
-  params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
+  params.suite = net::common::proto::PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;
   params.apn_type = "ppn";
   params.country = "US";

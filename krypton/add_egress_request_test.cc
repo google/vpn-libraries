@@ -17,7 +17,7 @@
 #include <optional>
 #include <string>
 
-#include "privacy/net/brass/rpc/brass.proto.h"
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
@@ -32,6 +32,8 @@
 
 namespace privacy {
 namespace krypton {
+
+using net::common::proto::PpnDataplaneRequest;
 
 const char kCopperControlPlaneAddress[] = "192.168.0.10:1849";
 
@@ -60,7 +62,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
   params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
-  params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
+  params.suite = PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;
   params.blind_message = "raw message";
   params.unblinded_token_signature = "raw message signature";
@@ -118,7 +120,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
   params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
-  params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
+  params.suite = PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = false;
   params.blind_message = "raw message";
   params.unblinded_token_signature = "raw message signature";
@@ -169,7 +171,7 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
   params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
-  params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
+  params.suite = PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = true;
   params.signature = "some_signature";
   params.uplink_spi = 1234;
@@ -218,7 +220,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
-  params.suite = ppn::PpnDataplaneRequest::AES128_GCM;
+  params.suite = PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = true;
   params.signature = "some_signature";
   params.uplink_spi = 1234;

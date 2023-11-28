@@ -19,7 +19,7 @@
 #include <optional>
 #include <string>
 
-#include "privacy/net/brass/rpc/brass.proto.h"
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
@@ -46,7 +46,7 @@ class AddEgressRequest {
    public:
     const crypto::SessionCrypto* crypto;  // Not owned.
     std::string control_plane_sockaddr;
-    ppn::PpnDataplaneRequest::CryptoSuite suite;
+    net::common::proto::PpnDataplaneRequest::CryptoSuite suite;
     KryptonConfig::DatapathProtocol dataplane_protocol;
     bool is_rekey;
     std::string signature;
