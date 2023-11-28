@@ -30,7 +30,7 @@ namespace privacy {
 namespace krypton {
 
 // Builds AddEgressRequest to fetch the public keys of the egress nodes.
-// Proto definition is brass.proto
+// Proto definition is beryllium.proto
 class AddEgressRequest {
  public:
   enum class RequestDestination { kBrass, kBeryllium };
