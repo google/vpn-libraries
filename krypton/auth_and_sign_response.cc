@@ -15,10 +15,8 @@
 
 #include "privacy/net/krypton/auth_and_sign_response.h"
 
-#include <algorithm>
-#include <cstdint>
-#include <memory>
 #include <string>
+#include <vector>
 
 #include "base/logging.h"
 #include "google/protobuf/timestamp.proto.h"
@@ -29,6 +27,7 @@
 #include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/match.h"
 #include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/string_view.h"
@@ -139,51 +138,35 @@ absl::Status AuthAndSignResponse::DecodeJsonBody(
   // blind token signatures.
 
   blinded_token_signatures_.clear();
-  if (value.contains(JsonKeys::kBlindedTokenSignature)) {
-    auto signature_array = value[JsonKeys::kBlindedTokenSignature];
-    if (!signature_array.is_array()) {
-      return absl::InvalidArgumentError(
-          "blinded_token_signature is not an array");
-    }
-    for (const auto& i : signature_array) {
-      if (i.is_string()) {
-        blinded_token_signatures_.push_back(i);
-      } else {
-        return absl::InvalidArgumentError(
-            "blinded_token_signature value is not a string");
-      }
-    }
+  PPN_ASSIGN_OR_RETURN(
+      std::optional<std::vector<std::string>> blinded_token_signatures,
+      utils::JsonGetStringArray(value, JsonKeys::kBlindedTokenSignature));
+  if (blinded_token_signatures) {
+    blinded_token_signatures_ = *blinded_token_signatures;
   }
 
-  if (value.contains(JsonKeys::kRegionTokenAndSignature)) {
-    auto region_token_and_sig = value[JsonKeys::kRegionTokenAndSignature];
-    if (!region_token_and_sig.is_string()) {
-      return absl::InvalidArgumentError("region_token_and_sig is not a string");
-    }
-    region_token_and_signatures_ = region_token_and_sig;
+  PPN_ASSIGN_OR_RETURN(
+      std::optional<std::string> region_token_and_signature,
+      utils::JsonGetString(value, JsonKeys::kRegionTokenAndSignature));
+  if (region_token_and_signature) {
+    region_token_and_signatures_ = *region_token_and_signature;
   }
 
-  if (value.contains(JsonKeys::kApnType)) {
-    const auto apn_type = value[JsonKeys::kApnType];
-    if (!apn_type.is_string()) {
-      return absl::InvalidArgumentError("apn_type is not a string");
-    }
-    const std::string type = apn_type;
-    if (type != "ppn" && type != "bridge") {
+  PPN_ASSIGN_OR_RETURN(std::optional<std::string> apn_type,
+                       utils::JsonGetString(value, JsonKeys::kApnType));
+  if (apn_type) {
+    if (*apn_type != "ppn" && *apn_type != "bridge") {
       return absl::InvalidArgumentError("unexpected apn_type");
     }
-    apn_type_ = type;
+    apn_type_ = *apn_type;
   }
 
-  if (value.contains(JsonKeys::kCopperControllerHostname)) {
-    auto hostname_string = value[JsonKeys::kCopperControllerHostname];
-    if (!hostname_string.is_string()) {
-      return absl::InvalidArgumentError(
-          "copper_controller_hostname is not a string");
-    }
-    const std::string hostname = hostname_string;
-    PPN_RETURN_IF_ERROR(
-        SetCopperHostname(hostname, config, enforce_copper_suffix));
+  PPN_ASSIGN_OR_RETURN(
+      std::optional<std::string> copper_controller_hostname,
+      utils::JsonGetString(value, JsonKeys::kCopperControllerHostname));
+  if (copper_controller_hostname) {
+    PPN_RETURN_IF_ERROR(SetCopperHostname(*copper_controller_hostname, config,
+                                          enforce_copper_suffix));
   }
 
   return absl::OkStatus();
@@ -213,18 +196,20 @@ absl::Status PublicKeyResponse::DecodeJsonBody(nlohmann::json value) {
   if (!value.is_object()) {
     return absl::InvalidArgumentError("JSON body is not a JSON object");
   }
-  if (!value.contains(JsonKeys::kPem)) {
+
+  PPN_ASSIGN_OR_RETURN(std::optional<std::string> pem,
+                       utils::JsonGetString(value, JsonKeys::kPem));
+  if (pem) {
+    pem_ = *pem;
+  } else {
     return absl::InvalidArgumentError("missing pem");
   }
-  if (!value[JsonKeys::kPem].is_string()) {
-    return absl::InvalidArgumentError("pem is not a string");
-  }
-  pem_ = value[JsonKeys::kPem];
-  if (value.contains(JsonKeys::kAttestationNonce)) {
-    if (!value[JsonKeys::kAttestationNonce].is_string()) {
-      return absl::InvalidArgumentError("nonce is not a string");
-    }
-    nonce_ = value[JsonKeys::kAttestationNonce];
+
+  PPN_ASSIGN_OR_RETURN(
+      std::optional<std::string> nonce,
+      utils::JsonGetString(value, JsonKeys::kAttestationNonce));
+  if (nonce) {
+    nonce_ = *nonce;
   }
   return absl::OkStatus();
 }

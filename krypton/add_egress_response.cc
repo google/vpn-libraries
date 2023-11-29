@@ -30,7 +30,6 @@
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
-#include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 #include "third_party/json/include/nlohmann/json_fwd.hpp"
 
@@ -46,32 +45,20 @@ absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
     nlohmann::json json) {
   PpnDataplaneResponse response;
 
-  // We can't use the macros above to copy the user private IPs, because the
-  // types in the protos don't example match the JSON.
-  if (json.contains(JsonKeys::kUserPrivateIp)) {
-    if (!json[JsonKeys::kUserPrivateIp].is_array()) {
-      return absl::InvalidArgumentError(
-          "user_private_ip field was not an array");
-    }
-
-    for (const auto& private_ip : json[JsonKeys::kUserPrivateIp]) {
-      if (private_ip.contains(JsonKeys::kIpv4)) {
-        std::string value = private_ip[JsonKeys::kIpv4];
-        response.add_user_private_ip()->set_ipv4_range(value);
-      }
-      if (private_ip.contains(JsonKeys::kIpv6)) {
-        std::string value = private_ip[JsonKeys::kIpv6];
-        response.add_user_private_ip()->set_ipv6_range(value);
-      }
-    }
+  PPN_ASSIGN_OR_RETURN(
+      std::optional<std::vector<net::common::proto::IpRange>> user_private_ip,
+      utils::JsonGetIpRangeArray(json, JsonKeys::kUserPrivateIp));
+  if (user_private_ip) {
+    response.mutable_user_private_ip()->Assign(user_private_ip->begin(),
+                                               user_private_ip->end());
   }
 
   PPN_ASSIGN_OR_RETURN(
       std::optional<std::vector<std::string>> egress_point_sock_addr,
       utils::JsonGetStringArray(json, JsonKeys::kEgressPointSockAddr));
   if (egress_point_sock_addr) {
-    *response.mutable_egress_point_sock_addr() = {
-        egress_point_sock_addr->begin(), egress_point_sock_addr->end()};
+    response.mutable_egress_point_sock_addr()->Assign(
+        egress_point_sock_addr->begin(), egress_point_sock_addr->end());
   }
 
   PPN_ASSIGN_OR_RETURN(
@@ -97,8 +84,8 @@ absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
       std::optional<std::vector<std::string>> mss_detection_sock_addr,
       utils::JsonGetStringArray(json, JsonKeys::kMssDetectionSockAddr));
   if (mss_detection_sock_addr) {
-    *response.mutable_mss_detection_sock_addr() = {
-        mss_detection_sock_addr->begin(), mss_detection_sock_addr->end()};
+    response.mutable_mss_detection_sock_addr()->Assign(
+        mss_detection_sock_addr->begin(), mss_detection_sock_addr->end());
   }
 
   // This is the only Timestamp value, so there's no need for a helper macro.

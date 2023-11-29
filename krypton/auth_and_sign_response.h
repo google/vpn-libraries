@@ -15,10 +15,8 @@
 #ifndef PRIVACY_NET_KRYPTON_AUTH_AND_SIGN_RESPONSE_H_
 #define PRIVACY_NET_KRYPTON_AUTH_AND_SIGN_RESPONSE_H_
 
-#include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "privacy/net/attestation/proto/attestation.proto.h"
@@ -27,7 +25,6 @@
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/status.h"
-#include "third_party/absl/container/flat_hash_map.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
@@ -75,7 +72,6 @@ class AuthAndSignResponse {
   }
 
   AuthAndSignResponse() = default;
-  ~AuthAndSignResponse() = default;
 
   const std::vector<std::string>& blinded_token_signatures() const {
     return blinded_token_signatures_;

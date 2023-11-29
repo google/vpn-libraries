@@ -21,11 +21,9 @@
 #include <vector>
 
 #include "privacy/net/common/proto/beryllium.proto.h"
-#include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/json/include/nlohmann/json_fwd.hpp"
-#include "third_party/protobuf/repeated_ptr_field.h"
 
 namespace privacy {
 namespace krypton {

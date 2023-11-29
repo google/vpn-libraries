@@ -14,7 +14,6 @@
 
 #include "privacy/net/krypton/auth_and_sign_response.h"
 
-#include <cstddef>
 #include <optional>
 #include <string>
 
@@ -225,7 +224,7 @@ TEST(AuthAndSignResponse, TestWrongTypeRegionTokenAndSig) {
   config.add_copper_hostname_suffix("g-tun.com");
   EXPECT_THAT(AuthAndSignResponse::FromProto(proto, config, true),
               StatusIs(absl::StatusCode::kInvalidArgument,
-                       "region_token_and_sig is not a string"));
+                       "region_token_and_signature is not a string"));
 }
 
 TEST(AuthAndSignResponse, TestWrongTypeAPNType) {

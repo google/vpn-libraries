@@ -23,7 +23,6 @@
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/string_view.h"
-#include "third_party/absl/types/optional.h"
 #include "third_party/json/include/nlohmann/json_fwd.hpp"
 
 namespace privacy {
