@@ -322,6 +322,42 @@ public class PpnOptionsTest {
   }
 
   @Test
+  public void testInitialValidationRetryDelay_hasDefault() {
+    PpnOptions options = new PpnOptions.Builder().build();
+
+    assertThat(options.getInitialValidationRetryDelay()).isEqualTo(Duration.ofMillis(50));
+  }
+
+  @Test
+  public void testInitialValidationRetryDelay_storesValue() {
+    Duration delay = Duration.ofMillis(100);
+    PpnOptions options = new PpnOptions.Builder().setInitialValidationRetryDelay(delay).build();
+
+    assertThat(options.getInitialValidationRetryDelay()).isEqualTo(delay);
+  }
+
+  @Test
+  public void testInitialValidationRetryDelay_ignoresNull() {
+    PpnOptions options = new PpnOptions.Builder().setInitialValidationRetryDelay(null).build();
+
+    assertThat(options.getInitialValidationRetryDelay()).isEqualTo(Duration.ofMillis(50));
+  }
+
+  @Test
+  public void testValidationMaxAttempts_hasDefault() {
+    PpnOptions options = new PpnOptions.Builder().build();
+
+    assertThat(options.getValidationMaxAttempts()).isEqualTo(10);
+  }
+
+  @Test
+  public void testValidationMaxAttempts_storesValue() {
+    PpnOptions options = new PpnOptions.Builder().setConnectivityCheckMaxRetries(15).build();
+
+    assertThat(options.getConnectivityCheckMaxRetries()).isEqualTo(15);
+  }
+
+  @Test
   public void testCopperControllerAddress_hasDefault() {
     PpnOptions options = new PpnOptions.Builder().build();
 

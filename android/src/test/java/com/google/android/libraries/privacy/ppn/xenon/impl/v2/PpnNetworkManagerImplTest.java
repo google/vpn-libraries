@@ -102,8 +102,8 @@ public final class PpnNetworkManagerImplTest {
     ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
     when(mockPpnOptions.getBackgroundExecutor()).thenReturn(backgroundExecutor);
     when(mockPpnOptions.getConnectivityCheckUrl()).thenReturn(CONNECTIVITY_CHECK_URL);
-    when(mockPpnOptions.getConnectivityCheckMaxRetries()).thenReturn(3);
-    when(mockPpnOptions.getConnectivityCheckRetryDelay()).thenReturn(Duration.ofSeconds(15));
+    when(mockPpnOptions.getValidationMaxAttempts()).thenReturn(3);
+    when(mockPpnOptions.getInitialValidationRetryDelay()).thenReturn(Duration.ofMillis(50));
 
     wifiAndroidNetwork = ShadowNetwork.newInstance(/* netId= */ 1);
     cellAndroidNetwork = ShadowNetwork.newInstance(/* netId= */ 2);
@@ -979,7 +979,7 @@ public final class PpnNetworkManagerImplTest {
   private static <T> T await(Task<T> task) {
     while (!task.isComplete()) {
       // Allow the main looper to clear itself out.
-      shadowOf(Looper.getMainLooper()).idle();
+      shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1));
     }
     shadowOf(Looper.getMainLooper()).idle();
     return task.getResult();

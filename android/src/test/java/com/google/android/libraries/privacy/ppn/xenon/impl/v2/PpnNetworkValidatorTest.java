@@ -90,8 +90,8 @@ public final class PpnNetworkValidatorTest {
     ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
     when(mockPpnOptions.getBackgroundExecutor()).thenReturn(backgroundExecutor);
     when(mockPpnOptions.getConnectivityCheckUrl()).thenReturn(CONNECTIVITY_CHECK_URL);
-    when(mockPpnOptions.getConnectivityCheckMaxRetries()).thenReturn(3);
-    when(mockPpnOptions.getConnectivityCheckRetryDelay()).thenReturn(Duration.ofSeconds(15));
+    when(mockPpnOptions.getValidationMaxAttempts()).thenReturn(10);
+    when(mockPpnOptions.getInitialValidationRetryDelay()).thenReturn(Duration.ofMillis(50));
 
     wifiAndroidNetwork = ShadowNetwork.newInstance(/* netId= */ 1);
     cellAndroidNetwork = ShadowNetwork.newInstance(/* netId= */ 2);
@@ -300,9 +300,9 @@ public final class PpnNetworkValidatorTest {
     await(ppnNetworkValidator.validateNetwork(wifiPpnNetwork));
 
     verify(networkValidationListener, never()).validationPassed(any(), any());
-    verify(mockHttpFetcher, times(4))
+    verify(mockHttpFetcher, times(10))
         .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
-    verify(mockHttpFetcher, times(4))
+    verify(mockHttpFetcher, times(10))
         .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
   }
 
@@ -327,9 +327,9 @@ public final class PpnNetworkValidatorTest {
     await(task1);
     await(task2);
 
-    verify(mockHttpFetcher, times(8))
+    verify(mockHttpFetcher, times(10))
         .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V4);
-    verify(mockHttpFetcher, times(8))
+    verify(mockHttpFetcher, times(10))
         .checkGet(CONNECTIVITY_CHECK_URL, wifiAndroidNetwork, AddressFamily.V6);
   }
 

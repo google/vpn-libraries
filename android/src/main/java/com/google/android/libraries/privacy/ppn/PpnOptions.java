@@ -54,6 +54,8 @@ public class PpnOptions {
       "https://connectivitycheck.gstatic.com/generate_204";
   private static final Duration DEFAULT_CONNECTIVITY_CHECK_RETRY_DELAY = Duration.ofSeconds(15);
   private static final int DEFAULT_CONNECTIVITY_CHECK_MAX_RETRIES = 5;
+  private static final Duration DEFAULT_INITIAL_VALIDATION_RETRY_DELAY = Duration.ofMillis(50);
+  private static final int DEFAULT_VALIDATION_MAX_ATTEMPTS = 10;
 
   private static final String DEFAULT_COPPER_HOSTNAME_SUFFIX = "g-tun.com";
 
@@ -68,6 +70,8 @@ public class PpnOptions {
   private final String connectivityCheckUrl;
   private final Duration connectivityCheckRetryDelay;
   private final int connectivityCheckMaxRetries;
+  private final Duration initialValidationRetryDelay;
+  private final int validationMaxAttempts;
 
   private final Optional<String> copperControllerAddress;
   private final Optional<String> copperHostnameOverride;
@@ -135,6 +139,8 @@ public class PpnOptions {
     this.connectivityCheckUrl = builder.connectivityCheckUrl;
     this.connectivityCheckRetryDelay = builder.connectivityCheckRetryDelay;
     this.connectivityCheckMaxRetries = builder.connectivityCheckMaxRetries;
+    this.initialValidationRetryDelay = builder.initialValidationRetryDelay;
+    this.validationMaxAttempts = builder.validationMaxAttempts;
 
     this.copperControllerAddress = builder.copperControllerAddress;
     this.copperHostnameOverride = builder.copperHostnameOverride;
@@ -232,6 +238,14 @@ public class PpnOptions {
 
   public int getConnectivityCheckMaxRetries() {
     return connectivityCheckMaxRetries;
+  }
+
+  public Duration getInitialValidationRetryDelay() {
+    return initialValidationRetryDelay;
+  }
+
+  public int getValidationMaxAttempts() {
+    return validationMaxAttempts;
   }
 
   public Optional<String> getCopperControllerAddress() {
@@ -552,6 +566,8 @@ public class PpnOptions {
     private String connectivityCheckUrl = DEFAULT_CONNECTIVITY_CHECK_URL;
     private Duration connectivityCheckRetryDelay = DEFAULT_CONNECTIVITY_CHECK_RETRY_DELAY;
     private int connectivityCheckMaxRetries = DEFAULT_CONNECTIVITY_CHECK_MAX_RETRIES;
+    private Duration initialValidationRetryDelay = DEFAULT_INITIAL_VALIDATION_RETRY_DELAY;
+    private int validationMaxAttempts = DEFAULT_VALIDATION_MAX_ATTEMPTS;
     private Optional<String> copperControllerAddress = Optional.empty();
     private Optional<String> copperHostnameOverride = Optional.empty();
     private List<String> copperHostnameSuffix = ImmutableList.of(DEFAULT_COPPER_HOSTNAME_SUFFIX);
@@ -746,6 +762,32 @@ public class PpnOptions {
       if (retryDelay != null) {
         this.connectivityCheckRetryDelay = retryDelay;
       }
+      return this;
+    }
+
+    /**
+     * Sets initial delay to retry network validation after a failure.
+     *
+     * <p>If this is not set, it will default to a reasonable value.
+     *
+     * <p>If null is passed in, it will be ignored.
+     */
+    @CanIgnoreReturnValue
+    public Builder setInitialValidationRetryDelay(Duration retryDelay) {
+      if (retryDelay != null) {
+        this.initialValidationRetryDelay = retryDelay;
+      }
+      return this;
+    }
+
+    /**
+     * Sets how many times to try network validation for a network before giving up.
+     *
+     * <p>If this is not set, it will default to a reasonable value.
+     */
+    @CanIgnoreReturnValue
+    public Builder setValidationMaxAttempts(int maxAttempts) {
+      this.validationMaxAttempts = maxAttempts;
       return this;
     }
 

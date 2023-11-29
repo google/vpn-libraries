@@ -38,7 +38,6 @@ import java.net.SocketException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * PpnNetworkValidator performs network validation by attempting to send an HTTP GET to the
@@ -52,7 +51,7 @@ final class PpnNetworkValidator {
   private final Context context;
   private final HttpFetcher httpFetcher;
   private final Handler mainHandler;
-  private final Map<PpnNetwork, Boolean> networkValidationsMap;
+  private final Map<PpnNetwork, Task<Boolean>> networkValidationsMap;
 
   public interface NetworkValidationListener {
     void validationPassed(PpnNetwork ppnNetwork, AddressFamily addressFamily);
@@ -75,10 +74,25 @@ final class PpnNetworkValidator {
   public Task<Boolean> validateNetwork(PpnNetwork ppnNetwork) {
     synchronized (this) {
       Log.w(TAG, String.format("Network validation requested for %s", ppnNetwork));
-      if (!networkValidationsMap.containsKey(ppnNetwork)) {
-        networkValidationsMap.put(ppnNetwork, false);
+      if (networkValidationsMap.containsKey(ppnNetwork)) {
+        printNetworkValidationStatus(ppnNetwork);
+      } else {
+        networkValidationsMap.put(ppnNetwork, evaluateNetworkConnectivityAsync(ppnNetwork));
       }
-      return evaluateNetworkConnectivityAsync(ppnNetwork);
+      return networkValidationsMap.get(ppnNetwork);
+    }
+  }
+
+  private void printNetworkValidationStatus(PpnNetwork ppnNetwork) {
+    Task<Boolean> validationTask = networkValidationsMap.get(ppnNetwork);
+    if (validationTask.isComplete()) {
+      if (validationTask.getResult()) {
+        Log.w(TAG, String.format("Network validation already succeeded for %s.", ppnNetwork));
+      } else {
+        Log.w(TAG, String.format("Network validation already failed for %s.", ppnNetwork));
+      }
+    } else {
+      Log.w(TAG, String.format("Network validation already in progress for %s.", ppnNetwork));
     }
   }
 
@@ -100,16 +114,16 @@ final class PpnNetworkValidator {
    * Checks if the provided PpnNetwork is still being validated. If it is, verify if the network has
    * connectivity. If so, inform the NetworkValidationListener.
    *
-   * @param retries The number of times to retry if the connection fails. For example, if this is
-   *     zero, the connection will only be attempted once.
+   * @param attemptNum The number of times that validation has been attempted for this network.
    * @return a Task that is resolved as true if the network was validated.
    */
   private Task<Boolean> evaluatePendingNetworkConnectivityAsync(
-      PpnNetwork ppnNetwork, int retries) {
+      PpnNetwork ppnNetwork, int attemptNum) {
     synchronized (this) {
-      Optional<Task<Boolean>> validatedOrCancelled = checkIfValidatedOrCancelled(ppnNetwork);
-      if (validatedOrCancelled.isPresent()) {
-        return validatedOrCancelled.get();
+      // The task will not be in the map yet on the first attempt.
+      if (attemptNum != 0 && !networkValidationsMap.containsKey(ppnNetwork)) {
+        Log.w(TAG, String.format("Network validation cancelled for %s.", ppnNetwork));
+        return Tasks.forResult(false);
       }
     }
 
@@ -181,7 +195,7 @@ final class PpnNetworkValidator {
               if (!(ipv4Connectivity || ipv6Connectivity)) {
                 Log.w(TAG, String.format("Network %s FAILED connectivity check.", ppnNetwork));
                 // Try again later
-                return recheckConnectivityLaterAsync(ppnNetwork, retries);
+                return recheckConnectivityLaterAsync(ppnNetwork, attemptNum);
               }
 
               Log.w(TAG, String.format("Network %s PASSES Connectivity check", ppnNetwork));
@@ -196,17 +210,11 @@ final class PpnNetworkValidator {
               }
 
               synchronized (this) {
-                Optional<Task<Boolean>> validatedOrCancelled =
-                    checkIfValidatedOrCancelled(ppnNetwork);
-                if (validatedOrCancelled.isPresent()) {
-                  return validatedOrCancelled.get();
+                if (!this.networkValidationsMap.containsKey(ppnNetwork)) {
+                  Log.w(TAG, String.format("Network validation cancelled for %s.", ppnNetwork));
+                  return Tasks.forResult(false);
                 }
-                Log.w(
-                    TAG,
-                    String.format(
-                        "Network %s validated. Canceling remaining connectivity checks.",
-                        ppnNetwork));
-                this.networkValidationsMap.put(ppnNetwork, true);
+                Log.w(TAG, String.format("Network validation succeeded for %s.", ppnNetwork));
                 this.networkValidationListener.validationPassed(ppnNetwork, addressFamily);
               }
 
@@ -226,38 +234,24 @@ final class PpnNetworkValidator {
             && (address.isLinkLocalAddress() || address.isSiteLocalAddress())));
   }
 
-  private Optional<Task<Boolean>> checkIfValidatedOrCancelled(PpnNetwork ppnNetwork) {
-    Boolean validated = networkValidationsMap.get(ppnNetwork);
-    if (validated == null) {
-      Log.w(TAG, String.format("Network validation cancelled for %s.", ppnNetwork));
-      return Optional.of(Tasks.forResult(false));
-    }
-    if (validated) {
-      Log.w(TAG, String.format("Network %s already validated.", ppnNetwork));
-      return Optional.of(Tasks.forResult(true));
-    }
-    return Optional.empty();
-  }
-
   /** Schedules a retry of a network that has failed a connectivity check. */
-  private Task<Boolean> recheckConnectivityLaterAsync(PpnNetwork ppnNetwork, int retries) {
-    if (retries <= 0) {
+  private Task<Boolean> recheckConnectivityLaterAsync(PpnNetwork ppnNetwork, int attemptNum) {
+    int nextAttemptNum = attemptNum + 1;
+    if (nextAttemptNum >= this.ppnOptions.getValidationMaxAttempts()) {
       Log.w(TAG, "Giving up connectivity check retries for " + ppnNetwork);
       return Tasks.forResult(false);
     }
 
-    Log.w(
-        TAG,
-        "Retrying connectivity check for "
-            + ppnNetwork
-            + " in "
-            + ppnOptions.getConnectivityCheckRetryDelay());
+    // Retry with exponential backoff.
+    long initialRetryDelayMs = this.ppnOptions.getInitialValidationRetryDelay().toMillis();
+    Duration retryDelay = Duration.ofMillis(initialRetryDelayMs * (long) Math.pow(2, attemptNum));
+    Log.w(TAG, "Retrying connectivity check for " + ppnNetwork + " in " + retryDelay);
 
-    return delay(ppnOptions.getConnectivityCheckRetryDelay())
+    return delay(retryDelay)
         .continueWithTask(
             (task) -> {
               Log.w(TAG, "Retrying connectivity check for " + ppnNetwork + " now");
-              return evaluatePendingNetworkConnectivityAsync(ppnNetwork, retries - 1);
+              return evaluatePendingNetworkConnectivityAsync(ppnNetwork, nextAttemptNum);
             });
   }
 
@@ -353,7 +347,6 @@ final class PpnNetworkValidator {
    * <p>Returns a Task that is resolved as true if the network was validated.
    */
   private Task<Boolean> evaluateNetworkConnectivityAsync(PpnNetwork ppnNetwork) {
-    return evaluatePendingNetworkConnectivityAsync(
-        ppnNetwork, ppnOptions.getConnectivityCheckMaxRetries());
+    return evaluatePendingNetworkConnectivityAsync(ppnNetwork, /* attemptNum= */ 0);
   }
 }
