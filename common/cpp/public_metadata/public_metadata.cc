@@ -50,55 +50,14 @@ BinaryPublicMetadata PublicMetadataProtoToStruct(
 }
 
 absl::Status ValidateBinaryPublicMetadataCardinality(
-    const privacy::ppn::BinaryPublicMetadata& metadata, absl::Time now) {
-  // If the version changes, then the fields have changed.
-  if (metadata.version < 1 || metadata.version > 2) {
-    return absl::InvalidArgumentError("Binary metadata has unexpected version");
+    absl::string_view encoded_extensions, absl::Time now) {
+  auto extensions = private_membership::anonymous_tokens::DecodeExtensions(
+      encoded_extensions);
+  if (!extensions.ok()) {
+    return extensions.status();
   }
-  if (metadata.version == 2) {
-    if (metadata.proxy_layer != 0 && metadata.proxy_layer != 1) {
-      return absl::InvalidArgumentError(
-          "Binary metadata has unexpected proxy layer");
-    }
-  }
-  // Checks below included for version 1
-  if (!metadata.service_type.has_value()) {
-    return absl::InvalidArgumentError(
-        "Binary metadata is missing service type");
-  }
-  // We will add new service types when they're deployed.
-  if (metadata.service_type != "chromeipblinding") {
-    return absl::InvalidArgumentError(
-        "Binary metadata has unexpected service type");
-  }
-  if (!metadata.country.has_value()) {
-    return absl::InvalidArgumentError("Binary metadata is missing country");
-  }
-  if (metadata.country->length() != 2) {
-    return absl::InvalidArgumentError(
-        "Binary metadata has unexpected country length");
-  }
-  for (char c : metadata.country.value()) {
-    if (!absl::ascii_isupper(c)) {
-      return absl::InvalidArgumentError(
-          "Binary metadata country must be all uppercase");
-    }
-  }
-  if (!metadata.expiration_epoch_seconds.has_value()) {
-    return absl::InvalidArgumentError("Binary metadata is missing expiration");
-  }
-  // expiration_epoch_seconds must be rounded to a 15-minute cutoff.
-  if (metadata.expiration_epoch_seconds.value() % 900 != 0) {
-    return absl::InvalidArgumentError(
-        "Binary metadata expiration is not rounded");
-  }
-  absl::Time expiration_time =
-      absl::FromUnixSeconds(metadata.expiration_epoch_seconds.value());
-  if (expiration_time < now || expiration_time > now + absl::Hours(168)) {
-    return absl::InvalidArgumentError("Binary metadata has expired");
-  }
-
-  return absl::OkStatus();
+  return private_membership::anonymous_tokens::ValidateExtensionsValues(
+      *extensions, now);
 }
 
 absl::StatusOr<std::string> Serialize(

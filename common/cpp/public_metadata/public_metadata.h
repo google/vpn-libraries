@@ -11,6 +11,7 @@
 // copybara:strip_end
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/time/time.h"
 
 namespace privacy::ppn {
@@ -48,7 +49,7 @@ BinaryPublicMetadata PublicMetadataProtoToStruct(
     const privacy::ppn::PublicMetadata& metadata);
 
 absl::Status ValidateBinaryPublicMetadataCardinality(
-    const privacy::ppn::BinaryPublicMetadata& metadata, absl::Time now);
+    absl::string_view encoded_extensions, absl::Time now);
 
 // Serialize a BinaryPublicMetadata struct into
 // draft-wood-privacypass-extensible-token format.
