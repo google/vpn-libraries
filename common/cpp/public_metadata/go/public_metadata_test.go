@@ -1,12 +1,59 @@
 package binarymetadata
 
 import (
+	"errors"
 	"testing"
+	"time"
+
+	"google3/util/task/go/status"
 
 	tpb "google3/google/protobuf/timestamp_go_proto"
 	plpb "google3/privacy/net/common/proto/proxy_layer_go_proto"
 	pmpb "google3/privacy/net/common/proto/public_metadata_go_proto"
 )
+
+func TestValidateMetadataCardinality(t *testing.T) {
+	bs := New(&NewBinaryFields{
+		Version:     1,
+		Country:     "US",
+		Region:      "US-CA",
+		City:        "SUNNYVALE",
+		ServiceType: "chromeipblinding",
+		Expiration:  tpb.New(time.Now().Add(time.Minute * 30).Round(time.Minute * 15)),
+		DebugMode:   pmpb.PublicMetadata_DEBUG_ALL,
+	})
+	serialized, err := Serialize(bs)
+	if err != nil {
+		t.Fatalf("Serialize failed: %v", err)
+	}
+	tests := []struct {
+		name    string
+		in      []byte
+		t       time.Time
+		wantErr error
+	}{
+		{
+			name: "success",
+			in:   serialized,
+			t:    time.Now(),
+		},
+		{
+			name:    "expiry",
+			in:      serialized,
+			t:       time.Unix(0, 0),
+			wantErr: status.ErrInvalidArgument,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotErr := ValidateMetadataCardinality(tc.in, tc.t)
+			if !errors.Is(gotErr, tc.wantErr) {
+				t.Errorf("ValidateMetadataCardinality() returned error: %v, want error: %v", gotErr, tc.wantErr)
+			}
+		})
+	}
+}
 
 func TestRoundTripV1(t *testing.T) {
 	bs := New(&NewBinaryFields{

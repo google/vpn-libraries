@@ -3,6 +3,7 @@ package binarymetadata
 
 import (
 	"fmt"
+	"time"
 
 	"google3/privacy/net/boq/common/tokens/tokentypes"
 	"google3/third_party/golang/protobuf/v2/proto/proto"
@@ -181,4 +182,11 @@ func Deserialize(in []byte) (*BinaryStruct, error) {
 	}
 	bs.metadata.SetProxy_layer(st.GetExtensions().GetProxy_layer())
 	return bs, nil
+}
+
+// ValidateMetadataCardinality checks that the input extensions meet client validation rules around
+// cardinality.
+func ValidateMetadataCardinality(in []byte, t time.Time) error {
+	inStr := string(in)
+	return unmarshalStatusToErr(wrap.ValidateBinaryPublicMetadataCardinality(inStr, t))
 }

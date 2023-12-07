@@ -20,6 +20,17 @@ PROTO_INPUT(privacy::ppn::PublicMetadata,
 OPTIONAL_TYPEMAP(std::string, string, string, StringOptional)
 OPTIONAL_TYPEMAP(uint64_t, uint64, uint64, Uint64Optional)
 
+%go_import("time")
+
+%typemap(gotype) absl::Time "time.Time"
+%typemap(imtype) absl::Time "int64"
+%typemap(in) absl::Time {
+  $1 = absl::FromUnixMicros($input);
+}
+%typemap(goin) absl::Time {
+  $result = $input.UnixNano() / 1000;
+}
+
 %ignoreall
 %unignore privacy;
 %unignore privacy::ppn;
@@ -34,6 +45,7 @@ OPTIONAL_TYPEMAP(uint64_t, uint64, uint64, Uint64Optional)
 %unignore privacy::ppn::BinaryPublicMetadata::debug_mode;
 %unignore privacy::ppn::BinaryPublicMetadata::proxy_layer;
 
+%unignore privacy::ppn::ValidateBinaryPublicMetadataCardinality(absl::string_view encoded_extensions, absl::Time);
 %unignore privacy::ppn::PublicMetadataProtoToStruct(const privacy::ppn::PublicMetadata&);
 
 %include "privacy/net/common/cpp/public_metadata/public_metadata.h"

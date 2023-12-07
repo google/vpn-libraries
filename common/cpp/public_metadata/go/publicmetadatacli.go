@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"time"
 
 	"google3/base/go/flag"
 	"google3/base/go/google"
@@ -59,8 +60,60 @@ func (p *parse) Synopsis() string {
 	return "Parses a public metadata file and prints the fields to stdout."
 }
 
+type validate struct {
+	time int64
+}
+
+// Execute implements subcommands.Command interface.
+func (p *validate) Execute(ctx context.Context, f *flag.FlagSet, args ...any) subcommands.ExitStatus {
+	if f.NArg() < 1 {
+		fmt.Printf("Expected at least one argument, got %v\n", f.NArg())
+		f.Usage()
+		return subcommands.ExitUsageError
+	}
+	b, err := base64.StdEncoding.DecodeString(f.Arg(0))
+	if err != nil {
+		fmt.Printf("Decode failed %v\n", err)
+		return subcommands.ExitUsageError
+	}
+	t := time.Unix(p.time, 0)
+	fmt.Printf("Checking using time %s\n", t.Format(time.RFC3339))
+	err = binarymetadata.ValidateMetadataCardinality(b, t)
+	if err != nil {
+		fmt.Printf("Validate failed %v\n", err)
+		return subcommands.ExitFailure
+	}
+	fmt.Println("Validated successfully")
+	return subcommands.ExitSuccess
+}
+
+// Name implements subcommands.Command interface.
+func (p *validate) Name() string {
+	return "validate"
+}
+
+// SetFlags implements subcommands.Command interface.
+func (p *validate) SetFlags(flags *flag.FlagSet) {
+	flags.Int64Var(&p.time, "time", time.Now().Unix(), "Set a time in epoch seconds to validate the extensions against. Defaults to now")
+}
+
+// Usage implements subcommands.Command interface.
+func (p *validate) Usage() string {
+	return `validate <base64 of metadata>
+Example: validate AD8AAQAQAAAAAAAAA4QAAAAAZWTjrAACABgAFlVTLFVTLU5ZLE5FVyBZT1JLIENJVFnwAQABAfACAAEA8AMAAQA=
+
+Warning: this does not check the order of extensions.
+`
+}
+
+// Synopsis implements subcommands.Command interface.
+func (p *validate) Synopsis() string {
+	return "Checks extensions using cardinality rules."
+}
+
 func init() {
 	subcommands.Register(&parse{}, "")
+	subcommands.Register(&validate{}, "")
 }
 
 func main() {
