@@ -334,14 +334,12 @@ absl::Status Provision::SetRemoteKeyMaterial(const AddEgressResponse& egress) {
   if (ppn_data_plane.egress_point_public_value().empty()) {
     return absl::InvalidArgumentError("missing egress_point_public_value");
   }
-  auto remote_public_value = ppn_data_plane.egress_point_public_value();
   if (ppn_data_plane.server_nonce().empty()) {
     return absl::InvalidArgumentError("missing server_nonce");
   }
-  auto remote_nonce = ppn_data_plane.server_nonce();
-
-  PPN_RETURN_IF_ERROR(
-      key_material_->SetRemoteKeyMaterial(remote_public_value, remote_nonce));
+  PPN_RETURN_IF_ERROR(key_material_->SetRemoteKeyMaterial(
+      ppn_data_plane.egress_point_public_value(),
+      ppn_data_plane.server_nonce()));
   return absl::OkStatus();
 }
 

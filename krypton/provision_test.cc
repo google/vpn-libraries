@@ -200,7 +200,8 @@ TEST_F(ProvisionTest, Rekey) {
 
   ASSERT_OK_AND_ASSIGN(auto original_transform_params,
                        provision_->GetTransformParams());
-  auto original_ipsec_params = original_transform_params.bridge();
+  const BridgeTransformParams& original_ipsec_params =
+      original_transform_params.bridge();
 
   EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("initial_data")));
   EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("auth")));
@@ -230,7 +231,8 @@ TEST_F(ProvisionTest, Rekey) {
 
   ASSERT_OK_AND_ASSIGN(auto rekeyed_transform_params,
                        provision_->GetTransformParams());
-  auto rekeyed_ipsec_params = rekeyed_transform_params.bridge();
+  const BridgeTransformParams& rekeyed_ipsec_params =
+      rekeyed_transform_params.bridge();
 
   EXPECT_NE(rekeyed_ipsec_params.uplink_key(),
             original_ipsec_params.uplink_key());

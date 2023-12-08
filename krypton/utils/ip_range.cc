@@ -14,7 +14,6 @@
 
 #include "privacy/net/krypton/utils/ip_range.h"
 
-#include <cstdint>
 #include <cstring>
 
 #ifndef _WIN32
@@ -176,7 +175,7 @@ absl::Status IPRange::ParseInternal(absl::string_view ip_range) {
         absl::StrCat("IPRange ", ip_range, " is not valid"));
   }
 
-  auto ip = splits.front();
+  const std::string& ip = splits.front();
   if (IsValidV4Address(ip)) {
     family_ = AF_INET;
     address_ = ip;

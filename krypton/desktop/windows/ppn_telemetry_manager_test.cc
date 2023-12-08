@@ -174,7 +174,7 @@ TEST_F(PpnTelemetryManagerTest,
   privacy::krypton::desktop::PpnTelemetry telemetry =
       ppn_telemetry_manager_->Collect(&krypton_);
 
-  auto durations = telemetry.disconnection_durations();
+  const auto& durations = telemetry.disconnection_durations();
   ASSERT_EQ(telemetry.disconnection_durations_size(), 2);
   ASSERT_EQ(durations.Get(0).seconds(), 1);
   ASSERT_EQ(durations.Get(1).seconds(), 1);
@@ -207,7 +207,7 @@ TEST_F(PpnTelemetryManagerTest,
   privacy::krypton::desktop::PpnTelemetry telemetry =
       ppn_telemetry_manager_->Collect(&krypton_);
 
-  auto durations = telemetry.disconnection_durations();
+  const auto& durations = telemetry.disconnection_durations();
   ASSERT_EQ(telemetry.disconnection_durations_size(), 3);
   ASSERT_EQ(durations.Get(0).seconds(), 1);
   ASSERT_EQ(durations.Get(1).seconds(), 1);

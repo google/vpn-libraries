@@ -126,7 +126,7 @@ absl::Status IpSecDatapath::SwitchNetwork(uint32_t session_id,
   }
 
   if (!network_socket.ok()) {
-    auto status = network_socket.status();
+    const absl::Status& status = network_socket.status();
     LOG(ERROR) << "Unable to create network socket: " << status;
     NotifyDatapathFailed(status);
     // Returning OK since failure is handled by preceding notification call

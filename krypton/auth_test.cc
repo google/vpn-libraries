@@ -75,11 +75,10 @@ MATCHER_P(PartiallyMatchHttpRequest, other_req,
     return false;
   }
   if (arg.has_json_body() || other_req.has_json_body()) {
-    auto json1 = arg.json_body();
-    auto json2 = other_req.json_body();
-
-    auto json1_obj = utils::StringToJson(json1);
-    auto json2_obj = utils::StringToJson(json2);
+    absl::StatusOr<nlohmann::json> json1_obj =
+        utils::StringToJson(arg.json_body());
+    absl::StatusOr<nlohmann::json> json2_obj =
+        utils::StringToJson(other_req.json_body());
 
     if (!json1_obj.ok() || !json2_obj.ok()) {
       return false;
