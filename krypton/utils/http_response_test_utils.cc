@@ -16,9 +16,10 @@
 
 #include <string>
 
-#include "net/proto2/contrib/parse_proto/parse_text_proto.h"
+#include "google/protobuf/timestamp.proto.h"
 #include "privacy/net/common/proto/auth_and_sign.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
+#include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/escaping.h"
@@ -48,8 +49,6 @@ HttpResponse CreateHttpResponseWithJsonBody(absl::string_view json_body) {
 
 }  // namespace
 
-using ::proto2::contrib::parse_proto::ParseTextProtoOrDie;
-
 HttpResponse CreateHttpResponseWithStatus(int status_code,
                                           absl::string_view status_message) {
   HttpResponse response;
@@ -63,32 +62,19 @@ HttpResponse CreateGetInitialDataHttpResponse(
         public_key) {
   // Some of the values here are fake and may not be realistic. We may need more
   // realistic values later.
-  ppn::GetInitialDataResponse response = ParseTextProtoOrDie(R"pb(
-    at_public_metadata_public_key: {
-      use_case: "TEST_USE_CASE",
-      key_version: 2,
-      serialized_public_key: "",
-      expiration_time: { seconds: 0, nanos: 0 },
-      key_validity_start_time: { seconds: 0, nanos: 0 },
-      sig_hash_type: AT_HASH_TYPE_SHA256,
-      mask_gen_function: AT_MGF_SHA256,
-      salt_length: 48,
-      key_size: 256,
-      message_mask_type: AT_MESSAGE_MASK_CONCAT,
-      message_mask_size: 2
-    },
-    public_metadata_info: {
-      public_metadata: {
-        exit_location: { country: "US", city_geo_id: "us_ca_san_diego" },
-        service_type: "service_type",
-        expiration: { seconds: 900, nanos: 0 },
-        debug_mode: 0,
-      },
-      validation_version: 1
-    }
-  )pb");
-
+  ppn::GetInitialDataResponse response;
   *response.mutable_at_public_metadata_public_key() = public_key;
+  ppn::PublicMetadataInfo* public_metadata_info =
+      response.mutable_public_metadata_info();
+  ppn::PublicMetadata* public_metadata =
+      public_metadata_info->mutable_public_metadata();
+  public_metadata->mutable_exit_location()->set_country("US");
+  public_metadata->mutable_exit_location()->set_city_geo_id("us_ca_san_diego");
+  public_metadata->set_service_type("service_type");
+  public_metadata->mutable_expiration()->set_seconds(900);
+  public_metadata->mutable_expiration()->set_nanos(0);
+  public_metadata->set_debug_mode(ppn::PublicMetadata::UNSPECIFIED_DEBUG_MODE);
+  public_metadata_info->set_validation_version(1);
 
   return CreateHttpResponseWithProtoBody(response);
 }
