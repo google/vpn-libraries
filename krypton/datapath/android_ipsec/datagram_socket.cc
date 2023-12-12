@@ -140,8 +140,6 @@ absl::StatusOr<std::vector<Packet>> DatagramSocket::ReadPackets() {
         return absl::InternalError("Attempted to read on a closed socket.");
       }
       // TODO: Do reads in batches.
-
-      // TODO: Don't allocate new memory for every packet.
       char* buffer = new char[kMaxPacketSize];
 
       int read_bytes;

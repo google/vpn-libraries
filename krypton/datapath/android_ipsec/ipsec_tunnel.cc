@@ -142,8 +142,6 @@ absl::StatusOr<std::vector<Packet>> IpSecTunnel::ReadPackets() {
   }
   if (datapath::android::EventsHelper::FileCanRead(event)) {
     // TODO: Do reads in batches.
-
-    // TODO: Don't allocate new memory for every packet.
     char* buffer = new char[kMaxPacketSize];
 
     int read_bytes;
