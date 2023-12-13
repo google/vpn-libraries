@@ -320,7 +320,6 @@ class Session : public DatapathInterface::NotificationInterface,
   // to a commonly used MTU value of 1500, minus some overhead.
   int tunnel_mtu_ ABSL_GUARDED_BY(mutex_) = 1395;
 
-  bool datapath_connected_ ABSL_GUARDED_BY(mutex_) = false;
   // Tells whether a network switch is currently in progress.
   bool switching_network_ ABSL_GUARDED_BY(mutex_) = false;
   int number_of_rekeys_ ABSL_GUARDED_BY(mutex_) = 0;
