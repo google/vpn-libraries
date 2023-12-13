@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-syntax = "proto2";
+edition = "2023";
 
 package privacy.krypton.datapath;
 
@@ -21,10 +21,10 @@ package privacy.krypton.datapath;
 
 // Defines a arbritrary packet containing sequence number.
 message Packet {
-  optional uint32 sequence_number = 1;
+  uint32 sequence_number = 1;
 }
 
 // Large packet.
 message LargePacket {
-  optional bytes data = 1;
+  bytes data = 1;
 }
