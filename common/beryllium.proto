@@ -123,6 +123,10 @@ message PpnDataplaneResponse {
 
   // The address the client should use to perform TCP MSS detection.
   repeated string mss_detection_sock_addr = 7;
+
+  // The port that the client should use for IPsec transport mode. This should
+  // be used with the IP address from egress_point_sock_addr.
+  uint32 transport_mode_server_port = 8;
 }
 
 message PpnIkeResponse {
