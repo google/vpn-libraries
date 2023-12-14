@@ -127,6 +127,11 @@ message PpnDataplaneResponse {
   // The port that the client should use for IPsec transport mode. This should
   // be used with the IP address from egress_point_sock_addr.
   uint32 transport_mode_server_port = 8;
+
+  // The sockaddr of the control plane server the client should use. This should
+  // include an IPv4 and IPv6 address. The client should use this for rekey
+  // requests or to set up the IKE client library.
+  repeated string control_plane_sock_addr = 9;
 }
 
 message PpnIkeResponse {
