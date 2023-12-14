@@ -88,6 +88,13 @@ absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
         mss_detection_sock_addr->begin(), mss_detection_sock_addr->end());
   }
 
+  PPN_ASSIGN_OR_RETURN(
+      std::optional<int64_t> transport_mode_server_port,
+      utils::JsonGetInt64(json, JsonKeys::kTransportModeServerPort));
+  if (transport_mode_server_port) {
+    response.set_transport_mode_server_port(*transport_mode_server_port);
+  }
+
   // This is the only Timestamp value, so there's no need for a helper macro.
   if (json.contains(JsonKeys::kExpiry)) {
     if (!json[JsonKeys::kExpiry].is_string()) {

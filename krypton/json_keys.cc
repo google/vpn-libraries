@@ -21,37 +21,53 @@ const char JsonKeys::kAuthTokenKey[] = "oauth_token";
 const char JsonKeys::kServiceTypeKey[] = "service_type";
 const char JsonKeys::kBlindedTokensKey[] = "blinded_token";
 
-// Egress
+// AddEgressRequest
+const char JsonKeys::kUnblindedToken[] = "unblinded_token";
+const char JsonKeys::kPpn[] = "ppn";
+const char JsonKeys::kUnblindedTokenSignature[] = "unblinded_token_signature";
+const char JsonKeys::kRegionTokenAndSignature[] = "region_token_and_signature";
+const char JsonKeys::kPublicMetadata[] = "public_metadata";
+const char JsonKeys::kSigningKeyVersion[] = "signing_key_version";
+const char JsonKeys::kMessageMask[] = "message_mask";
+
+// AddEgressResponse
+const char JsonKeys::kPpnDataplane[] = "ppn_dataplane";
+const char JsonKeys::kIkeDataplane[] = "ike";
+
+// PpnDataplaneRequest
+const char JsonKeys::kClientPublicValue[] = "client_public_value";
+const char JsonKeys::kClientNonce[] = "client_nonce";
+const char JsonKeys::kRekeyVerificationKey[] = "rekey_verification_key";
+const char JsonKeys::kSignature[] = "rekey_signature";
+const char JsonKeys::kDownlinkSpi[] = "downlink_spi";
+const char JsonKeys::kPreviousUplinkSpi[] = "previous_uplink_spi";
 const char JsonKeys::kControlPlaneSockAddr[] = "control_plane_sock_addr";
+const char JsonKeys::kDataplaneProtocol[] = "dataplane_protocol";
+const char JsonKeys::kSuite[] = "suite";
 const char JsonKeys::kApnType[] = "apn_type";
 const char JsonKeys::kDynamicMtuEnabled[] = "dynamic_mtu_enabled";
 
-// PPN
-const char JsonKeys::kPpnDataplane[] = "ppn_dataplane";
-const char JsonKeys::kClientPublicValue[] = "client_public_value";
-const char JsonKeys::kClientNonce[] = "client_nonce";
+// PpnDataplaneResponse
 const char JsonKeys::kUserPrivateIp[] = "user_private_ip";
 const char JsonKeys::kEgressPointSockAddr[] = "egress_point_sock_addr";
 const char JsonKeys::kEgressPointPublicValue[] = "egress_point_public_value";
 const char JsonKeys::kServerNonce[] = "server_nonce";
 const char JsonKeys::kUplinkSpi[] = "uplink_spi";
-const char JsonKeys::kDownlinkSpi[] = "downlink_spi";
 const char JsonKeys::kExpiry[] = "expiry";
 const char JsonKeys::kMssDetectionSockAddr[] = "mss_detection_sock_addr";
+const char JsonKeys::kTransportModeServerPort[] = "transport_mode_server_port";
+
+// IpRange
 const char JsonKeys::kIpv4[] = "ipv4_range";
 const char JsonKeys::kIpv6[] = "ipv6_range";
-const char JsonKeys::kDataplaneProtocol[] = "dataplane_protocol";
-const char JsonKeys::kSuite[] = "suite";
-const char JsonKeys::kSignature[] = "rekey_signature";
-const char JsonKeys::kRekeyVerificationKey[] = "rekey_verification_key";
-const char JsonKeys::kPreviousUplinkSpi[] = "previous_uplink_spi";
+
+// PPN
 const char JsonKeys::kPem[] = "pem";
 const char JsonKeys::kBlindedTokenSignature[] = "blinded_token_signature";
 const char JsonKeys::kCopperControllerHostname[] = "copper_controller_hostname";
 const char JsonKeys::kPublicKeyHash[] = "public_key_hash";
 
 // IKE
-const char JsonKeys::kIkeDataplane[] = "ike";
 const char JsonKeys::kClientId[] = "client_id";
 const char JsonKeys::kSharedSecret[] = "shared_secret";
 const char JsonKeys::kServerAddress[] = "server_address";
@@ -64,15 +80,6 @@ const char JsonKeys::kSessionId[] = "session_id";
 const char JsonKeys::kUplinkMtu[] = "uplink_mtu";
 const char JsonKeys::kDownlinkMtu[] = "downlink_mtu";
 const char JsonKeys::kMtuUpdateSignature[] = "mtu_update_signature";
-
-// AddEgressRequest
-const char JsonKeys::kUnblindedToken[] = "unblinded_token";
-const char JsonKeys::kPpn[] = "ppn";
-const char JsonKeys::kUnblindedTokenSignature[] = "unblinded_token_signature";
-const char JsonKeys::kRegionTokenAndSignature[] = "region_token_and_signature";
-const char JsonKeys::kPublicMetadata[] = "public_metadata";
-const char JsonKeys::kSigningKeyVersion[] = "signing_key_version";
-const char JsonKeys::kMessageMask[] = "message_mask";
 
 // PublicMetadata
 const char JsonKeys::kExitLocation[] = "exit_location";

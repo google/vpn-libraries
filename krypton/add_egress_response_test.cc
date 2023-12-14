@@ -23,8 +23,6 @@ namespace privacy {
 namespace krypton {
 
 using ::testing::EqualsProto;
-using ::testing::UnorderedElementsAre;
-using ::testing::proto::Partially;
 using ::testing::status::StatusIs;
 
 TEST(AddEgressResponse, TestAddEgressResponse) {
@@ -48,7 +46,8 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
       "expiry": "2020-08-07T01:06:13+00:00",
       "mss_detection_sock_addr": [
         "addr2"
-      ]
+      ],
+      "transport_mode_server_port": 567
     }
   })string");
 
@@ -57,6 +56,8 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
   ASSERT_OK_AND_ASSIGN(auto ppn_response,
                        add_egress_response.ppn_dataplane_response());
 
+  // For the value of expiry, 2020-08-07T01:06:13+00:00 == 1596762373s since
+  // epoch.
   EXPECT_THAT(ppn_response, EqualsProto(R"pb(
                 user_private_ip: { ipv4_range: "127.0.0.1" },
                 user_private_ip: { ipv6_range: "fe80::1" },
@@ -67,27 +68,8 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
                 uplink_spi: 123,
                 expiry: { seconds: 1596762373 nanos: 0 },
                 mss_detection_sock_addr: "addr2",
+                transport_mode_server_port: 567,
               )pb"));
-
-  EXPECT_THAT(ppn_response.user_private_ip(),
-              UnorderedElementsAre(
-                  Partially(EqualsProto(R"pb(ipv4_range: "127.0.0.1")pb")),
-                  Partially(EqualsProto(R"pb(ipv6_range: "fe80::1")pb"))));
-
-  EXPECT_THAT(ppn_response.egress_point_sock_addr(),
-              UnorderedElementsAre("addr1", "addr2"));
-  EXPECT_EQ(ppn_response.egress_point_public_value(), "1234567890abcdef");
-  EXPECT_EQ(ppn_response.server_nonce(), "abcd");
-  EXPECT_EQ(ppn_response.uplink_spi(), 123);
-
-  // 2020-08-07T01:06:13+00:00 == 1596762373s since epoch.
-  EXPECT_THAT(ppn_response.expiry(), EqualsProto(R"pb(
-                seconds: 1596762373
-                nanos: 0
-              )pb"));
-
-  EXPECT_EQ(ppn_response.mss_detection_sock_addr_size(), 1);
-  EXPECT_THAT(ppn_response.mss_detection_sock_addr(0), "addr2");
 }
 
 TEST(AddEgressResponse, TestAddEgressIkeResponse) {
