@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright (C) 2022 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,48 +14,49 @@
  * limitations under the License.
  */
 
-syntax = "proto2";
+edition = "2023";
 
 package privacy.krypton.desktop;
 
 import "google/protobuf/timestamp.proto";
 
+option features.utf8_validation = NONE;
 option cc_api_version = 2;
 
 // OAuth 2.0 Configuration.
 message OAuthConfig {
   // PPN Desktop client id.
-  optional string client_id = 1;
+  string client_id = 1;
 
   // Redirect URI.
-  optional string client_secret = 2;
+  string client_secret = 2;
 
   // OAuth 2.0 Token endpoint.
-  optional string token_endpoint = 5;
+  string token_endpoint = 5;
 
   // OAuth 2.0 scopes.
   repeated string scopes = 6;
 
   // OAuth 2.0 UserInfo endpoint.
-  optional string userinfo_endpoint = 7;
+  string userinfo_endpoint = 7;
 
   // OAuth 2.0 refresh token.
-  optional string refresh_token = 8;
+  string refresh_token = 8;
 
   reserved 3, 4;
 }
 
 message OAuthTokenRequest {
   // OAuth 2.0 authorization code.
-  optional string code = 1;
+  string code = 1;
 
   // OAuth 2.0 code_verifier used as part of PKCE.
-  optional string code_verifier = 2;
+  string code_verifier = 2;
 }
 
 message OAuthTokenRefreshRequest {
   // OAuth 2.0 refresh token.
-  optional string refresh_token = 1;
+  string refresh_token = 1;
 }
 
 // Proto representation of OAuth 2.0 Response.
@@ -65,27 +66,27 @@ message OAuthTokenRefreshRequest {
 message OAuthTokenResponse {
   // Access token returned as part of either initial token request or refresh
   // token request.
-  optional string access_token = 1;
+  string access_token = 1;
 
   // Seconds until access_token expires.
-  optional int64 expires_in = 2;
+  int64 expires_in = 2;
 
   // Refresh token used to get new access_tokens. Only returned by initial
   // token request.
-  optional string refresh_token = 3;
+  string refresh_token = 3;
 
   // Should be Bearer.
-  optional string token_type = 4;
+  string token_type = 4;
 
   // Space-delimited list of scopes for this particular access_token.
-  optional string scope = 5;
+  string scope = 5;
 
   // Expiration timestamp. This is manually populated.
-  optional google.protobuf.Timestamp expires_at = 6;
+  google.protobuf.Timestamp expires_at = 6;
 
   // JSON Web Token (JWT) that contains digitally signed identity information
   // about the user.
-  optional string id_token = 7;
+  string id_token = 7;
 }
 
 // Selected fields contained in UserInfo JSON that are of interest to us.
@@ -93,5 +94,5 @@ message OAuthTokenResponse {
 // Documentation:
 // https://cloud.google.com/identity-platform/docs/reference/rest/v1/UserInfo
 message UserInfo {
-  optional string email = 1;
+  string email = 1;
 }
