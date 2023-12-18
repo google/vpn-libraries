@@ -56,6 +56,7 @@ const char JsonKeys::kUplinkSpi[] = "uplink_spi";
 const char JsonKeys::kExpiry[] = "expiry";
 const char JsonKeys::kMssDetectionSockAddr[] = "mss_detection_sock_addr";
 const char JsonKeys::kTransportModeServerPort[] = "transport_mode_server_port";
+// JsonKeys::kControlPlaneSockAddr already defined in PpnDataplaneRequest fields
 
 // IpRange
 const char JsonKeys::kIpv4[] = "ipv4_range";

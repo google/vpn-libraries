@@ -47,7 +47,11 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
       "mss_detection_sock_addr": [
         "addr2"
       ],
-      "transport_mode_server_port": 567
+      "transport_mode_server_port": 567,
+      "control_plane_sock_addr": [
+        "127.0.0.1:1234",
+        "[::1]:5678"
+      ]
     }
   })string");
 
@@ -69,6 +73,8 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
                 expiry: { seconds: 1596762373 nanos: 0 },
                 mss_detection_sock_addr: "addr2",
                 transport_mode_server_port: 567,
+                control_plane_sock_addr: "127.0.0.1:1234",
+                control_plane_sock_addr: "[::1]:5678",
               )pb"));
 }
 

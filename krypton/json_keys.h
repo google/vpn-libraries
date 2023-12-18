@@ -60,6 +60,7 @@ class JsonKeys {
   static const char kExpiry[];
   static const char kMssDetectionSockAddr[];
   static const char kTransportModeServerPort[];
+  // kControlPlaneSockAddr already declared in PpnDataplaneRequest fields
 
   // IpRange
   static const char kIpv4[];
