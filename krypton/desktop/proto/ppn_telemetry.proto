@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright (C) 2022 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-syntax = "proto2";
+edition = "2023";
 
 package privacy.krypton.desktop;
 
@@ -29,14 +29,14 @@ option cc_api_version = 2;
 message PpnTelemetry {
   // Duration for how long some network was available since the last time
   // telemetry was collected.
-  optional google.protobuf.Duration network_uptime = 1;
+  google.protobuf.Duration network_uptime = 1;
 
   // Cumulative duration for how long PPN was fully connected since the last
   // time telemetry was collected.
-  optional google.protobuf.Duration ppn_connection_uptime = 2;
+  google.protobuf.Duration ppn_connection_uptime = 2;
 
   // Cumulative duration for how long the VPN was turned on since the last time.
-  optional google.protobuf.Duration ppn_service_uptime = 3;
+  google.protobuf.Duration ppn_service_uptime = 3;
 
   // Amount of time it took for auth to finish, every time it connected.
   repeated google.protobuf.Duration auth_latency = 4;
@@ -54,30 +54,30 @@ message PpnTelemetry {
   repeated google.protobuf.Duration zinc_latency = 7;
 
   // Number of successful rekeys since the last time telemetry was collected.
-  optional uint32 successful_rekeys = 8;
+  uint32 successful_rekeys = 8;
 
   // Number of network switches since the last time telemetry was collected.
-  optional uint32 network_switches = 9;
+  uint32 network_switches = 9;
 
   // List of all disconnection durations since the last time telemetry was
   // collected.
   repeated google.protobuf.Duration disconnection_durations = 10;
 
   // Number of disconnections since the last time telemetry was collected.
-  optional uint32 disconnection_count = 11;
+  uint32 disconnection_count = 11;
 
   // Number of successful network switches since the last telemetery collection
   // event.
-  optional uint32 successful_network_switches = 12;
+  uint32 successful_network_switches = 12;
 
   // Provides latency for each network switch that is successful.
   repeated google.protobuf.Duration network_switch_latency = 13;
 
   // The number of times a client attempts provisioning.
-  optional uint32 control_plane_attempts = 14;
+  uint32 control_plane_attempts = 14;
 
   // The number of times the client is successfully provisioned.
-  optional uint32 control_plane_successes = 15;
+  uint32 control_plane_successes = 15;
 
   // Provides latency from start of provisioning until fully provisioned.
   repeated google.protobuf.Duration control_plane_success_latency = 16;
@@ -86,21 +86,21 @@ message PpnTelemetry {
   repeated google.protobuf.Duration control_plane_failure_latency = 17;
 
   // The number of attempts to connect a datapath.
-  optional uint32 data_plane_connecting_attempts = 18;
+  uint32 data_plane_connecting_attempts = 18;
 
   // The number of times a datapath was successfully connected.
-  optional uint32 data_plane_connecting_successes = 19;
+  uint32 data_plane_connecting_successes = 19;
 
   // Provides latency from start of connecting a datapath until fully connected.
   repeated google.protobuf.Duration data_plane_connecting_latency = 20;
 
   // The number of times a health check is performed.
-  optional uint32 health_check_attempts = 21;
+  uint32 health_check_attempts = 21;
 
   // The number of times a health check confirms connection.
-  optional uint32 health_check_successes = 22;
+  uint32 health_check_successes = 22;
 
   // The number of times anonymous token unblinding fails, leading to
   // authentication failure.
-  optional uint32 token_unblind_failure_count = 23;
+  uint32 token_unblind_failure_count = 23;
 }
