@@ -336,18 +336,12 @@ TEST_F(IpSecDatapathTest, SecondSwitchNetworkRekeys) {
   established.WaitForNotification();
 
   EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
-
-  // Switching the tunnel would normally start the packet forwarder, but this
-  // should be ignored since rekey is still in progress.
-  datapath_->PrepareForTunnelSwitch();
-  datapath_->SwitchTunnel();
-
   EXPECT_OK(datapath_->SetKeyMaterials(params_));
 
   datapath_->Stop();
 }
 
-TEST_F(IpSecDatapathTest, TunnelSwitchDuringRekeyIsIgnored) {
+TEST_F(IpSecDatapathTest, SwitchTunnelDuringRekeyIsIgnored) {
   auto mock_socket = std::make_unique<MockIpSecSocket>();
   MockIpSecSocket *mock_socket_ptr = mock_socket.get();
 
@@ -425,7 +419,7 @@ TEST_F(IpSecDatapathTest, SetKeyMaterialsConfiguresIpSecWithNewKeys) {
   datapath_->Stop();
 }
 
-TEST_F(IpSecDatapathTest, SwitchTunnel) {
+TEST_F(IpSecDatapathTest, SwitchTunnelWithRunningDatapathRestartsDatapath) {
   MockTunnel new_tunnel;
   EXPECT_CALL(vpn_service_, GetTunnel())
       .WillOnce(Return(tunnel_.get()))
@@ -456,6 +450,94 @@ TEST_F(IpSecDatapathTest, SwitchTunnel) {
   datapath_->SwitchTunnel();
   datapath_->Stop();
   tunnel_read_cancel.WaitForNotification();
+}
+
+TEST_F(IpSecDatapathTest,
+       SwitchTunnelWithFailureBeforePrepareDoesNotStartDatapath) {
+  EXPECT_CALL(vpn_service_, GetTunnel());
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _, _))
+      .WillOnce(Return(std::move(socket_)));
+
+  absl::Notification established;
+  EXPECT_CALL(notification_, DatapathEstablished).WillOnce([&established]() {
+    established.Notify();
+  });
+  EXPECT_CALL(notification_, DatapathFailed);
+
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+  // Simulate some network traffic, so that we know everything is running.
+  write(*network_external_fd_, "foo", 3);
+  established.WaitForNotification();
+
+  datapath_->IpSecPacketForwarderFailed(absl::InternalError("Failure"), 1);
+  datapath_->PrepareForTunnelSwitch();
+  datapath_->SwitchTunnel();
+
+  datapath_->Stop();
+}
+
+TEST_F(IpSecDatapathTest,
+       SwitchTunnelWithFailureAfterPrepareDoesNotStartDatapath) {
+  EXPECT_CALL(vpn_service_, GetTunnel());
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _, _))
+      .WillOnce(Return(std::move(socket_)));
+
+  absl::Notification established;
+  EXPECT_CALL(notification_, DatapathEstablished).WillOnce([&established]() {
+    established.Notify();
+  });
+  EXPECT_CALL(notification_, DatapathFailed);
+
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+  // Simulate some network traffic, so that we know everything is running.
+  write(*network_external_fd_, "foo", 3);
+  established.WaitForNotification();
+
+  datapath_->PrepareForTunnelSwitch();
+  datapath_->IpSecPacketForwarderFailed(absl::InternalError("Failure"), 1);
+  datapath_->SwitchTunnel();
+
+  datapath_->Stop();
+}
+
+TEST_F(IpSecDatapathTest,
+       SwitchTunnelWithTwoFailuresAfterPrepareOnlyHandlesOne) {
+  EXPECT_CALL(vpn_service_, GetTunnel());
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _, _))
+      .WillOnce(Return(std::move(socket_)));
+
+  absl::Notification established;
+  EXPECT_CALL(notification_, DatapathEstablished).WillOnce([&established]() {
+    established.Notify();
+  });
+  EXPECT_CALL(notification_, DatapathFailed);
+
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+  // Simulate some network traffic, so that we know everything is running.
+  write(*network_external_fd_, "foo", 3);
+  established.WaitForNotification();
+
+  datapath_->PrepareForTunnelSwitch();
+  datapath_->IpSecPacketForwarderFailed(absl::InternalError("Failure"), 1);
+  datapath_->IpSecPacketForwarderFailed(absl::InternalError("Failure"), 1);
+  datapath_->SwitchTunnel();
+
+  datapath_->Stop();
+}
+
+TEST_F(IpSecDatapathTest, FailureAfterSwitchTunnelIsIgnored) {
+  EXPECT_CALL(notification_, DatapathFailed).Times(0);
+  EXPECT_CALL(notification_, DatapathPermanentFailure).Times(0);
+
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
+  datapath_->PrepareForTunnelSwitch();
+  datapath_->SwitchTunnel();
+  datapath_->IpSecPacketForwarderFailed(absl::InternalError("Failure"), 0);
+
+  datapath_->Stop();
 }
 
 TEST_F(IpSecDatapathTest, SwitchNetworkBadNetworkSocket) {
@@ -618,39 +700,26 @@ TEST_F(IpSecDatapathTest, TunnelWriteFailure) {
   datapath_->Stop();
 }
 
-TEST_F(IpSecDatapathTest, IgnoreOldForwarderNotifications) {
-  MockTunnel mock_tunnel;
-  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&mock_tunnel));
-
+TEST_F(IpSecDatapathTest, NotificationFromOldPacketForwarderIsIgnored) {
   auto mock_socket = std::make_unique<MockIpSecSocket>();
   MockIpSecSocket *mock_socket_ptr = mock_socket.get();
 
+  EXPECT_CALL(*mock_socket_ptr, GetFd()).WillOnce(Return(1));
+
   EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _, _))
+      .WillOnce(Return(std::move(socket_)))
       .WillOnce(Return(std::move(mock_socket)));
 
-  int failure_count = 0;
-  EXPECT_CALL(notification_, DatapathFailed).WillRepeatedly([&failure_count]() {
-    ++failure_count;
-  });
+  EXPECT_CALL(notification_, DatapathFailed).Times(0);
+  EXPECT_CALL(notification_, DatapathPermanentFailure).Times(0);
 
-  EXPECT_CALL(notification_, DatapathPermanentFailure)
-      .WillRepeatedly([&failure_count]() { ++failure_count; });
-
-  std::vector<Packet> packets1;
-  packets1.emplace_back("foo", 3, IPProtocol::kIPv6, [] {});
   absl::Notification socket_closed;
 
   // Simulate one successful read and then a blocking read.
-  EXPECT_CALL(*mock_socket_ptr, ReadPackets())
-      .WillOnce(Return(std::move(packets1)))
-      .WillOnce([&socket_closed]() {
-        socket_closed.WaitForNotification();
-        return std::vector<Packet>();
-      });
-
-  // Simulate a failed write.
-  EXPECT_CALL(*mock_socket_ptr, WritePackets(_))
-      .WillOnce(Return(absl::InternalError("Failure")));
+  EXPECT_CALL(*mock_socket_ptr, ReadPackets()).WillOnce([&socket_closed]() {
+    socket_closed.WaitForNotification();
+    return std::vector<Packet>();
+  });
 
   // Unblock the ReadPackets call.
   EXPECT_CALL(*mock_socket_ptr, CancelReadPackets())
@@ -659,80 +728,85 @@ TEST_F(IpSecDatapathTest, IgnoreOldForwarderNotifications) {
         return absl::OkStatus();
       });
 
-  std::vector<Packet> packets2;
-  packets2.emplace_back("bar", 3, IPProtocol::kIPv6, [] {});
-  absl::Notification tunnel_closed;
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 2));
+  EXPECT_OK(datapath_->SetKeyMaterials(params_));
+  datapath_->IpSecPacketForwarderFailed(absl::InternalError("Failure"), 1);
 
-  // Simulate one successful read and then a blocking read.
-  EXPECT_CALL(mock_tunnel, ReadPackets())
-      .WillOnce(Return(std::move(packets2)))
-      .WillOnce([&tunnel_closed]() {
-        tunnel_closed.WaitForNotification();
-        return std::vector<Packet>();
-      });
+  datapath_->Stop();
+}
 
-  // Simulate a failed write.
-  EXPECT_CALL(mock_tunnel, WritePackets(_))
-      .WillOnce(Return(absl::InternalError("Failure")));
+TEST_F(IpSecDatapathTest, NotificationReceivedWhileDatapathInactiveIsIgnored) {
+  MockTunnel mock_tunnel;
+  EXPECT_CALL(vpn_service_, GetTunnel())
+      .WillOnce(Return(tunnel_.get()))
+      .WillOnce(Return(&mock_tunnel));
 
-  // Unblock the ReadPackets call.
-  EXPECT_CALL(mock_tunnel, CancelReadPackets()).WillOnce([&tunnel_closed]() {
-    tunnel_closed.Notify();
-    return absl::OkStatus();
-  });
+  auto mock_socket = std::make_unique<MockIpSecSocket>();
+  MockIpSecSocket *mock_socket_ptr = mock_socket.get();
+
+  EXPECT_CALL(*mock_socket_ptr, GetFd()).WillOnce(Return(1));
+
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _, _))
+      .WillOnce(Return(std::move(socket_)))
+      .WillOnce(Return(std::move(mock_socket)));
+
+  EXPECT_CALL(notification_, DatapathFailed).Times(0);
+  EXPECT_CALL(notification_, DatapathPermanentFailure).Times(0);
 
   EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
   EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 2));
+  datapath_->IpSecPacketForwarderFailed(absl::InternalError("Failure"), 1);
 
   datapath_->Stop();
-
-  // Delete the datapath to make sure its internal looper has finished.
-  datapath_ = nullptr;
-
-  // Verify at most one of the failure notifications was processed. If stop was
-  // processed first then both failure notifications may have been ignored.
-  EXPECT_LE(failure_count, 1);
 }
 
-TEST_F(IpSecDatapathTest, SwitchTunnelError) {
+TEST_F(IpSecDatapathTest, SwitchTunnelWithGetTunnelErrorCausesFailure) {
   EXPECT_CALL(vpn_service_, GetTunnel())
+      .WillOnce(Return(tunnel_.get()))
       .WillOnce(Return(absl::InternalError("Failure")));
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _, _))
+      .WillOnce(Return(std::move(socket_)));
+
   absl::Notification failed;
   EXPECT_CALL(notification_,
               DatapathPermanentFailure(
                   StatusIs(absl::StatusCode::kInternal, StrEq("Failure"))))
       .WillOnce([&failed]() { failed.Notify(); });
 
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+  datapath_->PrepareForTunnelSwitch();
   datapath_->SwitchTunnel();
 
   failed.WaitForNotification();
+
+  datapath_->Stop();
 }
 
-TEST_F(IpSecDatapathTest, SwitchTunnelNullTunnel) {
-  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(nullptr));
+TEST_F(IpSecDatapathTest, SwitchTunnelWithGetTunnelNullCausesFailure) {
+  EXPECT_CALL(vpn_service_, GetTunnel())
+      .WillOnce(Return(tunnel_.get()))
+      .WillOnce(Return(nullptr));
+  EXPECT_CALL(vpn_service_, CreateProtectedNetworkSocket(_, _, _, _))
+      .WillOnce(Return(std::move(socket_)));
+
   absl::Notification failed;
   EXPECT_CALL(notification_,
               DatapathPermanentFailure(
                   StatusIs(absl::StatusCode::kInternal, HasSubstr("null"))))
       .WillOnce([&failed]() { failed.Notify(); });
 
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+  datapath_->PrepareForTunnelSwitch();
   datapath_->SwitchTunnel();
 
   failed.WaitForNotification();
-}
 
-TEST_F(IpSecDatapathTest, SwitchTunnelNullNetworkSocket) {
-  MockTunnel tunnel;
-  EXPECT_CALL(vpn_service_, GetTunnel()).WillOnce(Return(&tunnel));
-  absl::Notification failed;
-  EXPECT_CALL(notification_,
-              DatapathPermanentFailure(StatusIs(absl::StatusCode::kInternal,
-                                                HasSubstr("network socket"))))
-      .WillOnce([&failed]() { failed.Notify(); });
-
-  datapath_->SwitchTunnel();
-
-  failed.WaitForNotification();
+  datapath_->Stop();
 }
 
 TEST_F(IpSecDatapathTest, UplinkMtuUpdateHandler) {

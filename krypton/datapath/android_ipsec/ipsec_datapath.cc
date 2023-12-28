@@ -192,15 +192,24 @@ absl::Status IpSecDatapath::SwitchNetwork(uint32_t session_id,
 }
 
 void IpSecDatapath::PrepareForTunnelSwitch() {
-  // Stop the packet forwarder to ensure the tunnel is not being used and can
-  // be safely deleted.
   absl::MutexLock l(&mutex_);
+  // Need to check if the packet forwarder is already active before we call
+  // ShutDownIpSecPacketForwarder. That method call also clears the
+  // tunnel_switch_requires_restart_ flag so we cannot set that flag before.
+  bool forwarder_active = forwarder_ != nullptr;
+  // Shut down the packet forwarder so it is not actively using the old tunnel.
   ShutDownIpSecPacketForwarder(/*close_network_socket=*/false);
+  tunnel_switch_in_progress_ = true;
+  tunnel_switch_requires_restart_ = forwarder_active;
 }
 
 void IpSecDatapath::SwitchTunnel() {
   absl::MutexLock l(&mutex_);
-  StartUpIpSecPacketForwarder();
+  if (tunnel_switch_requires_restart_) {
+    tunnel_switch_requires_restart_ = false;
+    StartUpIpSecPacketForwarder();
+  }
+  tunnel_switch_in_progress_ = false;
 }
 
 absl::Status IpSecDatapath::SetKeyMaterials(const TransformParams& params) {
@@ -280,6 +289,8 @@ void IpSecDatapath::StartUpIpSecPacketForwarder() {
 }
 
 void IpSecDatapath::ShutDownIpSecPacketForwarder(bool close_network_socket) {
+  tunnel_switch_in_progress_ = false;
+  tunnel_switch_requires_restart_ = false;
   if (forwarder_ != nullptr) {
     LOG(INFO) << "Stopping packet forwarder.";
     forwarder_->Stop();
@@ -302,7 +313,8 @@ void IpSecDatapath::CloseNetworkSocket() {
 }
 
 bool IpSecDatapath::IsForwarderNotificationValid(int forwarder_id) {
-  if (forwarder_ == nullptr) {
+  // If we get a notification during a tunnel switch we should still handle it.
+  if (forwarder_ == nullptr && !tunnel_switch_in_progress_) {
     LOG(WARNING) << "Received notification after packet forwarder closed";
     return false;
   }

@@ -209,6 +209,9 @@ class Session : public DatapathInterface::NotificationInterface,
   void SetState(State state, absl::Status status)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  // Returns true if the session is in a healthy or recoverable state.
+  bool IsActive() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   void StartDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   absl::Status ConnectDatapath(const NetworkInfo& network_info)
@@ -268,7 +271,7 @@ class Session : public DatapathInterface::NotificationInterface,
 
   KryptonConfig config_;
 
-  std::unique_ptr<DatapathInterface> datapath_;
+  std::unique_ptr<DatapathInterface> datapath_ ABSL_GUARDED_BY(mutex_);
 
   bool datapath_connecting_timer_enabled_ ABSL_GUARDED_BY(mutex_);
   absl::Duration datapath_connecting_timer_duration_ ABSL_GUARDED_BY(mutex_);

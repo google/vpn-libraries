@@ -326,6 +326,24 @@ void Session::SetState(State state, absl::Status status) {
   }
 }
 
+bool Session::IsActive() const {
+  switch (state_) {
+    case State::kInitialized:
+    case State::kEgressSessionCreated:
+    case State::kControlPlaneConnected:
+    case State::kDataPlaneConnected:
+    case State::kDataPlaneError:
+      return true;
+    // All of these states indicate a permanent error that will result in a new
+    // session being created.
+    case State::kStopped:
+    case State::kDataPlanePermanentError:
+    case State::kSessionError:
+    case State::kPermanentError:
+      return false;
+  }
+}
+
 void Session::Start() {
   absl::MutexLock l(&mutex_);
   DCHECK(notification_);
@@ -771,12 +789,6 @@ void Session::DoRekey() {
 
 void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
   absl::MutexLock l(&mutex_);
-  if (state_ != State::kControlPlaneConnected &&
-      state_ != State::kDataPlaneConnected) {
-    LOG(INFO) << "Ignoring uplink MTU update in unconnected state.";
-    return;
-  }
-
   if (tunnel_mtu != tunnel_mtu_) {
     LOG(INFO) << "Updating tunnel MTU from " << tunnel_mtu_ << " to "
               << tunnel_mtu;
@@ -794,17 +806,14 @@ void Session::DoUplinkMtuUpdate(int uplink_mtu, int tunnel_mtu) {
 
 void Session::DoDownlinkMtuUpdate(int downlink_mtu) {
   absl::MutexLock l(&mutex_);
-  if (state_ != State::kControlPlaneConnected &&
-      state_ != State::kDataPlaneConnected) {
-    LOG(INFO) << "Ignoring downlink MTU update in unconnected state.";
-    return;
-  }
-
   if (downlink_mtu != downlink_mtu_) {
     LOG(INFO) << "Updating downlink MTU from " << downlink_mtu_ << " to "
               << downlink_mtu;
     downlink_mtu_ = downlink_mtu;
-    PPN_LOG_IF_ERROR(SendUpdatePathInfoRequest());
+    // Send MTU update only if the session is still active.
+    if (IsActive()) {
+      PPN_LOG_IF_ERROR(SendUpdatePathInfoRequest());
+    }
   }
 }
 

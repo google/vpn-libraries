@@ -84,6 +84,8 @@ class IpSecDatapath : public DatapathInterface,
         rekey_needed_(false),
         rekey_in_progress_(false),
         datapath_established_(false),
+        tunnel_switch_in_progress_(false),
+        tunnel_switch_requires_restart_(false),
         looper_("IpSecDatapath Looper"),
         curr_forwarder_id_(0),
         health_check_(config, timer_manager, this, &looper_) {}
@@ -168,6 +170,10 @@ class IpSecDatapath : public DatapathInterface,
   bool rekey_needed_ ABSL_GUARDED_BY(mutex_);
   bool rekey_in_progress_ ABSL_GUARDED_BY(mutex_);
   bool datapath_established_ ABSL_GUARDED_BY(mutex_);
+  bool tunnel_switch_in_progress_ ABSL_GUARDED_BY(mutex_);
+  // This controls whether the packet forwarder should be restarted when
+  // switching the tunnel.
+  bool tunnel_switch_requires_restart_ ABSL_GUARDED_BY(mutex_);
 
   // The looper_ must outlive both network_socket_ and forwarder_. The
   // forwarder_ directly relies on looper_, while the network_socket_ will own
