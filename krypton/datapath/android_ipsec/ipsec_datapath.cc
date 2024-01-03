@@ -17,9 +17,11 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "google/protobuf/duration.proto.h"
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_packet_forwarder.h"
 #include "privacy/net/krypton/datapath/android_ipsec/ipsec_socket_interface.h"
@@ -35,12 +37,15 @@
 #include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/substitute.h"
 #include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
 namespace krypton {
 namespace datapath {
 namespace android {
+
+using ::privacy::net::common::proto::PpnDataplaneResponse;
 
 IpSecDatapath::~IpSecDatapath() { Stop(); }
 
@@ -57,10 +62,11 @@ absl::Status IpSecDatapath::Start(const AddEgressResponse& egress_response,
   LOG(INFO) << "Start IpSec with uplink_spi=" << key_material_->uplink_spi()
             << " downlink_spi=" << key_material_->downlink_spi();
 
-  PPN_ASSIGN_OR_RETURN(auto ppn_dataplane,
+  PPN_ASSIGN_OR_RETURN(PpnDataplaneResponse ppn_dataplane,
                        egress_response.ppn_dataplane_response());
-  for (const auto& tcp_mss_sockaddr : ppn_dataplane.mss_detection_sock_addr()) {
-    PPN_ASSIGN_OR_RETURN(auto endpoint,
+  for (const std::string& tcp_mss_sockaddr :
+       ppn_dataplane.mss_detection_sock_addr()) {
+    PPN_ASSIGN_OR_RETURN(Endpoint endpoint,
                          GetEndpointFromHostPort(tcp_mss_sockaddr));
     if (endpoint.ip_protocol() == IPProtocol::kIPv4) {
       ipv4_tcp_mss_endpoint_ = endpoint;
@@ -69,6 +75,9 @@ absl::Status IpSecDatapath::Start(const AddEgressResponse& egress_response,
     } else {
       LOG(ERROR) << "Invalid MSS Detection Sock Addr received.";
     }
+  }
+  if (ppn_dataplane.transport_mode_server_port() != 0) {
+    transport_mode_server_port_ = ppn_dataplane.transport_mode_server_port();
   }
 
   return absl::OkStatus();
@@ -104,6 +113,27 @@ absl::Status IpSecDatapath::SwitchNetwork(uint32_t session_id,
   }
   key_material_->set_uplink_spi(session_id);
 
+  absl::StatusOr<Endpoint> transport_mode_endpoint;
+  if (transport_mode_server_port_.has_value()) {
+    if (endpoint.ip_protocol() == IPProtocol::kIPv4) {
+      transport_mode_endpoint = GetEndpointFromHostPort(absl::Substitute(
+          "$0:$1", endpoint.address(), *transport_mode_server_port_));
+    } else {
+      transport_mode_endpoint = GetEndpointFromHostPort(absl::Substitute(
+          "[$0]:$1", endpoint.address(), *transport_mode_server_port_));
+    }
+  } else {
+    transport_mode_endpoint = endpoint;
+  }
+
+  if (!transport_mode_endpoint.ok()) {
+    NotifyDatapathPermanentFailure(transport_mode_endpoint.status());
+    return absl::OkStatus();
+  }
+
+  LOG(INFO) << "IPsec Transport Mode Endpoint: "
+            << transport_mode_endpoint->ToString();
+
   absl::StatusOr<std::unique_ptr<IpSecSocketInterface>> network_socket;
   if (config_.dynamic_mtu_enabled()) {
     std::unique_ptr<MtuTracker> mtu_tracker;
@@ -118,11 +148,11 @@ absl::Status IpSecDatapath::SwitchNetwork(uint32_t session_id,
         endpoint.ip_protocol() == IPProtocol::kIPv4 ? ipv4_tcp_mss_endpoint_
                                                     : ipv6_tcp_mss_endpoint_;
     network_socket = vpn_service_->CreateProtectedNetworkSocket(
-        network_info, endpoint, mss_mtu_detection_endpoint,
+        network_info, *transport_mode_endpoint, mss_mtu_detection_endpoint,
         std::move(mtu_tracker));
   } else {
-    network_socket =
-        vpn_service_->CreateProtectedNetworkSocket(network_info, endpoint);
+    network_socket = vpn_service_->CreateProtectedNetworkSocket(
+        network_info, *transport_mode_endpoint);
   }
 
   if (!network_socket.ok()) {

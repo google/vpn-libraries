@@ -181,6 +181,7 @@ class IpSecDatapath : public DatapathInterface,
   utils::LooperThread looper_;
 
   std::optional<IpSecTransformParams> key_material_ ABSL_GUARDED_BY(mutex_);
+  std::optional<uint32_t> transport_mode_server_port_ ABSL_GUARDED_BY(mutex_);
   int curr_forwarder_id_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<IpSecPacketForwarder> forwarder_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<IpSecSocketInterface> network_socket_ ABSL_GUARDED_BY(mutex_);

@@ -294,6 +294,100 @@ TEST_F(IpSecDatapathTest, DebugInfoUpdatesNumberOfDownlinkPackets) {
   datapath_->Stop();
 }
 
+TEST_F(IpSecDatapathTest, SwitchNetworkWithTransportModePortUsesPortWithIPv4) {
+  // Create a new AddEgressResponse to use that has the Transport Mode Port set.
+  HttpResponse fake_add_egress_http_response =
+      ParseTextProtoOrDie(R"pb(status { code: 200 message: "OK" })pb");
+  fake_add_egress_http_response.set_json_body(R"string({
+      "ppn_dataplane": {
+        "user_private_ip": [{
+          "ipv4_range": "10.2.2.123/32",
+          "ipv6_range": "fec2:0001::3/64"
+        }],
+        "egress_point_sock_addr": ["192.0.2.0:8080"],
+        "egress_point_public_value": "a22j+91TxHtS5qa625KCD5ybsyzPR1wkTDWHV2qSQQc=",
+        "mss_detection_sock_addr": ["192.168.0.1:2153", "[2604:ca00:f004:3::5]:2153"],
+        "server_nonce": "Uzt2lEzyvZYzjLAP3E+dAA==",
+        "uplink_spi": 1234,
+        "expiry": "2020-08-07T01:06:13+00:00",
+        "transport_mode_server_port": 789
+      }
+    })string");
+  ASSERT_OK_AND_ASSIGN(
+      fake_add_egress_response_,
+      AddEgressResponse::FromProto(fake_add_egress_http_response));
+
+  ASSERT_OK_AND_ASSIGN(Endpoint expected_endpoint,
+                       GetEndpointFromHostPort("192.0.2.0:789"));
+  EXPECT_CALL(vpn_service_,
+              CreateProtectedNetworkSocket(_, expected_endpoint, _, _))
+      .WillOnce(Return(std::move(socket_)));
+
+  absl::Notification established;
+  EXPECT_CALL(notification_, DatapathEstablished).WillOnce([&established]() {
+    established.Notify();
+  });
+
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+  write(*network_external_fd_, "foo", 3);
+
+  established.WaitForNotification();
+
+  datapath_->Stop();
+}
+
+TEST_F(IpSecDatapathTest, SwitchNetworkWithTransportModePortUsesPortWithIPv6) {
+  // Create a new AddEgressResponse to use that has the Transport Mode Port set.
+  HttpResponse fake_add_egress_http_response =
+      ParseTextProtoOrDie(R"pb(status { code: 200 message: "OK" })pb");
+  fake_add_egress_http_response.set_json_body(R"string({
+      "ppn_dataplane": {
+        "user_private_ip": [{
+          "ipv4_range": "10.2.2.123/32",
+          "ipv6_range": "fec2:0001::3/64"
+        }],
+        "egress_point_sock_addr": ["[2604:ca00:f001:4::5]:2153"],
+        "egress_point_public_value": "a22j+91TxHtS5qa625KCD5ybsyzPR1wkTDWHV2qSQQc=",
+        "mss_detection_sock_addr": ["192.168.0.1:2153", "[2604:ca00:f004:3::5]:2153"],
+        "server_nonce": "Uzt2lEzyvZYzjLAP3E+dAA==",
+        "uplink_spi": 1234,
+        "expiry": "2020-08-07T01:06:13+00:00",
+        "transport_mode_server_port": 789
+      }
+    })string");
+  ASSERT_OK_AND_ASSIGN(
+      fake_add_egress_response_,
+      AddEgressResponse::FromProto(fake_add_egress_http_response));
+
+  // Change some of the values to use the IPv6 addresses
+  ASSERT_OK_AND_ASSIGN(Endpoint endpoint_,
+                       GetEndpointFromHostPort("[2604:ca00:f001:4::5]:2153"));
+
+  params_.mutable_ipsec()->set_destination_address("2604:ca00:f001:4::5");
+  params_.mutable_ipsec()->set_destination_address_family(NetworkInfo::V6);
+  params_.mutable_ipsec()->set_destination_port(2153);
+
+  ASSERT_OK_AND_ASSIGN(Endpoint expected_endpoint,
+                       GetEndpointFromHostPort("[2604:ca00:f001:4::5]:789"));
+  EXPECT_CALL(vpn_service_,
+              CreateProtectedNetworkSocket(_, expected_endpoint, _, _))
+      .WillOnce(Return(std::move(socket_)));
+
+  absl::Notification established;
+  EXPECT_CALL(notification_, DatapathEstablished).WillOnce([&established]() {
+    established.Notify();
+  });
+
+  EXPECT_OK(datapath_->Start(fake_add_egress_response_, params_));
+  EXPECT_OK(datapath_->SwitchNetwork(1234, endpoint_, network_info_, 1));
+  write(*network_external_fd_, "foo", 3);
+
+  established.WaitForNotification();
+
+  datapath_->Stop();
+}
+
 TEST_F(IpSecDatapathTest, SecondSwitchNetworkRekeys) {
   auto mock_socket = std::make_unique<MockIpSecSocket>();
   MockIpSecSocket *mock_socket_ptr = mock_socket.get();
