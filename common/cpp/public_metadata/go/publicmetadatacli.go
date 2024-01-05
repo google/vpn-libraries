@@ -23,7 +23,7 @@ func (p *parse) Execute(ctx context.Context, f *flag.FlagSet, args ...any) subco
 		fmt.Printf("Expected one argument, got %v\n", f.NArg())
 		return subcommands.ExitUsageError
 	}
-	b, err := base64.StdEncoding.DecodeString(f.Arg(0))
+	b, err := base64.RawURLEncoding.DecodeString(f.Arg(0))
 	if err != nil {
 		fmt.Printf("Decode failed %v\n", err)
 		return subcommands.ExitUsageError
@@ -71,7 +71,7 @@ func (p *validate) Execute(ctx context.Context, f *flag.FlagSet, args ...any) su
 		f.Usage()
 		return subcommands.ExitUsageError
 	}
-	b, err := base64.StdEncoding.DecodeString(f.Arg(0))
+	b, err := base64.RawURLEncoding.DecodeString(f.Arg(0))
 	if err != nil {
 		fmt.Printf("Decode failed %v\n", err)
 		return subcommands.ExitUsageError
