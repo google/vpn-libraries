@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/crypto/session_crypto.h"
@@ -103,6 +104,10 @@ class Provision : public Auth::NotificationInterface,
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void PpnDataplaneRequest(bool rekey = false)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void ParseControlPlaneSockaddr(
+      const net::common::proto::PpnDataplaneResponse& ppn_dataplane)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;

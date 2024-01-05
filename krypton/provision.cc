@@ -56,6 +56,8 @@ namespace privacy {
 namespace krypton {
 namespace {
 
+using ::privacy::net::common::proto::PpnDataplaneResponse;
+
 // Reattempts exclude the first attempt.
 constexpr char kDefaultCopperAddress[] = "na4.p.g-tun.com";
 
@@ -171,6 +173,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
   AuthAndSignResponse auth_response = auth_->auth_response();
   // Rekey should use the same control plane address as was used for
   // the initial provisioning.
+  // TODO : When using Oasis skip the DNS resolution.
   if (!is_rekey) {
     // If auth_response specifies a copper control plane address, use it;
     // otherwise if there is a config option for the address, use it.
@@ -186,13 +189,15 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
       copper_hostname = kDefaultCopperAddress;
     }
     LOG(INFO) << "Copper hostname for DNS lookup: " << copper_hostname;
-    auto resolved_address = http_fetcher_.LookupDns(copper_hostname);
+    absl::StatusOr<std::string> resolved_address =
+        http_fetcher_.LookupDns(copper_hostname);
     if (!resolved_address.ok()) {
       FailWithStatus(resolved_address.status(), false);
       return;
     }
 
-    auto ip_range = utils::IPRange::Parse(*resolved_address);
+    absl::StatusOr<utils::IPRange> ip_range =
+        utils::IPRange::Parse(*resolved_address);
     if (!ip_range.ok()) {
       FailWithStatus(ip_range.status(), false);
       return;
@@ -347,24 +352,53 @@ void Provision::EgressAvailable(bool is_rekey) {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "Egress available";
 
-  auto egress = egress_manager_->GetEgressSessionDetails();
+  absl::StatusOr<AddEgressResponse> egress =
+      egress_manager_->GetEgressSessionDetails();
   if (!egress.ok()) {
     LOG(ERROR) << "Error getting session details";
     FailWithStatus(egress.status(), false);
     return;
   }
 
-  auto status = SetRemoteKeyMaterial(*egress);
+  absl::Status status = SetRemoteKeyMaterial(*egress);
   if (!status.ok()) {
     LOG(ERROR) << "Error setting remote key material " << status;
     FailWithStatus(status, false);
     return;
   }
 
+  if (!is_rekey) {
+    // Attempt to parse a control plane sockaddr from the response.
+    absl::StatusOr<PpnDataplaneResponse> ppn_dataplane =
+        egress->ppn_dataplane_response();
+    if (ppn_dataplane.ok()) {
+      ParseControlPlaneSockaddr(*ppn_dataplane);
+    }
+  }
+
   NotificationInterface* notification = notification_;
   notification_thread_->Post([notification, status, egress, is_rekey] {
     notification->Provisioned(*egress, is_rekey);
   });
+}
+
+void Provision::ParseControlPlaneSockaddr(
+    const PpnDataplaneResponse& ppn_dataplane) {
+  std::optional<std::string> control_plane_sockaddr;
+  for (const auto& sockaddr : ppn_dataplane.control_plane_sock_addr()) {
+    if (utils::IsValidV4Address(sockaddr) ||
+        utils::IsValidV6Address(sockaddr)) {
+      control_plane_sockaddr = sockaddr;
+      break;
+    }
+  }
+  // If there was a control plane sockaddr provided then it should be saved for
+  // subsequent requests. This will replace any value we found with DNS.
+  if (control_plane_sockaddr.has_value()) {
+    LOG(INFO) << "Control plane sockaddr received in AddEgressResponse: "
+              << *control_plane_sockaddr;
+    control_plane_sockaddr_ = *control_plane_sockaddr;
+  }
 }
 
 void Provision::EgressUnavailable(const absl::Status& status) {

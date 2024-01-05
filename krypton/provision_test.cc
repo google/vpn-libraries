@@ -25,12 +25,14 @@
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
 #include "privacy/net/krypton/egress_manager.h"
+#include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"
 #include "privacy/net/krypton/pal/mock_oauth_interface.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
 #include "privacy/net/krypton/utils/http_response_test_utils.h"
+#include "privacy/net/krypton/utils/json_util.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
@@ -39,6 +41,8 @@
 #include "third_party/absl/synchronization/notification.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/anonymous_tokens/cpp/testing/proto_utils.h"
+#include "third_party/json/include/nlohmann/json.hpp"
+#include "third_party/json/include/nlohmann/json_fwd.hpp"
 #include "third_party/openssl/base.h"
 
 namespace privacy {
@@ -50,6 +54,7 @@ using ::testing::_;
 using ::testing::EqualsProto;
 using ::testing::Return;
 using ::testing::StrEq;
+using ::testing::proto::Partially;
 using ::testing::status::StatusIs;
 
 MATCHER_P(RequestUrlMatcher, url, "") { return arg.url() == url; }
@@ -172,8 +177,11 @@ TEST_F(ProvisionTest, EgressAvailable) {
       });
 
   provision_->Start();
-  ASSERT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(1)));
+  done.WaitForNotification();
 
+  ASSERT_OK_AND_ASSIGN(std::string control_plane_sockaddr,
+                       provision_->GetControlPlaneSockaddr());
+  EXPECT_EQ(control_plane_sockaddr, "0.0.0.0:1849");
   ASSERT_OK_AND_ASSIGN(auto actual_ppn_dataplane_response,
                        provisioned_response.ppn_dataplane_response());
   ASSERT_OK_AND_ASSIGN(
@@ -183,6 +191,80 @@ TEST_F(ProvisionTest, EgressAvailable) {
                        expected_add_egress_response.ppn_dataplane_response());
   EXPECT_THAT(actual_ppn_dataplane_response,
               EqualsProto(expected_ppn_dataplane_response));
+}
+
+TEST_F(ProvisionTest, UsesIPv6ControlPlaneSockaddrFromAddEgressResponse) {
+  // Modify the default AddEgressResponse to include a control plane sockaddr.
+  HttpResponse fake_add_egress_response = utils::CreateAddEgressHttpResponse();
+  ASSERT_OK_AND_ASSIGN(
+      nlohmann::json json_obj,
+      utils::StringToJson(fake_add_egress_response.json_body()));
+  json_obj[JsonKeys::kPpnDataplane][JsonKeys::kControlPlaneSockAddr] =
+      nlohmann::json::array({"[::1]:1234", "127.0.0.1:1234"});
+  fake_add_egress_response.set_json_body(utils::JsonToString(json_obj));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("initial_data")));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("auth")));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
+      .WillOnce(Return(fake_add_egress_response));
+
+  absl::Notification done;
+  AddEgressResponse provisioned_response;
+  EXPECT_CALL(notification_, Provisioned(_, _))
+      .WillOnce([&done, &provisioned_response](AddEgressResponse response,
+                                               bool /*is_rekey*/) {
+        provisioned_response = response;
+        done.Notify();
+      });
+
+  provision_->Start();
+  done.WaitForNotification();
+
+  ASSERT_OK_AND_ASSIGN(std::string control_plane_sockaddr,
+                       provision_->GetControlPlaneSockaddr());
+  EXPECT_EQ(control_plane_sockaddr, "[::1]:1234");
+  ASSERT_OK_AND_ASSIGN(auto actual_ppn_dataplane_response,
+                       provisioned_response.ppn_dataplane_response());
+  EXPECT_THAT(actual_ppn_dataplane_response, Partially(EqualsProto(R"pb(
+                control_plane_sock_addr: "[::1]:1234",
+                control_plane_sock_addr: "127.0.0.1:1234",
+              )pb")));
+}
+
+TEST_F(ProvisionTest, UsesIPv4ControlPlaneSockaddrFromAddEgressResponse) {
+  // Modify the default AddEgressResponse to include a control plane sockaddr.
+  HttpResponse fake_add_egress_response = utils::CreateAddEgressHttpResponse();
+  ASSERT_OK_AND_ASSIGN(
+      nlohmann::json json_obj,
+      utils::StringToJson(fake_add_egress_response.json_body()));
+  json_obj[JsonKeys::kPpnDataplane][JsonKeys::kControlPlaneSockAddr] =
+      nlohmann::json::array({"127.0.0.1:1234", "[::1]:1234"});
+  fake_add_egress_response.set_json_body(utils::JsonToString(json_obj));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("initial_data")));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("auth")));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
+      .WillOnce(Return(fake_add_egress_response));
+
+  absl::Notification done;
+  AddEgressResponse provisioned_response;
+  EXPECT_CALL(notification_, Provisioned(_, _))
+      .WillOnce([&done, &provisioned_response](AddEgressResponse response,
+                                               bool /*is_rekey*/) {
+        provisioned_response = response;
+        done.Notify();
+      });
+
+  provision_->Start();
+  done.WaitForNotification();
+
+  ASSERT_OK_AND_ASSIGN(std::string control_plane_sockaddr,
+                       provision_->GetControlPlaneSockaddr());
+  EXPECT_EQ(control_plane_sockaddr, "127.0.0.1:1234");
+  ASSERT_OK_AND_ASSIGN(auto actual_ppn_dataplane_response,
+                       provisioned_response.ppn_dataplane_response());
+  EXPECT_THAT(actual_ppn_dataplane_response, Partially(EqualsProto(R"pb(
+                control_plane_sock_addr: "127.0.0.1:1234",
+                control_plane_sock_addr: "[::1]:1234",
+              )pb")));
 }
 
 TEST_F(ProvisionTest, Rekey) {
