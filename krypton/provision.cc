@@ -77,8 +77,7 @@ Provision::Provision(const KryptonConfig& config, std::unique_ptr<Auth> auth,
       notification_(ABSL_DIE_IF_NULL(notification)),
       notification_thread_(ABSL_DIE_IF_NULL(notification_thread)),
       http_fetcher_(ABSL_DIE_IF_NULL(http_fetcher),
-                    ABSL_DIE_IF_NULL(notification_thread)),
-      key_material_(nullptr) {
+                    ABSL_DIE_IF_NULL(notification_thread)) {
   auth_->RegisterNotificationHandler(this, &looper_);
   egress_manager_->RegisterNotificationHandler(this, &looper_);
 }
@@ -99,13 +98,6 @@ void Provision::Start() {
   absl::MutexLock l(&mutex_);
   DCHECK(notification_);
   LOG(INFO) << "Starting provisioning";
-  key_material_ = nullptr;
-  auto key_material = crypto::SessionCrypto::Create(config_);
-  if (!key_material.ok()) {
-    FailWithStatus(key_material.status(), false);
-    return;
-  }
-  key_material_ = *std::move(key_material);
   auth_->Start(/*is_rekey=*/false);
 }
 
@@ -117,29 +109,13 @@ void Provision::Stop() {
 
 void Provision::Rekey() {
   absl::MutexLock l(&mutex_);
-  if (!key_material_) {
-    FailWithStatus(absl::FailedPreconditionError("key_material_ is missing"),
-                   false);
-    return;
-  }
   auth_->Start(/*is_rekey=*/true);
 }
 
-absl::StatusOr<std::string> Provision::GenerateSignature(
-    absl::string_view data) {
+void Provision::SendAddEgress(bool is_rekey,
+                              crypto::SessionCrypto* key_material) {
   absl::MutexLock l(&mutex_);
-  if (!key_material_) {
-    return absl::FailedPreconditionError("key_material_ is missing");
-  }
-  return key_material_->GenerateSignature(data);
-}
-
-absl::StatusOr<TransformParams> Provision::GetTransformParams() {
-  absl::MutexLock l(&mutex_);
-  if (!key_material_) {
-    return absl::FailedPreconditionError("key_material_ is missing");
-  }
-  return key_material_->GetTransformParams();
+  PpnDataplaneRequest(is_rekey, key_material);
 }
 
 std::string Provision::GetApnType() {
@@ -167,7 +143,8 @@ void Provision::CollectTelemetry(KryptonTelemetry* telemetry) {
   egress_manager_->CollectTelemetry(telemetry);
 }
 
-void Provision::PpnDataplaneRequest(bool is_rekey) {
+void Provision::PpnDataplaneRequest(bool is_rekey,
+                                    crypto::SessionCrypto* key_material) {
   LOG(INFO) << "Doing PPN dataplane request. Rekey:"
             << ((is_rekey == true) ? "True" : "False");
   AuthAndSignResponse auth_response = auth_->auth_response();
@@ -263,9 +240,9 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
     }
   }
 
-  params.crypto = key_material_.get();
-  if (key_material_->GetRekeySignature()) {
-    params.signature = key_material_->GetRekeySignature().value();
+  params.crypto = key_material;
+  if (key_material->GetRekeySignature()) {
+    params.signature = key_material->GetRekeySignature().value();
   }
   params.uplink_spi = egress_manager_->uplink_spi();
 
@@ -295,57 +272,16 @@ void Provision::PpnDataplaneRequest(bool is_rekey) {
 void Provision::AuthSuccessful(bool is_rekey) {
   LOG(INFO) << "Authentication successful, fetching egress node details. Rekey:"
             << (is_rekey ? "True" : "False");
-
   absl::MutexLock l(&mutex_);
-  if (is_rekey) {
-    // Generate the rekey parameters that are needed and generate a signature
-    // from the old crypto keys.
-    auto new_key_material = crypto::SessionCrypto::Create(config_);
-    if (!new_key_material.ok()) {
-      FailWithStatus(new_key_material.status(), false);
-      return;
-    }
-    auto signature =
-        key_material_->GenerateSignature((*new_key_material)->public_value());
-    if (!signature.ok()) {
-      FailWithStatus(signature.status(), false);
-      return;
-    }
-    (*new_key_material)->SetSignature(*signature);
-    key_material_.reset();
-    key_material_ = *std::move(new_key_material);
-
-    if (config_.datapath_protocol() == KryptonConfig::BRIDGE ||
-        config_.datapath_protocol() == KryptonConfig::IPSEC) {
-      PpnDataplaneRequest(/*rekey=*/true);
-      return;
-    }
-  }
-  PpnDataplaneRequest();
+  NotificationInterface* notification = notification_;
+  notification_thread_->Post(
+      [notification, is_rekey] { notification->ReadyForAddEgress(is_rekey); });
 }
 
 void Provision::AuthFailure(const absl::Status& status) {
   absl::MutexLock l(&mutex_);
   LOG(ERROR) << "Authentication failed: " << status;
   FailWithStatus(status, utils::IsPermanentError(status));
-}
-
-absl::Status Provision::SetRemoteKeyMaterial(const AddEgressResponse& egress) {
-  if (config_.datapath_protocol() == KryptonConfig::IKE) {
-    return absl::OkStatus();
-  }
-
-  PPN_ASSIGN_OR_RETURN(auto ppn_data_plane, egress.ppn_dataplane_response());
-  if (ppn_data_plane.egress_point_public_value().empty()) {
-    return absl::InvalidArgumentError("missing egress_point_public_value");
-  }
-  if (ppn_data_plane.server_nonce().empty()) {
-    return absl::InvalidArgumentError("missing server_nonce");
-  }
-  PPN_RETURN_IF_ERROR(key_material_->SetRemoteKeyMaterial(
-      ppn_data_plane.egress_point_public_value(),
-      ppn_data_plane.server_nonce()));
-  return absl::OkStatus();
 }
 
 void Provision::EgressAvailable(bool is_rekey) {
@@ -360,13 +296,6 @@ void Provision::EgressAvailable(bool is_rekey) {
     return;
   }
 
-  absl::Status status = SetRemoteKeyMaterial(*egress);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error setting remote key material " << status;
-    FailWithStatus(status, false);
-    return;
-  }
-
   if (!is_rekey) {
     // Attempt to parse a control plane sockaddr from the response.
     absl::StatusOr<PpnDataplaneResponse> ppn_dataplane =
@@ -377,7 +306,7 @@ void Provision::EgressAvailable(bool is_rekey) {
   }
 
   NotificationInterface* notification = notification_;
-  notification_thread_->Post([notification, status, egress, is_rekey] {
+  notification_thread_->Post([notification, egress, is_rekey] {
     notification->Provisioned(*egress, is_rekey);
   });
 }

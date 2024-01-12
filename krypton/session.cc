@@ -27,6 +27,7 @@
 #include "privacy/net/common/proto/update_path_info.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
+#include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/json_keys.h"
@@ -72,6 +73,8 @@
 namespace privacy {
 namespace krypton {
 namespace {
+
+using ::privacy::net::common::proto::PpnDataplaneResponse;
 
 constexpr int kInvalidTimerId = -1;
 constexpr absl::Duration kDatapathReattemptDuration = absl::Milliseconds(500);
@@ -260,9 +263,11 @@ absl::Status Session::SendUpdatePathInfoRequest() {
       absl::StrCat("path_info;", update_path_info_request.session_id(), ";",
                    update_path_info_request.uplink_mtu(), ";",
                    update_path_info_request.downlink_mtu());
-  // TODO: This creates a race condition with rekey
-  PPN_ASSIGN_OR_RETURN(auto signature,
-                       provision_->GenerateSignature(signed_data));
+  if (key_material_ == nullptr) {
+    return absl::FailedPreconditionError("key_material_ is not initialized");
+  }
+  PPN_ASSIGN_OR_RETURN(std::string signature,
+                       key_material_->GenerateSignature(signed_data));
   update_path_info_request.set_mtu_update_signature(signature);
 
   auto request_json_str = ProtoToJsonString(update_path_info_request);
@@ -458,23 +463,6 @@ absl::Status Session::CreateTunnelIfNeeded() {
   return CreateTunnel(/*force_tunnel_update=*/false);
 }
 
-void Session::RekeyDatapath() {
-  // Do the rekey procedures.
-  LOG(INFO) << "Successful response from egress for rekey";
-  auto transform_params = provision_->GetTransformParams();
-  if (!transform_params.ok()) {
-    SetState(State::kSessionError, transform_params.status());
-    return;
-  }
-  auto rekey_status = datapath_->SetKeyMaterials(*transform_params);
-  if (!rekey_status.ok()) {
-    SetState(State::kSessionError, rekey_status);
-    return;
-  }
-  LOG(INFO) << "Rekey is successful";
-  number_of_rekeys_++;
-}
-
 void Session::Rekey() {
   if (state_ != State::kControlPlaneConnected &&
       state_ != State::kDataPlaneConnected &&
@@ -484,6 +472,45 @@ void Session::Rekey() {
                  "Session is not in connected state for rekey"));
   }
   provision_->Rekey();
+}
+
+void Session::RekeyDatapath() {
+  // Do the rekey procedures.
+  LOG(INFO) << "Successful response from egress for rekey";
+  absl::StatusOr<TransformParams> transform_params =
+      key_material_->GetTransformParams();
+  if (!transform_params.ok()) {
+    SetState(State::kSessionError, transform_params.status());
+    return;
+  }
+  absl::Status rekey_status = datapath_->SetKeyMaterials(*transform_params);
+  if (!rekey_status.ok()) {
+    SetState(State::kSessionError, rekey_status);
+    return;
+  }
+  LOG(INFO) << "Rekey is successful";
+  number_of_rekeys_++;
+}
+
+absl::Status Session::SetRemoteKeyMaterial(const AddEgressResponse& egress) {
+  if (config_.datapath_protocol() == KryptonConfig::IKE) {
+    return absl::OkStatus();
+  }
+  if (key_material_ == nullptr) {
+    return absl::FailedPreconditionError("key_material_ is null");
+  }
+
+  PPN_ASSIGN_OR_RETURN(PpnDataplaneResponse ppn_data_plane,
+                       egress.ppn_dataplane_response());
+  if (ppn_data_plane.egress_point_public_value().empty()) {
+    return absl::InvalidArgumentError("missing egress_point_public_value");
+  }
+  if (ppn_data_plane.server_nonce().empty()) {
+    return absl::InvalidArgumentError("missing server_nonce");
+  }
+  return key_material_->SetRemoteKeyMaterial(
+      ppn_data_plane.egress_point_public_value(),
+      ppn_data_plane.server_nonce());
 }
 
 void Session::StartDatapath() {
@@ -500,8 +527,8 @@ void Session::StartDatapath() {
     return;
   }
 
-  // Check if the key material is set.
-  auto transform_params = provision_->GetTransformParams();
+  absl::StatusOr<TransformParams> transform_params =
+      key_material_->GetTransformParams();
   if (!transform_params.ok()) {
     SetState(State::kSessionError, transform_params.status());
     return;
@@ -827,16 +854,64 @@ void Session::DatapathHealthCheckStarting() {
   health_check_attempts_++;
 }
 
+void Session::ReadyForAddEgress(bool is_rekey) {
+  absl::MutexLock l(&mutex_);
+  absl::StatusOr<std::unique_ptr<crypto::SessionCrypto>> new_key_material =
+      crypto::SessionCrypto::Create(config_);
+  if (!new_key_material.ok()) {
+    NotifyControlPlaneFailure();
+    SetState(State::kSessionError, new_key_material.status());
+    return;
+  }
+  if (is_rekey) {
+    // IKE handles rekey and should never go through this process.
+    if (config_.datapath_protocol() == KryptonConfig::IKE) {
+      NotifyControlPlaneFailure();
+      SetState(State::kSessionError,
+               absl::InternalError("Attempted rekey with IKE."));
+      return;
+    }
+    if (key_material_ == nullptr) {
+      NotifyControlPlaneFailure();
+      SetState(State::kSessionError,
+               absl::FailedPreconditionError("key_material_ is null"));
+      return;
+    }
+    absl::StatusOr<std::string> signature =
+        key_material_->GenerateSignature((*new_key_material)->public_value());
+    if (!signature.ok()) {
+      NotifyControlPlaneFailure();
+      SetState(State::kSessionError, signature.status());
+      return;
+    }
+    (*new_key_material)->SetSignature(*signature);
+  }
+  key_material_ = *std::move(new_key_material);
+  provision_->SendAddEgress(is_rekey, key_material_.get());
+}
+
 void Session::Provisioned(const AddEgressResponse& egress_response,
                           bool is_rekey) {
   absl::MutexLock l(&mutex_);
   LOG(INFO) << "Establishing PpnDataplane [IPsec | Bridge]";
 
   add_egress_response_ = egress_response;
-  auto ppn_dataplane = add_egress_response_->ppn_dataplane_response();
-  if (ppn_dataplane.ok()) {
-    uplink_spi_ = ppn_dataplane->uplink_spi();
+  absl::StatusOr<PpnDataplaneResponse> ppn_dataplane =
+      add_egress_response_->ppn_dataplane_response();
+  if (!ppn_dataplane.ok()) {
+    LOG(ERROR) << "Error getting PpnDataplaneResponse "
+               << ppn_dataplane.status();
+    SetState(State::kSessionError, ppn_dataplane.status());
+    return;
   }
+  absl::Status status = SetRemoteKeyMaterial(egress_response);
+  if (!status.ok()) {
+    LOG(ERROR) << "Error setting remote key material " << status;
+    SetState(State::kSessionError, status);
+    return;
+  }
+
+  uplink_spi_ = ppn_dataplane->uplink_spi();
 
   if (datapath_ == nullptr) {
     LOG(ERROR) << "No datapath found while rekeying";

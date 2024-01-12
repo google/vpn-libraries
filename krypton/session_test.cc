@@ -77,6 +77,7 @@ using ::testing::Eq;
 using ::testing::EqualsProto;
 using ::testing::Invoke;
 using ::testing::InvokeWithoutArgs;
+using ::testing::Not;
 using ::testing::Optional;
 using ::testing::Return;
 using ::testing::SaveArg;
@@ -537,6 +538,40 @@ TEST_F(SessionTest, RekeyTimerCancelled) {
   session_->Stop(/*forceFailOpen=*/true);
 }
 
+TEST_F(SessionTest, ProvisionedWithoutStartFails) {
+  EXPECT_CALL(notification_,
+              SessionError(StatusIs(absl::StatusCode::kFailedPrecondition)));
+
+  ASSERT_OK_AND_ASSIGN(
+      AddEgressResponse response,
+      AddEgressResponse::FromProto(utils::CreateAddEgressHttpResponse()));
+  session_->Provisioned(response, /*is_rekey=*/false);
+}
+
+TEST_F(SessionTest, ProvisionedWithIkeResponseFails) {
+  EXPECT_CALL(notification_,
+              SessionError(StatusIs(absl::StatusCode::kFailedPrecondition)));
+
+  HttpResponse http_response = utils::CreateHttpResponseWithStatus(200, "OK");
+  http_response.set_json_body(R"json({
+      "ike": {
+        "server_address": "www.google.com"
+      }
+    })json");
+  ASSERT_OK_AND_ASSIGN(AddEgressResponse response,
+                       AddEgressResponse::FromProto(http_response));
+  session_->Provisioned(response, /*is_rekey=*/false);
+}
+
+TEST_F(SessionTest, DoRekeyCausesErrorWhenNotConnected) {
+  EXPECT_CALL(notification_,
+              SessionError(StatusIs(absl::StatusCode::kFailedPrecondition)));
+
+  BringDatapathToConnected();
+  session_->DatapathPermanentFailure(absl::InternalError("error"));
+  session_->DoRekey();
+}
+
 TEST_F(SessionTest, InitialDatapathEndpointChangeAndNoNetworkAvailable) {
   ExpectSuccessfulDatapathInit();
 
@@ -841,11 +876,41 @@ TEST_F(SessionTest, SwitchNetworkTelemetryWithSwitchAndReattempt) {
   EXPECT_EQ(telemetry.network_switch_latency().size(), 0);
 }
 
-TEST_F(SessionTest, TestSetKeyMaterials) {
-  ExpectSuccessfulDatapathInit();
+TEST_F(SessionTest, RekeyUpdatesDatapathKeys) {
+  TransformParams start_params;
+  EXPECT_CALL(*datapath_, Start(_, _))
+      .WillOnce([this, &start_params](const AddEgressResponse& /*response*/,
+                                      const TransformParams& params) {
+        start_params = params;
+        datapath_started_.Notify();
+        return absl::OkStatus();
+      });
+
+  TransformParams rekey_params;
+  absl::Notification rekey_done;
+  EXPECT_CALL(*datapath_, SetKeyMaterials(_))
+      .WillOnce([&rekey_params, &rekey_done](const TransformParams& params) {
+        rekey_params = params;
+        rekey_done.Notify();
+        return absl::OkStatus();
+      });
 
   session_->Start();
   WaitForDatapathStart();
+
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("initial_data")));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("auth")));
+  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
+      .WillOnce(Return(utils::CreateRekeyHttpResponse()));
+
+  session_->DoRekey();
+  rekey_done.WaitForNotification();
+
+  EXPECT_THAT(rekey_params, Not(EqualsProto(start_params)));
+}
+
+TEST_F(SessionTest, RekeyUpdatesSuccessfulRekeyCount) {
+  BringDatapathToConnected();
 
   absl::Notification rekey_done;
   EXPECT_CALL(*datapath_, SetKeyMaterials(_)).WillOnce([&rekey_done] {

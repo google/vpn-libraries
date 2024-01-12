@@ -19,11 +19,11 @@
 
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
+#include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/jni/http_fetcher.h"
 #include "privacy/net/krypton/jni/jni_cache.h"
@@ -81,13 +81,11 @@ class ProvisionContext : public Provision::NotificationInterface {
     oauth_ = std::make_unique<OAuth>(oauth_token_provider_instance);
 
     looper_ = std::make_unique<utils::LooperThread>("Provision Context");
-    auto auth =
-        std::make_unique<Auth>(config_, http_fetcher_.get(), oauth_.get());
-    auto egress_manager =
-        std::make_unique<EgressManager>(config_, http_fetcher_.get());
     provision_instance_ = std::make_unique<JavaObject>(provision_instance);
     provision_ = std::make_unique<Provision>(
-        config_, std::move(auth), std::move(egress_manager),
+        config_,
+        std::make_unique<Auth>(config_, http_fetcher_.get(), oauth_.get()),
+        std::make_unique<EgressManager>(config_, http_fetcher_.get()),
         http_fetcher_.get(), this, looper_.get());
   }
 
@@ -97,6 +95,18 @@ class ProvisionContext : public Provision::NotificationInterface {
   void Stop() {
     provision_->Stop();
     looper_ = nullptr;
+  }
+
+  void ReadyForAddEgress(bool is_rekey) override {
+    // TODO: Do not require unnecessary SessionCrypto for IKE.
+    absl::StatusOr<std::unique_ptr<crypto::SessionCrypto>> key_material =
+        crypto::SessionCrypto::Create(config_);
+    if (!key_material.ok()) {
+      ProvisioningFailure(absl::InternalError("Failed to create SessionCrypto"),
+                          false);
+      return;
+    }
+    provision_->SendAddEgress(is_rekey, (*key_material).get());
   }
 
   void Provisioned(const AddEgressResponse& response,

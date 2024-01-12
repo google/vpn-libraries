@@ -33,7 +33,6 @@
 #include "third_party/absl/base/thread_annotations.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
-#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 
 namespace privacy {
@@ -50,6 +49,7 @@ class Provision : public Auth::NotificationInterface,
     NotificationInterface() = default;
     virtual ~NotificationInterface() = default;
 
+    virtual void ReadyForAddEgress(bool is_rekey) = 0;
     virtual void Provisioned(const AddEgressResponse& egress_response,
                              bool is_rekey) = 0;
     virtual void ProvisioningFailure(absl::Status status, bool permanent) = 0;
@@ -70,10 +70,7 @@ class Provision : public Auth::NotificationInterface,
 
   void Rekey() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::StatusOr<std::string> GenerateSignature(absl::string_view data)
-      ABSL_LOCKS_EXCLUDED(mutex_);
-
-  absl::StatusOr<TransformParams> GetTransformParams()
+  void SendAddEgress(bool is_rekey, crypto::SessionCrypto* key_material)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   std::string GetApnType() ABSL_LOCKS_EXCLUDED(mutex_);
@@ -100,10 +97,7 @@ class Provision : public Auth::NotificationInterface,
  private:
   void FailWithStatus(absl::Status status, bool permanent);
 
-  absl::Status SetRemoteKeyMaterial(const AddEgressResponse& egress)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  void PpnDataplaneRequest(bool rekey = false)
+  void PpnDataplaneRequest(bool rekey, crypto::SessionCrypto* key_material)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void ParseControlPlaneSockaddr(
@@ -122,7 +116,6 @@ class Provision : public Auth::NotificationInterface,
   utils::LooperThread* notification_thread_;  // Not owned.
   HttpFetcher http_fetcher_;
 
-  std::unique_ptr<crypto::SessionCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
   std::string control_plane_sockaddr_ ABSL_GUARDED_BY(mutex_);
 };
 

@@ -25,6 +25,7 @@
 #include "privacy/net/common/proto/update_path_info.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
+#include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/datapath_address_selector.h"
 #include "privacy/net/krypton/datapath_interface.h"
 #include "privacy/net/krypton/egress_manager.h"
@@ -142,6 +143,7 @@ class Session : public DatapathInterface::NotificationInterface,
   void DatapathHealthCheckSucceeded() override ABSL_LOCKS_EXCLUDED(mutex_);
   void DatapathHealthCheckStarting() override ABSL_LOCKS_EXCLUDED(mutex_);
 
+  void ReadyForAddEgress(bool is_rekey) override ABSL_LOCKS_EXCLUDED(mutex_);
   void Provisioned(const AddEgressResponse& egress_response,
                    bool is_rekey) override ABSL_LOCKS_EXCLUDED(mutex_);
   void ProvisioningFailure(absl::Status status, bool permanent) override
@@ -240,6 +242,10 @@ class Session : public DatapathInterface::NotificationInterface,
 
   void Rekey() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void RekeyDatapath() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  absl::Status SetRemoteKeyMaterial(const AddEgressResponse& egress)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   void CancelRekeyTimerIfRunning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CancelDatapathReattemptTimerIfRunning()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -326,6 +332,8 @@ class Session : public DatapathInterface::NotificationInterface,
   // Tells whether a network switch is currently in progress.
   bool switching_network_ ABSL_GUARDED_BY(mutex_) = false;
   int number_of_rekeys_ ABSL_GUARDED_BY(mutex_) = 0;
+
+  std::unique_ptr<crypto::SessionCrypto> key_material_ ABSL_GUARDED_BY(mutex_);
 
   utils::LooperThread looper_;
   std::unique_ptr<Provision> provision_ ABSL_GUARDED_BY(mutex_);

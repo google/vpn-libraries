@@ -21,9 +21,11 @@
 #include "net/proto2/contrib/parse_proto/parse_text_proto.h"
 #include "privacy/net/attestation/proto/attestation.proto.h"
 #include "privacy/net/common/proto/auth_and_sign.proto.h"
+#include "privacy/net/common/proto/beryllium.proto.h"
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/krypton/add_egress_response.h"
 #include "privacy/net/krypton/auth.h"
+#include "privacy/net/krypton/crypto/session_crypto.h"
 #include "privacy/net/krypton/egress_manager.h"
 #include "privacy/net/krypton/json_keys.h"
 #include "privacy/net/krypton/pal/mock_http_fetcher_interface.h"
@@ -49,6 +51,7 @@ namespace privacy {
 namespace krypton {
 namespace {
 
+using ::privacy::net::common::proto::PpnDataplaneResponse;
 using ::proto2::contrib::parse_proto::ParseTextProtoOrDie;
 using ::testing::_;
 using ::testing::EqualsProto;
@@ -61,6 +64,7 @@ MATCHER_P(RequestUrlMatcher, url, "") { return arg.url() == url; }
 
 class MockNotification : public Provision::NotificationInterface {
  public:
+  MOCK_METHOD(void, ReadyForAddEgress, (bool), (override));
   MOCK_METHOD(void, Provisioned, (const AddEgressResponse&, bool), (override));
   MOCK_METHOD(void, ProvisioningFailure, (absl::Status, bool), (override));
 };
@@ -78,6 +82,8 @@ class ProvisionTest : public ::testing::Test {
     key_pair_.second.set_key_version(1);
     key_pair_.second.set_use_case("TEST_USE_CASE");
 
+    ASSERT_OK_AND_ASSIGN(key_material_, crypto::SessionCrypto::Create(config_));
+
     ON_CALL(oauth_, GetAttestationData(_))
         .WillByDefault(Return(ppn::AttestationData()));
     ON_CALL(oauth_, GetOAuthToken).WillByDefault(Return("some_token"));
@@ -93,6 +99,11 @@ class ProvisionTest : public ::testing::Test {
         });
     ON_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
         .WillByDefault(Return(utils::CreateAddEgressHttpResponse()));
+
+    ON_CALL(notification_, ReadyForAddEgress)
+        .WillByDefault([this](bool is_rekey) {
+          provision_->SendAddEgress(is_rekey, key_material_.get());
+        });
   }
 
   void TearDown() override { provision_->Stop(); }
@@ -120,6 +131,7 @@ class ProvisionTest : public ::testing::Test {
   std::pair<bssl::UniquePtr<RSA>,
             ::private_membership::anonymous_tokens::RSABlindSignaturePublicKey>
       key_pair_;
+  std::unique_ptr<crypto::SessionCrypto> key_material_;
 };
 
 TEST_F(ProvisionTest, AuthenticationFailure) {
@@ -269,61 +281,41 @@ TEST_F(ProvisionTest, UsesIPv4ControlPlaneSockaddrFromAddEgressResponse) {
 
 TEST_F(ProvisionTest, Rekey) {
   absl::Notification provisioning_done;
-  absl::Notification rekey_done;
-  HttpResponse fake_rekey_response = utils::CreateRekeyHttpResponse();
-
-  EXPECT_CALL(notification_, Provisioned(_, _))
+  EXPECT_CALL(notification_, Provisioned(_, /*is_rekey=*/false))
       .WillOnce([&provisioning_done]() { provisioning_done.Notify(); });
+
+  absl::Notification rekey_done;
+  AddEgressResponse actual_rekey_response;
+  EXPECT_CALL(notification_, Provisioned(_, /*is_rekey=*/true))
+      .WillOnce([&rekey_done, &actual_rekey_response](
+                    AddEgressResponse response, bool /*is_rekey*/) {
+        actual_rekey_response = response;
+        rekey_done.Notify();
+      });
 
   provision_->Start();
 
   ASSERT_TRUE(
       provisioning_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 
-  ASSERT_OK_AND_ASSIGN(auto original_transform_params,
-                       provision_->GetTransformParams());
-  const BridgeTransformParams& original_ipsec_params =
-      original_transform_params.bridge();
-
   EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("initial_data")));
   EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("auth")));
+  HttpResponse fake_rekey_response = utils::CreateRekeyHttpResponse();
   EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
       .WillOnce(Return(fake_rekey_response));
-
-  AddEgressResponse provisioned_response;
-  EXPECT_CALL(notification_, Provisioned(_, /*is_rekey=*/true))
-      .WillOnce([&rekey_done, &provisioned_response](AddEgressResponse response,
-                                                     bool /*is_rekey*/) {
-        provisioned_response = response;
-        rekey_done.Notify();
-      });
 
   provision_->Rekey();
 
   ASSERT_TRUE(rekey_done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 
-  ASSERT_OK_AND_ASSIGN(auto actual_ppn_dataplane_response,
-                       provisioned_response.ppn_dataplane_response());
-  ASSERT_OK_AND_ASSIGN(auto expected_rekey_response,
+  ASSERT_OK_AND_ASSIGN(AddEgressResponse expected_rekey_response,
                        AddEgressResponse::FromProto(fake_rekey_response));
-  ASSERT_OK_AND_ASSIGN(auto expected_ppn_dataplane_response,
+  ASSERT_OK_AND_ASSIGN(PpnDataplaneResponse expected_ppn_dataplane_response,
                        expected_rekey_response.ppn_dataplane_response());
+  ASSERT_OK_AND_ASSIGN(PpnDataplaneResponse actual_ppn_dataplane_response,
+                       actual_rekey_response.ppn_dataplane_response());
   EXPECT_THAT(actual_ppn_dataplane_response,
               EqualsProto(expected_ppn_dataplane_response));
-
-  ASSERT_OK_AND_ASSIGN(auto rekeyed_transform_params,
-                       provision_->GetTransformParams());
-  const BridgeTransformParams& rekeyed_ipsec_params =
-      rekeyed_transform_params.bridge();
-
-  EXPECT_NE(rekeyed_ipsec_params.uplink_key(),
-            original_ipsec_params.uplink_key());
-  EXPECT_NE(rekeyed_ipsec_params.downlink_key(),
-            original_ipsec_params.downlink_key());
-  EXPECT_EQ(rekeyed_ipsec_params.session_id(),
-            original_ipsec_params.session_id());
-  EXPECT_EQ(rekeyed_ipsec_params.cipher_suite_key_length(),
-            original_ipsec_params.cipher_suite_key_length());
 }
 
 TEST_F(ProvisionTest, TestAuthResponseSetCopperControllerHostname) {
@@ -358,30 +350,6 @@ TEST_F(ProvisionTest, TestAuthResponseDefaultCopperControllerHostname) {
 
   provision_->Start();
   EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(1)));
-}
-
-TEST_F(ProvisionTest, RekeyBeforeStartFails) {
-  absl::Notification failed;
-
-  EXPECT_CALL(notification_,
-              ProvisioningFailure(
-                  StatusIs(absl::StatusCode::kFailedPrecondition), false))
-      .WillOnce([&failed] { failed.Notify(); });
-
-  provision_->Rekey();
-
-  EXPECT_TRUE(failed.WaitForNotificationWithTimeout(absl::Seconds(3)));
-}
-
-TEST_F(ProvisionTest, GenerateSignatureBeforeStartFails) {
-  std::string data = "test";
-  EXPECT_THAT(provision_->GenerateSignature(data),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
-}
-
-TEST_F(ProvisionTest, GetTransformParamsBeforeStartFails) {
-  EXPECT_THAT(provision_->GetTransformParams(),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(ProvisionTest, GetDebugInfo) {
