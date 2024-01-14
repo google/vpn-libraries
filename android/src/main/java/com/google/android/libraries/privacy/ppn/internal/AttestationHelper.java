@@ -129,7 +129,7 @@ public class AttestationHelper {
     try {
       IntegrityTokenRequest.Builder tokenRequestBuilder =
           IntegrityTokenRequest.builder().setNonce(nonce);
-      if (!options.getAttestationCloudProjectNumber().isEmpty()) {
+      if (options.getAttestationCloudProjectNumber().isPresent()) {
         tokenRequestBuilder.setCloudProjectNumber(options.getAttestationCloudProjectNumber().get());
       }
       if (network != null && options.isAttestationNetworkOverrideEnabled()) {
