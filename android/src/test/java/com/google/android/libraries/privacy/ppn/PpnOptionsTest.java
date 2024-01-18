@@ -15,7 +15,6 @@
 package com.google.android.libraries.privacy.ppn;
 
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.truth.Truth8.assertThat;
 import static org.junit.Assert.assertThrows;
 
 import com.google.android.libraries.privacy.ppn.internal.KryptonConfig;
