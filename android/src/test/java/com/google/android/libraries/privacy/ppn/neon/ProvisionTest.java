@@ -29,6 +29,7 @@ import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnOptions.DatapathProtocol;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
+import com.google.android.libraries.privacy.ppn.internal.http.FakeDns;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.android.libraries.privacy.ppn.krypton.FakeAuthServer;
 import com.google.android.libraries.privacy.ppn.krypton.MockBrass;
@@ -63,7 +64,7 @@ public class ProvisionTest {
   }
 
   private HttpFetcher createHttpFetcher(@Nullable Network network) {
-    return new HttpFetcher(new ProvisionSocketFactoryFactory(network));
+    return new HttpFetcher(new ProvisionSocketFactoryFactory(network), new FakeDns());
   }
 
   private OAuthTokenProvider createTokenProvider() {

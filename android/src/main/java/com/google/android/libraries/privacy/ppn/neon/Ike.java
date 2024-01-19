@@ -43,7 +43,8 @@ public class Ike {
    */
   public static Task<ProvisionResponse> provision(
       Context context, PpnOptions options, String oauthToken) {
-    return provision(context, options, oauthToken, null);
+    return startProvisioning(
+        context, options, oauthToken, HttpFetcher.DEFAULT_DNS, /* network= */ null);
   }
 
   /**
@@ -55,8 +56,36 @@ public class Ike {
    */
   public static Task<ProvisionResponse> provision(
       Context context, PpnOptions options, String oauthToken, @Nullable Network network) {
+    return startProvisioning(context, options, oauthToken, HttpFetcher.DEFAULT_DNS, network);
+  }
+
+  /**
+   * Attempts to provision IKE credentials for PPN one time.
+   *
+   * <p>If provisioning fails, returned Task will be failed. If the Exception is of type
+   * ProvisionException, then it can be checked for whether the error is permanent or transient. If
+   * any other type of Exception occurs, it should be considered permanent.
+   */
+  public static Task<ProvisionResponse> provision(
+      Context context, PpnOptions options, String oauthToken, Dns defaultDns) {
+    return startProvisioning(context, options, oauthToken, defaultDns, /* network= */ null);
+  }
+
+  /**
+   * Attempts to provision IKE credentials for PPN one time.
+   *
+   * <p>If provisioning fails, returned Task will be failed. If the Exception is of type
+   * ProvisionException, then it can be checked for whether the error is permanent or transient. If
+   * any other type of Exception occurs, it should be considered permanent.
+   */
+  private static Task<ProvisionResponse> startProvisioning(
+      Context context,
+      PpnOptions options,
+      String oauthToken,
+      Dns defaultDns,
+      @Nullable Network network) {
     // If a network was specified, use it for DNS and bind the HTTP socket to it.
-    Dns dns = HttpFetcher.DEFAULT_DNS;
+    Dns dns = defaultDns;
     if (network != null) {
       dns = new NetworkBoundDns(network, AddressFamily.V4V6);
     }

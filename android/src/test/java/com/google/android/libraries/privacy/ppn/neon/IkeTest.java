@@ -18,7 +18,7 @@ import static com.google.common.truth.Truth.assertThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -32,12 +32,12 @@ import com.google.android.gms.tasks.Tasks;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnOptions.DatapathProtocol;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
+import com.google.android.libraries.privacy.ppn.internal.http.FakeDns;
 import com.google.android.libraries.privacy.ppn.krypton.FakeAuthServer;
 import com.google.android.libraries.privacy.ppn.krypton.MockBrass;
 import com.google.errorprone.annotations.ResultIgnorabilityUnspecified;
 import java.net.InetAddress;
 import java.net.Socket;
-import okhttp3.Dns;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -75,7 +75,11 @@ public class IkeTest {
     mockBrass.enqueuePositiveIkeResponse();
 
     Task<ProvisionResponse> task =
-        Ike.provision(ApplicationProvider.getApplicationContext(), createOptions(), "some token");
+        Ike.provision(
+            ApplicationProvider.getApplicationContext(),
+            createOptions(),
+            "some token",
+            new FakeDns());
 
     await(task);
 
@@ -95,7 +99,11 @@ public class IkeTest {
     mockBrass.enqueueNegativeResponseWithCode(500, "unavailable");
 
     Task<Void> task =
-        Ike.provision(ApplicationProvider.getApplicationContext(), createOptions(), "some token")
+        Ike.provision(
+                ApplicationProvider.getApplicationContext(),
+                createOptions(),
+                "some token",
+                new FakeDns())
             .continueWithTask(
                 provisionTask -> {
                   if (provisionTask.isSuccessful()) {
@@ -124,7 +132,7 @@ public class IkeTest {
     mockBrass.start();
     mockBrass.enqueuePositiveIkeResponse();
 
-    doAnswer(invocation -> Dns.SYSTEM.lookup(invocation.getArgument(0)).toArray(new InetAddress[0]))
+    doReturn(new InetAddress[] {InetAddress.getLoopbackAddress()})
         .when(mockNetwork)
         .getAllByName(anyString());
 

@@ -40,6 +40,7 @@ import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFami
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
 import com.google.android.libraries.privacy.ppn.internal.http.BoundSocketFactoryFactory;
+import com.google.android.libraries.privacy.ppn.internal.http.FakeDns;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.android.libraries.privacy.ppn.proto.AttestationData;
 import com.google.android.libraries.privacy.ppn.proto.AuthAndSignRequest;
@@ -115,7 +116,7 @@ public class KryptonTest {
         ApplicationProvider.getApplicationContext());
     when(socketFactoryFactory.withCurrentNetwork()).thenReturn(SocketFactory.getDefault());
     when(socketFactoryFactory.withNetwork(any())).thenReturn(SocketFactory.getDefault());
-    HttpFetcher httpFetcher = new HttpFetcher(socketFactoryFactory);
+    HttpFetcher httpFetcher = new HttpFetcher(socketFactoryFactory, new FakeDns());
 
     return new KryptonImpl(
         ApplicationProvider.getApplicationContext(),
