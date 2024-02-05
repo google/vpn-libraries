@@ -75,10 +75,9 @@ class Provision : public Auth::NotificationInterface,
 
   std::string GetApnType() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Provides the sockaddr used for the control plane during provisioning. The
-  // value will either be of the format IPv4:port or [IPv6]:port
-  absl::StatusOr<std::string> GetControlPlaneSockaddr()
-      ABSL_LOCKS_EXCLUDED(mutex_);
+  // Provides an address from provisioning that corresponds to the control plane
+  // server that was used.
+  absl::StatusOr<std::string> GetControlPlaneAddr() ABSL_LOCKS_EXCLUDED(mutex_);
 
   void GetDebugInfo(KryptonDebugInfo* debug_info) ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -116,7 +115,7 @@ class Provision : public Auth::NotificationInterface,
   utils::LooperThread* notification_thread_;  // Not owned.
   HttpFetcher http_fetcher_;
 
-  std::string control_plane_sockaddr_ ABSL_GUARDED_BY(mutex_);
+  std::string control_plane_addr_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace krypton

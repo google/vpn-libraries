@@ -255,9 +255,9 @@ absl::Status Session::SendUpdatePathInfoRequest() {
   update_path_info_request.set_session_id(uplink_spi_);
   update_path_info_request.set_downlink_mtu(downlink_mtu_);
   update_path_info_request.set_apn_type(provision_->GetApnType());
-  PPN_ASSIGN_OR_RETURN(auto control_plane_sock_addr,
-                       provision_->GetControlPlaneSockaddr());
-  update_path_info_request.set_control_plane_sock_addr(control_plane_sock_addr);
+  PPN_ASSIGN_OR_RETURN(std::string control_plane_addr,
+                       provision_->GetControlPlaneAddr());
+  update_path_info_request.set_control_plane_sock_addr(control_plane_addr);
 
   std::string signed_data =
       absl::StrCat("path_info;", update_path_info_request.session_id(), ";",
@@ -270,7 +270,7 @@ absl::Status Session::SendUpdatePathInfoRequest() {
                        key_material_->GenerateSignature(signed_data));
   update_path_info_request.set_mtu_update_signature(signature);
 
-  auto request_json_str = ProtoToJsonString(update_path_info_request);
+  std::string request_json_str = ProtoToJsonString(update_path_info_request);
 
   HttpRequest http_request;
   http_request.set_url(config_.update_path_info_url());

@@ -22,6 +22,7 @@
 namespace privacy {
 namespace krypton {
 
+using ::privacy::net::common::proto::PpnDataplaneResponse;
 using ::testing::EqualsProto;
 using ::testing::status::StatusIs;
 
@@ -48,16 +49,13 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
         "addr2"
       ],
       "transport_mode_server_port": 567,
-      "control_plane_sock_addr": [
-        "127.0.0.1:1234",
-        "[::1]:5678"
-      ]
+      "control_plane_addr": "test"
     }
   })string");
 
-  ASSERT_OK_AND_ASSIGN(auto add_egress_response,
+  ASSERT_OK_AND_ASSIGN(AddEgressResponse add_egress_response,
                        AddEgressResponse::FromProto(proto));
-  ASSERT_OK_AND_ASSIGN(auto ppn_response,
+  ASSERT_OK_AND_ASSIGN(PpnDataplaneResponse ppn_response,
                        add_egress_response.ppn_dataplane_response());
 
   // For the value of expiry, 2020-08-07T01:06:13+00:00 == 1596762373s since
@@ -73,8 +71,7 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
                 expiry: { seconds: 1596762373 nanos: 0 },
                 mss_detection_sock_addr: "addr2",
                 transport_mode_server_port: 567,
-                control_plane_sock_addr: "127.0.0.1:1234",
-                control_plane_sock_addr: "[::1]:5678",
+                control_plane_addr: "test",
               )pb"));
 }
 

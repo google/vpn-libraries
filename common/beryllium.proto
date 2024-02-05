@@ -97,6 +97,8 @@ message PpnDataplaneRequest {
 }
 
 message PpnDataplaneResponse {
+  reserved 9;
+
   // The source ip address of the packets coming from the client.
   // Repeated for v4/v6 versions, or non-contiguous ranges. This is empty in
   // rekey responses.
@@ -128,10 +130,10 @@ message PpnDataplaneResponse {
   // be used with the IP address from egress_point_sock_addr.
   uint32 transport_mode_server_port = 8;
 
-  // The sockaddr of the control plane server the client should use. This should
-  // include an IPv4 and IPv6 address. The client should use this for rekey
-  // requests or to set up the IKE client library.
-  repeated string control_plane_sock_addr = 9;
+  // An address to identify where control plane messages for this session should
+  // be sent. This must be included with all future requests sent to Beryllium
+  // for this session.
+  string control_plane_addr = 10;
 }
 
 message PpnIkeResponse {

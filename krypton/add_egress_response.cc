@@ -95,12 +95,10 @@ absl::StatusOr<PpnDataplaneResponse> ParsePpnDataplaneResponse(
     response.set_transport_mode_server_port(*transport_mode_server_port);
   }
 
-  PPN_ASSIGN_OR_RETURN(
-      std::optional<std::vector<std::string>> control_plane_sock_addr,
-      utils::JsonGetStringArray(json, JsonKeys::kControlPlaneSockAddr));
-  if (control_plane_sock_addr.has_value()) {
-    response.mutable_control_plane_sock_addr()->Assign(
-        control_plane_sock_addr->begin(), control_plane_sock_addr->end());
+  PPN_ASSIGN_OR_RETURN(std::optional<std::string> control_plane_addr,
+                       utils::JsonGetString(json, JsonKeys::kControlPlaneAddr));
+  if (control_plane_addr.has_value()) {
+    response.set_control_plane_addr(*control_plane_addr);
   }
 
   // This is the only Timestamp value, so there's no need for a helper macro.

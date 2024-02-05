@@ -123,12 +123,12 @@ std::string Provision::GetApnType() {
   return auth_->auth_response().apn_type();
 }
 
-absl::StatusOr<std::string> Provision::GetControlPlaneSockaddr() {
+absl::StatusOr<std::string> Provision::GetControlPlaneAddr() {
   absl::MutexLock l(&mutex_);
-  if (control_plane_sockaddr_.empty()) {
-    return absl::FailedPreconditionError("Control plane sockaddr not set");
+  if (control_plane_addr_.empty()) {
+    return absl::FailedPreconditionError("Control plane addr not set");
   }
-  return control_plane_sockaddr_;
+  return control_plane_addr_;
 }
 
 void Provision::GetDebugInfo(KryptonDebugInfo* debug_info) {
@@ -179,11 +179,11 @@ void Provision::PpnDataplaneRequest(bool is_rekey,
       FailWithStatus(ip_range.status(), false);
       return;
     }
-    control_plane_sockaddr_ = ip_range->HostPortString(kControlPlanePort);
+    control_plane_addr_ = ip_range->HostPortString(kControlPlanePort);
   }
-  LOG(INFO) << "Control plane sockaddr:" << control_plane_sockaddr_;
+  LOG(INFO) << "Control plane addr:" << control_plane_addr_;
   AddEgressRequest::PpnDataplaneRequestParams params;
-  params.control_plane_sockaddr = control_plane_sockaddr_;
+  params.control_plane_sockaddr = control_plane_addr_;
   params.is_rekey = is_rekey;
   params.suite = config_.cipher_suite_key_length() == 256
                      ? net::common::proto::PpnDataplaneRequest::AES256_GCM
@@ -313,20 +313,10 @@ void Provision::EgressAvailable(bool is_rekey) {
 
 void Provision::ParseControlPlaneSockaddr(
     const PpnDataplaneResponse& ppn_dataplane) {
-  std::optional<std::string> control_plane_sockaddr;
-  for (const auto& sockaddr : ppn_dataplane.control_plane_sock_addr()) {
-    if (utils::IsValidV4Address(sockaddr) ||
-        utils::IsValidV6Address(sockaddr)) {
-      control_plane_sockaddr = sockaddr;
-      break;
-    }
-  }
-  // If there was a control plane sockaddr provided then it should be saved for
-  // subsequent requests. This will replace any value we found with DNS.
-  if (control_plane_sockaddr.has_value()) {
-    LOG(INFO) << "Control plane sockaddr received in AddEgressResponse: "
-              << *control_plane_sockaddr;
-    control_plane_sockaddr_ = *control_plane_sockaddr;
+  if (!ppn_dataplane.control_plane_addr().empty()) {
+    LOG(INFO) << "Control plane addr received in AddEgressResponse: "
+              << ppn_dataplane.control_plane_addr();
+    control_plane_addr_ = ppn_dataplane.control_plane_addr();
   }
 }
 

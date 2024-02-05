@@ -191,28 +191,27 @@ TEST_F(ProvisionTest, EgressAvailable) {
   provision_->Start();
   done.WaitForNotification();
 
-  ASSERT_OK_AND_ASSIGN(std::string control_plane_sockaddr,
-                       provision_->GetControlPlaneSockaddr());
-  EXPECT_EQ(control_plane_sockaddr, "0.0.0.0:1849");
-  ASSERT_OK_AND_ASSIGN(auto actual_ppn_dataplane_response,
+  ASSERT_OK_AND_ASSIGN(std::string control_plane_addr,
+                       provision_->GetControlPlaneAddr());
+  EXPECT_EQ(control_plane_addr, "0.0.0.0:1849");
+  ASSERT_OK_AND_ASSIGN(PpnDataplaneResponse actual_ppn_dataplane_response,
                        provisioned_response.ppn_dataplane_response());
   ASSERT_OK_AND_ASSIGN(
       AddEgressResponse expected_add_egress_response,
       AddEgressResponse::FromProto(utils::CreateAddEgressHttpResponse()));
-  ASSERT_OK_AND_ASSIGN(auto expected_ppn_dataplane_response,
+  ASSERT_OK_AND_ASSIGN(PpnDataplaneResponse expected_ppn_dataplane_response,
                        expected_add_egress_response.ppn_dataplane_response());
   EXPECT_THAT(actual_ppn_dataplane_response,
               EqualsProto(expected_ppn_dataplane_response));
 }
 
-TEST_F(ProvisionTest, UsesIPv6ControlPlaneSockaddrFromAddEgressResponse) {
-  // Modify the default AddEgressResponse to include a control plane sockaddr.
+TEST_F(ProvisionTest, UsesControlPlaneAddrFromAddEgressResponse) {
+  // Modify the default AddEgressResponse to include a control plane addr.
   HttpResponse fake_add_egress_response = utils::CreateAddEgressHttpResponse();
   ASSERT_OK_AND_ASSIGN(
       nlohmann::json json_obj,
       utils::StringToJson(fake_add_egress_response.json_body()));
-  json_obj[JsonKeys::kPpnDataplane][JsonKeys::kControlPlaneSockAddr] =
-      nlohmann::json::array({"[::1]:1234", "127.0.0.1:1234"});
+  json_obj[JsonKeys::kPpnDataplane][JsonKeys::kControlPlaneAddr] = "test";
   fake_add_egress_response.set_json_body(utils::JsonToString(json_obj));
   EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("initial_data")));
   EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("auth")));
@@ -231,51 +230,13 @@ TEST_F(ProvisionTest, UsesIPv6ControlPlaneSockaddrFromAddEgressResponse) {
   provision_->Start();
   done.WaitForNotification();
 
-  ASSERT_OK_AND_ASSIGN(std::string control_plane_sockaddr,
-                       provision_->GetControlPlaneSockaddr());
-  EXPECT_EQ(control_plane_sockaddr, "[::1]:1234");
-  ASSERT_OK_AND_ASSIGN(auto actual_ppn_dataplane_response,
+  ASSERT_OK_AND_ASSIGN(std::string control_plane_addr,
+                       provision_->GetControlPlaneAddr());
+  EXPECT_EQ(control_plane_addr, "test");
+  ASSERT_OK_AND_ASSIGN(PpnDataplaneResponse actual_ppn_dataplane_response,
                        provisioned_response.ppn_dataplane_response());
   EXPECT_THAT(actual_ppn_dataplane_response, Partially(EqualsProto(R"pb(
-                control_plane_sock_addr: "[::1]:1234",
-                control_plane_sock_addr: "127.0.0.1:1234",
-              )pb")));
-}
-
-TEST_F(ProvisionTest, UsesIPv4ControlPlaneSockaddrFromAddEgressResponse) {
-  // Modify the default AddEgressResponse to include a control plane sockaddr.
-  HttpResponse fake_add_egress_response = utils::CreateAddEgressHttpResponse();
-  ASSERT_OK_AND_ASSIGN(
-      nlohmann::json json_obj,
-      utils::StringToJson(fake_add_egress_response.json_body()));
-  json_obj[JsonKeys::kPpnDataplane][JsonKeys::kControlPlaneSockAddr] =
-      nlohmann::json::array({"127.0.0.1:1234", "[::1]:1234"});
-  fake_add_egress_response.set_json_body(utils::JsonToString(json_obj));
-  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("initial_data")));
-  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("auth")));
-  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
-      .WillOnce(Return(fake_add_egress_response));
-
-  absl::Notification done;
-  AddEgressResponse provisioned_response;
-  EXPECT_CALL(notification_, Provisioned(_, _))
-      .WillOnce([&done, &provisioned_response](AddEgressResponse response,
-                                               bool /*is_rekey*/) {
-        provisioned_response = response;
-        done.Notify();
-      });
-
-  provision_->Start();
-  done.WaitForNotification();
-
-  ASSERT_OK_AND_ASSIGN(std::string control_plane_sockaddr,
-                       provision_->GetControlPlaneSockaddr());
-  EXPECT_EQ(control_plane_sockaddr, "127.0.0.1:1234");
-  ASSERT_OK_AND_ASSIGN(auto actual_ppn_dataplane_response,
-                       provisioned_response.ppn_dataplane_response());
-  EXPECT_THAT(actual_ppn_dataplane_response, Partially(EqualsProto(R"pb(
-                control_plane_sock_addr: "127.0.0.1:1234",
-                control_plane_sock_addr: "[::1]:1234",
+                control_plane_addr: "test",
               )pb")));
 }
 
