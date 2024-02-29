@@ -94,6 +94,10 @@ message PpnDataplaneRequest {
 
   // Whether to enable dynamic mtu features in on the backend dataplane.
   bool dynamic_mtu_enabled = 12;
+
+  // Client hint for whether Oasis is the preferred dataplane provider.
+  // Beryllium may still elect to use Marconi even if this is true.
+  bool prefer_oasis = 13;
 }
 
 message PpnDataplaneResponse {
