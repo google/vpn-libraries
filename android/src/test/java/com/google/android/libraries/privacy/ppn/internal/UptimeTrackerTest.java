@@ -96,7 +96,7 @@ public class UptimeTrackerTest {
     Clock startClock = getStartClock();
     Clock stopClock1 = Clock.offset(startClock, Duration.ofMillis(500));
     Clock stopClock2 = Clock.offset(startClock, Duration.ofMillis(750));
-    Clock measureClock = Clock.offset(stopClock2, Duration.ofMillis(2000));
+    Clock measureClock = Clock.offset(stopClock2, Duration.ofSeconds(2));
 
     tracker.start(startClock);
     tracker.stop(stopClock1);

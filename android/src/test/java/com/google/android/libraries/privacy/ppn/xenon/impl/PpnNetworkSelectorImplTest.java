@@ -225,10 +225,7 @@ public final class PpnNetworkSelectorImplTest {
     PpnNetwork wifiNetwork =
         new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 1), NetworkType.WIFI);
     ConnectionQuality connectionQuality =
-        ppnNetworkSelector.getConnectionQuality(
-            wifiNetwork,
-            /** rssi= */
-            0);
+        ppnNetworkSelector.getConnectionQuality(wifiNetwork, /* rssi= */ 0);
     assertThat(connectionQuality).isEqualTo(ConnectionQuality.FAIR);
   }
 
@@ -237,10 +234,7 @@ public final class PpnNetworkSelectorImplTest {
     PpnNetwork cellularNetwork =
         new PpnNetwork(ShadowNetwork.newInstance(/* netId= */ 1), NetworkType.CELLULAR);
     ConnectionQuality connectionQuality =
-        ppnNetworkSelector.getConnectionQuality(
-            cellularNetwork,
-            /** rssi= */
-            0);
+        ppnNetworkSelector.getConnectionQuality(cellularNetwork, /* rssi= */ 0);
 
     // We are returning UNKNOWN for Cellular Connections needing to lookup the RSSI
     assertThat(connectionQuality).isEqualTo(ConnectionQuality.UNKNOWN_QUALITY);

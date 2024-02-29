@@ -225,9 +225,7 @@ final class PpnNetworkManagerImpl
       // Validate the current Network. If it fails away of these conditions, remove the network.
       if (!networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
           || !networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)) {
-        Log.w(
-            TAG,
-            String.format("onCapabilitiesChanged. Removing Network as Capability is not valid"));
+        Log.w(TAG, "onCapabilitiesChanged. Removing Network as Capability is not valid");
         removeNetwork(ppnNetwork);
         return Tasks.forResult(false);
       }
