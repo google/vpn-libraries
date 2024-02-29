@@ -19,7 +19,6 @@
 #include <map>
 #include <string>
 
-#include "base/logging.h"
 #include "privacy/net/krypton/desktop/local_secure_storage_interface.h"
 #include "privacy/net/krypton/desktop/proto/oauth.proto.h"
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
@@ -28,10 +27,12 @@
 #include "privacy/net/krypton/utils/url.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
+#include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/synchronization/mutex.h"
 #include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
+#include "third_party/protobuf/util/json_util.h"
 
 namespace privacy {
 namespace krypton {

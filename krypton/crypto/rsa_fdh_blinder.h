@@ -17,16 +17,12 @@
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
-#include <vector>
 
+#include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
-#include "third_party/absl/strings/escaping.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/openssl/base.h"
-#include "third_party/openssl/bn.h"
-#include "third_party/openssl/rsa.h"
 #include "third_party/tink/cc/subtle/subtle_util_boringssl.h"
 
 namespace privacy {
@@ -44,13 +40,13 @@ class RsaFdhBlinder {
   // `message` will first be hashed with a Shake256 Full Domain Hash of the
   // message. This hash matches that used by RsaVerifier.
   static absl::StatusOr<std::unique_ptr<RsaFdhBlinder>> Blind(
-      const absl::string_view message, bssl::UniquePtr<RSA> signer_public_key,
+      absl::string_view message, bssl::UniquePtr<RSA> signer_public_key,
       BN_CTX* bn_ctx);
 
-  const absl::string_view blind() const { return blind_; }
+  absl::string_view blind() const { return blind_; }
 
   // Unblinds `blind_signature`.
-  absl::StatusOr<std::string> Unblind(const absl::string_view blind_signature,
+  absl::StatusOr<std::string> Unblind(absl::string_view blind_signature,
                                       BN_CTX* bn_ctx) const;
 
  private:
@@ -74,7 +70,7 @@ class RsaFdhBlindSigner {
       const ::crypto::tink::subtle::SubtleUtilBoringSSL::RsaPrivateKey&
           private_key);
 
-  absl::StatusOr<std::string> Sign(const absl::string_view blinded_data) const;
+  absl::StatusOr<std::string> Sign(absl::string_view blinded_data) const;
 
  private:
   // Use New to construct.
@@ -93,8 +89,8 @@ class RsaFdhVerifier {
       const ::crypto::tink::subtle::SubtleUtilBoringSSL::RsaPublicKey&
           public_key);
 
-  absl::Status Verify(const absl::string_view message,
-                      const absl::string_view signature, BN_CTX* bn_ctx) const;
+  absl::Status Verify(absl::string_view message, absl::string_view signature,
+                      BN_CTX* bn_ctx) const;
 
  private:
   // Use New to construct.

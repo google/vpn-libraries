@@ -24,7 +24,7 @@ namespace crypto {
 // Returns a string of random bytes of a given desired length.
 //
 // This can be used to generate a string that will be served as IV.
-std::string CreateSecureRandomString(const int desired_len);
+std::string CreateSecureRandomString(int desired_len);
 
 }  // namespace crypto
 }  // namespace krypton

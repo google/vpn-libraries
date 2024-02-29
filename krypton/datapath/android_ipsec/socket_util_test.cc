@@ -23,14 +23,11 @@
 #include <cstring>
 #include <string>
 
-#include "base/integral_types.h"
-#include "base/logging.h"
 #include "privacy/net/krypton/datapath/android_ipsec/event_fd.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
-#include "third_party/absl/status/status.h"
+#include "third_party/absl/log/check.h"
 #include "third_party/absl/strings/substitute.h"
-#include "util/task/status.h"
 
 namespace privacy {
 namespace krypton {

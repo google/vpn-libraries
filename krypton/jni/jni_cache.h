@@ -145,7 +145,7 @@ class JniCache {
   }
 
  private:
-  JniCache() {}
+  JniCache() = default;
   ~JniCache() = default;
 
   // Initializes all of the cached data members.

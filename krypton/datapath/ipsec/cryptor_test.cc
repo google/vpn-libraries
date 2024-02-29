@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <string>
+
 #include "privacy/net/krypton/datapath/ipsec/ipsec_decryptor.h"
 #include "privacy/net/krypton/datapath/ipsec/ipsec_encryptor.h"
 #include "privacy/net/krypton/pal/packet.h"
@@ -34,7 +36,7 @@ class IpSecEncapDecapTest : public ::testing::Test {
     ip_sec_transform_params->set_downlink_salt(std::string(4, 'a'));
   }
 
-  TransformParams params_ = TransformParams();
+  TransformParams params_;
 };
 
 TEST_F(IpSecEncapDecapTest, TestPacketsWithPaddingAreHandledCorrectly) {

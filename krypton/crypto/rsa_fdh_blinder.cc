@@ -16,11 +16,9 @@
 
 #include <cstdint>
 #include <cstdio>
-#include <iostream>
 #include <iterator>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -55,7 +53,7 @@ absl::StatusOr<std::string> BignumToString(const BIGNUM* in, size_t out_len) {
 }
 
 // Note the returned `BIGNUM*` is allocated on the active `bn_ctx`.
-// Therefor this must be called in between cals to `BN_CTX_start` and
+// Therefore this must be called in between cals to `BN_CTX_start` and
 // `BN_CTX_end`.
 absl::StatusOr<BIGNUM*> StringToBignum(const absl::string_view in,
                                        BN_CTX* bn_ctx) {
@@ -69,7 +67,7 @@ absl::StatusOr<BIGNUM*> StringToBignum(const absl::string_view in,
 
 // Full domain hash using SHAKE256.
 // Note the returned `BIGNUM*` is allocated on the active `bn_ctx`.
-// Therefor this must be called in between cals to `BN_CTX_start` and
+// Therefore this must be called in between cals to `BN_CTX_start` and
 // `BN_CTX_end`.
 absl::StatusOr<BIGNUM*> Shake256Fdh(const absl::string_view data,
                                     const RSA* signer_public_key,

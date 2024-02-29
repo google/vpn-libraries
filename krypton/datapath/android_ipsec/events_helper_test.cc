@@ -17,13 +17,13 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
-#include <cerrno>
-#include <cstring>
 #include <thread>  // NOLINT
 
 #include "privacy/net/krypton/datapath/android_ipsec/event_fd.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
+#include "third_party/absl/time/clock.h"
+#include "third_party/absl/time/time.h"
 
 namespace privacy {
 namespace krypton {
@@ -68,7 +68,7 @@ TEST(EventsHelperTest, EpollWait) {
     ASSERT_EQ(EPOLLIN, event.events);
   });
 
-  sleep(1);
+  absl::SleepFor(absl::Seconds(1));
   ASSERT_OK(helper.AddFile(fd1, EPOLLIN));
   ASSERT_OK(event_fd_helper.Notify(1));
   waiter.join();

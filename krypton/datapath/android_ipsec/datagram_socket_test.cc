@@ -38,6 +38,7 @@
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/str_format.h"
 #include "third_party/absl/synchronization/notification.h"
+#include "third_party/absl/time/clock.h"
 #include "third_party/absl/time/time.h"
 
 namespace privacy {
@@ -174,7 +175,7 @@ TEST(DatagramSocketTest, ReadBeforeWrite) {
   krypton::utils::LooperThread looper("ReadBeforeWrite Writer");
   looper.Post([&server, port = port]() {
     // Wait a second, so that the read can start.
-    sleep(1);
+    absl::SleepFor(absl::Seconds(1));
 
     // Send a packet back to the client.
     server.SendSamplePacket(port, "bar");
@@ -213,7 +214,7 @@ TEST(DatagramSocketTest, ReadBeforeClose) {
   krypton::utils::LooperThread looper("ReadBeforeWrite Writer");
   looper.Post([&sock]() {
     // Wait a second, so that the read can start.
-    sleep(1);
+    absl::SleepFor(absl::Seconds(1));
 
     // Close the socket.
     ASSERT_OK(sock->Close());

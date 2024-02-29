@@ -19,11 +19,9 @@
 
 #include <map>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 
-#include "net/proto2/util/public/json_util.h"
 #include "privacy/net/krypton/desktop/desktop_oauth_interface.h"
 #include "privacy/net/krypton/desktop/local_secure_storage_interface.h"
 #include "privacy/net/krypton/desktop/proto/oauth.proto.h"
@@ -52,7 +50,7 @@ class DesktopOAuth : public DesktopOAuthInterface {
         auth_config_(config),
         clock_(clock) {}
 
-  ~DesktopOAuth() override {}
+  ~DesktopOAuth() override = default;
 
   // Returns the Access Token necessary for Krypton to talk to backends.
   absl::StatusOr<std::string> GetOAuthToken() override

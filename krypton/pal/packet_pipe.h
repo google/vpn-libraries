@@ -21,6 +21,7 @@
 
 #include "privacy/net/krypton/pal/packet.h"
 #include "privacy/net/krypton/proto/debug_info.proto.h"
+#include "third_party/absl/status/status.h"
 #include "third_party/absl/status/statusor.h"
 
 namespace privacy {
@@ -29,7 +30,7 @@ namespace krypton {
 // An interface for a two-way channel that can read and write packets.
 class PacketPipe {
  public:
-  virtual ~PacketPipe() {}
+  virtual ~PacketPipe() = default;
 
   // Writes a batch of packets to the pipe.
   virtual absl::Status WritePackets(std::vector<Packet> packets) = 0;

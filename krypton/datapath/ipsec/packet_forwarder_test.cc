@@ -128,8 +128,8 @@ class MockPacketPipe : public PacketPipe {
 
 class PacketForwarderTest : public ::testing::Test {
  public:
-  MockPacketPipe inbound_pipe_ = MockPacketPipe();
-  MockPacketPipe outbound_pipe_ = MockPacketPipe();
+  MockPacketPipe inbound_pipe_;
+  MockPacketPipe outbound_pipe_;
   utils::LooperThread notification_thread_{"PacketForwarder Test"};
   MockNotification notification_;
 };
