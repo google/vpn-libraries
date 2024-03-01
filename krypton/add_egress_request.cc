@@ -99,6 +99,7 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
       net::common::proto::PpnDataplaneRequest::CryptoSuite_Name(params.suite);
 
   ppn[JsonKeys::kControlPlaneSockAddr] = params.control_plane_sockaddr;
+  ppn[JsonKeys::kPreferOasis] = params.prefer_oasis;
 
   auto verification_key = params.crypto->GetRekeyVerificationKey();
   if (verification_key.ok()) {

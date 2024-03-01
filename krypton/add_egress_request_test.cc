@@ -276,5 +276,21 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   EXPECT_EQ(public_metadata["debug_mode"], 0);
 }
 
+TEST_F(AddEgressRequestTest, PreferOasis) {
+  ASSERT_OK_AND_ASSIGN(auto crypto, crypto::SessionCrypto::Create(config_));
+  auto keys = crypto->GetMyKeyMaterial();
+
+  AddEgressRequest request(std::optional("apiKey"),
+                           AddEgressRequest::RequestDestination::kBeryllium);
+  AddEgressRequest::PpnDataplaneRequestParams params;
+  params.crypto = crypto.get();
+  params.prefer_oasis = true;
+
+  auto http_request = request.EncodeToProtoForPpn(params);
+  ASSERT_OK_AND_ASSIGN(auto actual,
+                       utils::StringToJson(http_request.json_body()));
+  EXPECT_EQ(actual["ppn"]["prefer_oasis"], true);
+}
+
 }  // namespace krypton
 }  // namespace privacy

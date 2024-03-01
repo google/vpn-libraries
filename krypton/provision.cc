@@ -182,7 +182,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey,
     control_plane_addr_ = ip_range->HostPortString(kControlPlanePort);
   }
   LOG(INFO) << "Control plane addr:" << control_plane_addr_;
-  AddEgressRequest::PpnDataplaneRequestParams params;
+  AddEgressRequest::PpnDataplaneRequestParams params{};
   params.control_plane_sockaddr = control_plane_addr_;
   params.is_rekey = is_rekey;
   params.suite = config_.cipher_suite_key_length() == 256

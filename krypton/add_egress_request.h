@@ -43,7 +43,6 @@ class AddEgressRequest {
 
   // Parameters needed for PpnDataplane.
   struct PpnDataplaneRequestParams {
-   public:
     const crypto::SessionCrypto* crypto;  // Not owned.
     std::string control_plane_sockaddr;
     net::common::proto::PpnDataplaneRequest::CryptoSuite suite;
@@ -76,6 +75,8 @@ class AddEgressRequest {
     std::string city_geo_id;
     std::string service_type;
     absl::Time expiration;
+    // Whether to request that Beryllium uses the Oasis dataplane.
+    bool prefer_oasis;
   };
 
   HttpRequest EncodeToProtoForPpn(const PpnDataplaneRequestParams& params);

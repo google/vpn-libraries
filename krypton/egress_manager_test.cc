@@ -113,6 +113,7 @@ class EgressManagerTest : public ::testing::Test {
     expected[JsonKeys::kPpn][JsonKeys::kDataplaneProtocol] = "IPSEC";
     expected[JsonKeys::kPpn][JsonKeys::kRekeyVerificationKey] =
         verification_key_encoded;
+    expected[JsonKeys::kPpn][JsonKeys::kPreferOasis] = false;
     return utils::JsonToString(expected);
   }
 
@@ -190,6 +191,7 @@ class EgressManagerTest : public ::testing::Test {
     expected[JsonKeys::kPpn][JsonKeys::kDataplaneProtocol] = "IPSEC";
     expected[JsonKeys::kPpn][JsonKeys::kRekeyVerificationKey] =
         verification_key_encoded;
+    expected[JsonKeys::kPpn][JsonKeys::kPreferOasis] = false;
     return utils::JsonToString(expected);
   }
 
@@ -252,7 +254,7 @@ TEST_F(EgressManagerTest, SuccessfulEgressForPpnIpSec) {
       .WillOnce(
           InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
 
-  AddEgressRequest::PpnDataplaneRequestParams params;
+  AddEgressRequest::PpnDataplaneRequestParams params{};
   params.crypto = crypto_.get();
   params.control_plane_sockaddr = "192.168.0.10:1849";
   params.dataplane_protocol = KryptonConfig::IPSEC;
@@ -295,7 +297,7 @@ TEST_F(EgressManagerTest, GetEgressNodeForPpnIpSecWithBerylliumFields) {
       .WillOnce(
           InvokeWithoutArgs(&http_fetcher_done, &absl::Notification::Notify));
 
-  AddEgressRequest::PpnDataplaneRequestParams params;
+  AddEgressRequest::PpnDataplaneRequestParams params{};
   params.crypto = crypto_.get();
   params.control_plane_sockaddr = "192.168.0.10:1849";
   params.dataplane_protocol = KryptonConfig::IPSEC;
