@@ -37,7 +37,7 @@ message ReconnectorConfig {
   optional uint32 session_connection_deadline_msec = 3;
 }
 
-// Next ID: 39
+// Next ID: 40
 message KryptonConfig {
   reserved 5, 7, 10, 13, 24;
 
@@ -131,4 +131,8 @@ message KryptonConfig {
   // Fields for configuring the datapath connecting timer.
   optional bool datapath_connecting_timer_enabled = 37;
   optional google.protobuf.Duration datapath_connecting_timer_duration = 38;
+
+  // Client hint for whether Oasis is the preferred dataplane provider.
+  // Beryllium may still elect to use another provider even if this is true.
+  optional bool prefer_oasis = 39;
 }
