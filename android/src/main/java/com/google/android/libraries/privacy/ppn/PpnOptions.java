@@ -122,6 +122,8 @@ public class PpnOptions {
   private final Optional<Boolean> datapathConnectingTimerEnabled;
   private final Optional<Duration> datapathConnectingTimerDuration;
 
+  private final boolean preferOasis;
+
   private final boolean attestationNetworkOverrideEnabled;
   private final boolean forceDisallowPlayStoreForAttestationEnabled;
 
@@ -192,6 +194,8 @@ public class PpnOptions {
 
     this.datapathConnectingTimerEnabled = builder.datapathConnectingTimerEnabled;
     this.datapathConnectingTimerDuration = builder.datapathConnectingTimerDuration;
+
+    this.preferOasis = builder.preferOasis;
 
     this.attestationNetworkOverrideEnabled = builder.attestationNetworkOverrideEnabled;
     this.forceDisallowPlayStoreForAttestationEnabled =
@@ -404,6 +408,10 @@ public class PpnOptions {
     return datapathConnectingTimerDuration;
   }
 
+  public boolean isOasisPreferred() {
+    return preferOasis;
+  }
+
   public boolean isAttestationNetworkOverrideEnabled() {
     return attestationNetworkOverrideEnabled;
   }
@@ -437,7 +445,8 @@ public class PpnOptions {
             .setServiceType(getZincServiceType())
             .setInitialDataUrl(getInitialDataUrl())
             .setUpdatePathInfoUrl(getUpdatePathInfoUrl())
-            .setReconnectorConfig(reconnectorConfig);
+            .setReconnectorConfig(reconnectorConfig)
+            .setPreferOasis(isOasisPreferred());
 
     if (getCopperControllerAddress().isPresent()) {
       builder.setCopperControllerAddress(getCopperControllerAddress().get());
@@ -619,6 +628,8 @@ public class PpnOptions {
 
     private boolean attestationNetworkOverrideEnabled = false;
     private boolean forceDisallowPlayStoreForAttestationEnabled = false;
+
+    private boolean preferOasis = false;
 
     private boolean xenonV2Enabled = false;
 
@@ -1142,6 +1153,13 @@ public class PpnOptions {
       if (interval != null) {
         this.datapathConnectingTimerDuration = Optional.of(interval);
       }
+      return this;
+    }
+
+    /** Sets whether the client prefers Oasis as the dataplane provider. */
+    @CanIgnoreReturnValue
+    public Builder setPreferOasis(boolean preferOasis) {
+      this.preferOasis = preferOasis;
       return this;
     }
 

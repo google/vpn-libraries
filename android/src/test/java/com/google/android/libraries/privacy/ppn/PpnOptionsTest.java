@@ -769,6 +769,7 @@ public class PpnOptionsTest {
             .setPeriodicHealthCheckPort(80)
             .setDatapathConnectingTimerEnabled(true)
             .setDatapathConnectingTimerDuration(Duration.ofSeconds(16))
+            .setPreferOasis(true)
             .build();
 
     KryptonConfig config = options.createKryptonConfigBuilder().build();
@@ -820,6 +821,7 @@ public class PpnOptionsTest {
     assertThat(config.getDatapathConnectingTimerEnabled()).isTrue();
     assertThat(config.hasDatapathConnectingTimerDuration()).isTrue();
     assertThat(config.getDatapathConnectingTimerDuration().getSeconds()).isEqualTo(16);
+    assertThat(config.getPreferOasis()).isTrue();
   }
 
   @Test
@@ -1019,5 +1021,19 @@ public class PpnOptionsTest {
     PpnOptions options = new PpnOptions.Builder().setDatapathConnectingTimerDuration(null).build();
 
     assertThat(options.getDatapathConnectingTimerDuration()).isEmpty();
+  }
+
+  @Test
+  public void setPreferOasis_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+
+    assertThat(options.isOasisPreferred()).isFalse();
+  }
+
+  @Test
+  public void setPreferOasis_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setPreferOasis(true).build();
+
+    assertThat(options.isOasisPreferred()).isTrue();
   }
 }
