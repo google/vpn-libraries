@@ -58,7 +58,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrass) {
   KryptonConfig config;
   config.add_copper_hostname_suffix("g-tun.com");
 
-  AddEgressRequest::PpnDataplaneRequestParams params;
+  AddEgressRequest::PpnDataplaneRequestParams params{};
   params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
@@ -116,7 +116,7 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
   KryptonConfig config;
   config.add_copper_hostname_suffix("g-tun.com");
 
-  AddEgressRequest::PpnDataplaneRequestParams params;
+  AddEgressRequest::PpnDataplaneRequestParams params{};
   params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
@@ -167,7 +167,7 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
   auto keys = crypto->GetMyKeyMaterial();
 
   AddEgressRequest request(std::optional("apiKey"));
-  AddEgressRequest::PpnDataplaneRequestParams params;
+  AddEgressRequest::PpnDataplaneRequestParams params{};
   params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
@@ -216,7 +216,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
 
   AddEgressRequest request(std::optional("apiKey"),
                            AddEgressRequest::RequestDestination::kBeryllium);
-  AddEgressRequest::PpnDataplaneRequestParams params;
+  AddEgressRequest::PpnDataplaneRequestParams params{};
   params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
@@ -282,7 +282,7 @@ TEST_F(AddEgressRequestTest, PreferOasis) {
 
   AddEgressRequest request(std::optional("apiKey"),
                            AddEgressRequest::RequestDestination::kBeryllium);
-  AddEgressRequest::PpnDataplaneRequestParams params;
+  AddEgressRequest::PpnDataplaneRequestParams params{};
   params.crypto = crypto.get();
   params.prefer_oasis = true;
 
