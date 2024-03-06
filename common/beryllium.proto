@@ -172,7 +172,7 @@ message AddEgressRequest {
   privacy.ppn.PublicMetadata public_metadata = 7;
 
   // The version number of the signing key that was used during blind-signing.
-  int64 signing_key_version = 8;
+  uint64 signing_key_version = 8;
 
   // The key type (e.g. Zinc, AT Public Metadata, etc.) used to sign the token.
   privacy.ppn.KeyType key_type = 9;
