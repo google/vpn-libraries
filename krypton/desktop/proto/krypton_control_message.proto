@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright (C) 2022 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-syntax = "proto2";
+edition = "2023";
 
 package privacy.krypton.desktop;
 
@@ -23,18 +23,23 @@ import "privacy/net/common/proto/ppn_options.proto";
 import "privacy/net/krypton/desktop/proto/ppn_telemetry.proto";
 import "privacy/net/krypton/proto/connection_status.proto";
 import "privacy/net/krypton/proto/krypton_config.proto";
+import "third_party/protobuf/cpp_features.proto";
 
+option features.enum_type = CLOSED;
+option features.utf8_validation = NONE;
 option cc_api_version = 2;
 
 // This message will be used for IPC between Windows KryptonService and the G1
 // app.
 message KryptonControlMessage {
   // Required. Defines the action to be performed.
-  optional MessageType type = 1;
+  MessageType type = 1;
+
   // Defines the request parameters required to process the action.
-  optional KryptonControlRequest request = 2;
+  KryptonControlRequest request = 2;
+
   // Defines the response to the processed action.
-  optional KryptonControlResponse response = 3;
+  KryptonControlResponse response = 3;
 
   // Type of krypton message to be processed.
   enum MessageType {
@@ -56,14 +61,17 @@ message KryptonControlRequest {
     // Only this field will be respected on server end when processing this
     // proto with MessageType set as START_KRYPTON.
     StartKryptonRequest start_krypton_request = 1;
+
     // To be set when message type is NOTIFICATION_UPDATE.
     // Only this field will be respected on server end when processing this
     // proto with MessageType set as NOTIFICATION_UPDATE.
     NotificationUpdateRequest notification_update_request = 2;
+
     // To be set when message type is STOP_KRYPTON.
     // Only this field will be respected on server end when processing this
     // proto with MessageType set as STOP_KRYPTON.
     StopKryptonRequest stop_krypton_request = 3;
+
     // To be set when message type is SET_IP_GEO_LEVEL.
     // Only this field will be respected on server end when processing this
     // proto with MessageType set as SET_IP_GEO_LEVEL.
@@ -74,12 +82,14 @@ message KryptonControlRequest {
 // Response proto for KryptonControlMessage containing the respective response
 // parameters as per the type of the message.
 message KryptonControlResponse {
-  optional google.rpc.Status status = 1;
+  google.rpc.Status status = 1;
+
   oneof response_type {
     // To be set when message type is COLLECT_TELEMETRY.
     // Only this field will be respected on client end when processing this
     // proto with MessageType set as COLLECT_TELEMETRY.
     CollectTelemetryResponse collect_telemetry_response = 2;
+
     // To be set when message type is FETCH_OAUTH_TOKEN.
     // Only this field will be respected on client end when processing this
     // proto with MessageType set as FETCH_OAUTH_TOKEN.
@@ -90,40 +100,43 @@ message KryptonControlResponse {
 // Request to Start Krypton.
 message StartKryptonRequest {
   // Config needed to start krypton.
-  optional privacy.krypton.KryptonConfig krypton_config = 1;
+  privacy.krypton.KryptonConfig krypton_config = 1;
 }
 
 // Request to Stop Krypton.
 message StopKryptonRequest {
   // Field to state reason for Stop - Manual stop or due to permanent error
-  optional google.rpc.Status status = 1;
+  google.rpc.Status status = 1;
 }
 
 // Response from Collect Telemetry.
 message CollectTelemetryResponse {
   // Ppn Telemetry data.
-  optional privacy.krypton.desktop.PpnTelemetry ppn_telemetry = 1;
+  privacy.krypton.desktop.PpnTelemetry ppn_telemetry = 1;
 }
 
 // Request for setting the IP geo level.
 message SetIpGeoLevelRequest {
-  optional privacy.ppn.IpGeoLevel level = 1;
+  privacy.ppn.IpGeoLevel level = 1;
 }
 
 // PPN Status Notification Update Request
 message NotificationUpdateRequest {
   // Type of notification i.e. Status update
-  optional NotificationType notification_type = 1;
+  NotificationType notification_type = 1;
+
   // Metadata attached to some status update
   oneof status {
     // To be set when message type is PPN_DISCONNECTED.
     // Only this field will be respected on client end when processing this
     // proto with MessageType set as PPN_DISCONNECTED.
     PpnDisconnectionStatus ppn_disconnection_status = 2;
+
     // To be set when message type is PPN_PERMANENT_FAILURE.
     // Only this field will be respected on client end when processing this
     // proto with MessageType set as PPN_PERMANENT_FAILURE.
     PpnPermanentFailureStatus ppn_permanent_failure_status = 3;
+
     // To be set when message type is PPN_STOPPED.
     // Only this field will be respected on client end when processing this
     // proto with MessageType set as PPN_STOPPED.
@@ -147,20 +160,20 @@ message NotificationUpdateRequest {
 // service.
 message FetchOauthTokenResponse {
   // Oauth Token
-  optional string oauth_token = 1;
+  string oauth_token = 1;
 }
 
 // Metadata attached with PPN_DISCONNECTED notification.
 message PpnDisconnectionStatus {
-  optional DisconnectionStatus status = 1;
+  DisconnectionStatus status = 1;
 }
 
 // Metadata attached with PPN_PERMANENT_FAILURE notification.
 message PpnPermanentFailureStatus {
-  optional google.rpc.Status status = 1;
+  google.rpc.Status status = 1;
 }
 
 // Metadata attached with PPN_STOPPED notification.
 message PpnStoppedStatus {
-  optional google.rpc.Status status = 1;
+  google.rpc.Status status = 1;
 }
