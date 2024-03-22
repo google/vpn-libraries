@@ -98,6 +98,11 @@ message PpnDataplaneRequest {
   // Client hint for whether Oasis is the preferred dataplane provider.
   // Beryllium may still elect to use Marconi even if this is true.
   bool prefer_oasis = 13;
+
+  // If true, only reserved (allocated but inactive) IP addresses will be used.
+  // Oasis only flag used for internal testing of new IP turnups.
+  // See oasis_vpn.IpPoolSelector.use_reserved.
+  bool use_reserved_ip_pool = 14;
 }
 
 message PpnDataplaneResponse {
