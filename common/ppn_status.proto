@@ -38,6 +38,9 @@ message PpnStatusDetails {
     IPC_FAILURE = 3;
     // Indicates that the app no longer has the VPN permission.
     VPN_PERMISSION_REVOKED = 4;
+    // Indicates that the Oasis server is disabled and there is no server-side
+    // fallback for this request.
+    OASIS_DISABLED = 5;
   }
 
   // An optional error code giving a more specific error condition than the
