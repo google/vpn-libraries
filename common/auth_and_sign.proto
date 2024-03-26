@@ -21,6 +21,9 @@ import "privacy/net/common/proto/key_services.proto";
 import "privacy/net/common/proto/proxy_layer.proto";
 import "privacy/net/common/proto/public_metadata.proto";
 
+option java_multiple_files = true;
+option java_package = "com.google.privacy.ppn.proto";
+
 // Client is requesting to auth using the provided auth token.
 // Next ID: 17
 message AuthAndSignRequest {
