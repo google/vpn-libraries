@@ -167,8 +167,8 @@ void EgressManager::DecodeAddEgressResponse(bool is_rekey,
   }
 
   if (http_response.status().code() != 200) {
-    latest_status_ = utils::GetStatusForHttpStatus(
-        http_response.status().code(),
+    latest_status_ = utils::GetStatusForHttpResponse(
+        http_response,
         absl::StrCat("AddEgressRequest failed with code ",
                      http_response.status().code(), ": Content obfuscated"));
     SetState(State::kEgressSessionError);

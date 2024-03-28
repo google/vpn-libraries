@@ -94,7 +94,7 @@ class Provision : public Auth::NotificationInterface,
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
-  void FailWithStatus(absl::Status status, bool permanent);
+  void FailWithStatus(absl::Status status);
 
   void PpnDataplaneRequest(bool rekey, crypto::SessionCrypto* key_material)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);

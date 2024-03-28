@@ -31,6 +31,7 @@
 #include "privacy/net/common/proto/get_initial_data.proto.h"
 #include "privacy/net/common/proto/key_services.proto.h"
 #include "privacy/net/common/proto/ppn_options.proto.h"
+#include "privacy/net/common/proto/ppn_status.proto.h"
 #include "privacy/net/common/proto/public_metadata.proto.h"
 #include "privacy/net/krypton/auth_and_sign_request.h"
 #include "privacy/net/krypton/auth_and_sign_response.h"
@@ -163,8 +164,8 @@ void Auth::HandleAuthAndSignResponse(bool is_rekey,
 
   if (http_response.status().code() != 200) {
     SetState(State::kUnauthenticated);
-    RaiseAuthFailureNotification(utils::GetStatusForHttpStatus(
-        http_response.status().code(), http_response.status().message()));
+    RaiseAuthFailureNotification(
+        utils::GetStatusForHttpResponse(http_response));
     return;
   }
 
@@ -226,8 +227,8 @@ void Auth::HandlePublicKeyResponse(bool is_rekey,
     if (http_response.status().code() < 200 ||
         http_response.status().code() >= 300) {
       SetState(State::kUnauthenticated);
-      RaiseAuthFailureNotification(utils::GetStatusForHttpStatus(
-          http_response.status().code(), http_response.status().message()));
+      RaiseAuthFailureNotification(
+          utils::GetStatusForHttpResponse(http_response));
       LOG(ERROR) << "PublicKeyResponse failed: "
                  << http_response.status().code();
       return;
@@ -278,8 +279,8 @@ void Auth::HandleInitialDataResponse(bool is_rekey,
     if (http_response.status().code() < 200 ||
         http_response.status().code() >= 300) {
       SetState(State::kUnauthenticated);
-      RaiseAuthFailureNotification(utils::GetStatusForHttpStatus(
-          http_response.status().code(), http_response.status().message()));
+      RaiseAuthFailureNotification(
+          utils::GetStatusForHttpResponse(http_response));
       LOG(ERROR) << "GetInitialDataResponse failed: "
                  << http_response.status().code();
       return;

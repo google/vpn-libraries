@@ -15,11 +15,14 @@
 #ifndef PRIVACY_NET_KRYPTON_UTILS_STATUS_H_
 #define PRIVACY_NET_KRYPTON_UTILS_STATUS_H_
 
-#include <utility>
+#include <optional>
 
 #include "privacy/net/common/proto/ppn_status.proto.h"
+#include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "third_party/absl/base/optimization.h"
+#include "third_party/absl/log/log.h"
 #include "third_party/absl/status/status.h"
+#include "third_party/absl/strings/string_view.h"
 
 namespace privacy {
 namespace krypton {
@@ -64,6 +67,13 @@ namespace utils {
 // This uses the standard HTTP status code -> error mapping defined in:
 // https://github.com/googleapis/googleapis/blob/master/google/rpc/code.proto
 absl::Status GetStatusForHttpStatus(int http_status, absl::string_view message);
+
+// Takes an HttpResponse and returns the corresponding absl::Status. If the
+// original message from the HTTP Status needs to be obfuscated an alternate
+// message can be provided.
+absl::Status GetStatusForHttpResponse(
+    const HttpResponse& http_response,
+    std::optional<absl::string_view> alternate_message = std::nullopt);
 
 // Status code errors that are treated as permanent errors.
 bool IsPermanentError(absl::Status status);

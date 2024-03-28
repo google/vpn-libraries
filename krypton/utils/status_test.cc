@@ -25,6 +25,8 @@ namespace utils {
 namespace {
 
 using absl::StatusCode;
+using ::testing::EqualsProto;
+using ::testing::status::StatusIs;
 
 StatusCode GetStatusCodeForHttpStatus(int code) {
   return GetStatusForHttpStatus(code, "").code();
@@ -87,13 +89,44 @@ TEST_F(StatusTest, TestPpnStatusDetails) {
 TEST_F(StatusTest, TestHttpStatus412) {
   absl::Status status = GetStatusForHttpStatus(412, "disallowed country");
   EXPECT_EQ(absl::StatusCode::kFailedPrecondition, status.code());
-  EXPECT_EQ("Disallowed country: disallowed country", status.message());
+  EXPECT_EQ("disallowed country", status.message());
 
   ppn::PpnStatusDetails details = GetPpnStatusDetails(status);
   EXPECT_EQ(ppn::PpnStatusDetails::DISALLOWED_COUNTRY,
             details.detailed_error_code());
 
   EXPECT_TRUE(IsPermanentError(status));
+}
+
+TEST_F(StatusTest,
+       GetStatusForHttpResponseWithDisallowedCountryIncludesPpnStatus) {
+  ppn::PpnStatusDetails details;
+  details.set_detailed_error_code(ppn::PpnStatusDetails::DISALLOWED_COUNTRY);
+  HttpResponse http_response;
+  http_response.mutable_status()->set_code(412);
+  http_response.mutable_status()->set_message("disallowed country");
+  http_response.set_proto_body(details.SerializeAsString());
+
+  absl::Status status = GetStatusForHttpResponse(http_response);
+
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kFailedPrecondition,
+                               "disallowed country"));
+  EXPECT_THAT(GetPpnStatusDetails(status), EqualsProto(details));
+}
+
+TEST_F(StatusTest, GetStatusForHttpResponseWithOasisDisabledIncludesPpnStatus) {
+  ppn::PpnStatusDetails details;
+  details.set_detailed_error_code(ppn::PpnStatusDetails::OASIS_DISABLED);
+  HttpResponse http_response;
+  http_response.mutable_status()->set_code(412);
+  http_response.mutable_status()->set_message("oasis disabled");
+  http_response.set_proto_body(details.SerializeAsString());
+
+  absl::Status status = GetStatusForHttpResponse(http_response);
+
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kFailedPrecondition,
+                               "oasis disabled"));
+  EXPECT_THAT(GetPpnStatusDetails(status), EqualsProto(details));
 }
 
 }  // anonymous namespace

@@ -313,6 +313,44 @@ TEST_F(ProvisionTest, TestAuthResponseDefaultCopperControllerHostname) {
   EXPECT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
+TEST_F(ProvisionTest, LookupDnsFailureCausesProvisioningFailure) {
+  EXPECT_CALL(http_fetcher_, LookupDns(_))
+      .WillOnce(Return(absl::InternalError("Failure")));
+  absl::Notification done;
+  EXPECT_CALL(notification_,
+              ProvisioningFailure(StatusIs(absl::StatusCode::kInternal),
+                                  /*permanent=*/false))
+      .WillOnce([&done] { done.Notify(); });
+
+  provision_->Start();
+  done.WaitForNotification();
+}
+
+TEST_F(ProvisionTest, InvalidIpFromDnsCausesProvisioningFailure) {
+  EXPECT_CALL(http_fetcher_, LookupDns(_)).WillOnce(Return("1"));
+  absl::Notification done;
+  EXPECT_CALL(
+      notification_,
+      ProvisioningFailure(StatusIs(absl::StatusCode::kFailedPrecondition),
+                          /*permanent=*/false))
+      .WillOnce([&done] { done.Notify(); });
+
+  provision_->Start();
+  done.WaitForNotification();
+}
+
+TEST_F(ProvisionTest,
+       EgressAvailableWithMissingResponseCausesProvisioningFailure) {
+  absl::Notification done;
+  EXPECT_CALL(notification_,
+              ProvisioningFailure(StatusIs(absl::StatusCode::kNotFound),
+                                  /*permanent=*/false))
+      .WillOnce([&done] { done.Notify(); });
+
+  provision_->EgressAvailable(/*is_rekey=*/false);
+  done.WaitForNotification();
+}
+
 TEST_F(ProvisionTest, GetDebugInfo) {
   KryptonDebugInfo debug_info;
   EXPECT_FALSE(debug_info.has_auth());

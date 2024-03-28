@@ -87,10 +87,10 @@ Provision::~Provision() {
   looper_.Join();
 }
 
-void Provision::FailWithStatus(absl::Status status, bool permanent) {
+void Provision::FailWithStatus(absl::Status status) {
   NotificationInterface* notification = notification_;
-  notification_thread_->Post([notification, status, permanent] {
-    notification->ProvisioningFailure(status, permanent);
+  notification_thread_->Post([notification, status] {
+    notification->ProvisioningFailure(status, utils::IsPermanentError(status));
   });
 }
 
@@ -169,14 +169,14 @@ void Provision::PpnDataplaneRequest(bool is_rekey,
     absl::StatusOr<std::string> resolved_address =
         http_fetcher_.LookupDns(copper_hostname);
     if (!resolved_address.ok()) {
-      FailWithStatus(resolved_address.status(), false);
+      FailWithStatus(resolved_address.status());
       return;
     }
 
     absl::StatusOr<utils::IPRange> ip_range =
         utils::IPRange::Parse(*resolved_address);
     if (!ip_range.ok()) {
-      FailWithStatus(ip_range.status(), false);
+      FailWithStatus(ip_range.status());
       return;
     }
     control_plane_addr_ = ip_range->HostPortString(kControlPlanePort);
@@ -201,8 +201,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey,
     if (auth_->auth_response().blinded_token_signatures().empty()) {
       LOG(ERROR) << "No blind token signatures found";
       FailWithStatus(
-          absl::FailedPreconditionError("No blind token signatures found"),
-          false);
+          absl::FailedPreconditionError("No blind token signatures found"));
       return;
     }
     // set unblinded_token_signature
@@ -211,14 +210,13 @@ void Provision::PpnDataplaneRequest(bool is_rekey,
       auto signed_tokens = auth_->GetUnblindedAnonymousToken();
       if (!signed_tokens.ok()) {
         LOG(ERROR) << "No unblinded token signatures found";
-        FailWithStatus(signed_tokens.status(), false);
+        FailWithStatus(signed_tokens.status());
         return;
       }
       if (signed_tokens->size() != 1) {
         LOG(ERROR) << "Incorrect number of signed tokens found.";
         FailWithStatus(absl::FailedPreconditionError(
-                           "Incorrect number of signed tokens found"),
-                       false);
+            "Incorrect number of signed tokens found"));
         return;
       }
       params.unblinded_token = signed_tokens->at(0).input().plaintext_message();
@@ -233,8 +231,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey,
       if (!token.has_value()) {
         LOG(ERROR) << "No unblinded token signatures found";
         FailWithStatus(absl::FailedPreconditionError(
-                           "No unblinded token signatures found"),
-                       false);
+            "No unblinded token signatures found"));
         return;
       }
       params.unblinded_token_signature = token.value();
@@ -266,7 +263,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey,
   auto status = egress_manager_->GetEgressNodeForPpnIpSec(params);
   if (!status.ok()) {
     LOG(ERROR) << "GetEgressNodeForPpnIpSec failed";
-    FailWithStatus(status, false);
+    FailWithStatus(status);
   }
 }
 
@@ -282,7 +279,7 @@ void Provision::AuthSuccessful(bool is_rekey) {
 void Provision::AuthFailure(const absl::Status& status) {
   absl::MutexLock l(&mutex_);
   LOG(ERROR) << "Authentication failed: " << status;
-  FailWithStatus(status, utils::IsPermanentError(status));
+  FailWithStatus(status);
 }
 
 void Provision::EgressAvailable(bool is_rekey) {
@@ -293,7 +290,7 @@ void Provision::EgressAvailable(bool is_rekey) {
       egress_manager_->GetEgressSessionDetails();
   if (!egress.ok()) {
     LOG(ERROR) << "Error getting session details";
-    FailWithStatus(egress.status(), false);
+    FailWithStatus(egress.status());
     return;
   }
 
@@ -323,7 +320,7 @@ void Provision::ParseControlPlaneSockaddr(
 
 void Provision::EgressUnavailable(const absl::Status& status) {
   LOG(ERROR) << "Egress unavailable with status: " << status;
-  FailWithStatus(status, false);
+  FailWithStatus(status);
 }
 
 }  // namespace krypton

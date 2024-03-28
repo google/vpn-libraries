@@ -291,8 +291,7 @@ void Session::HandleUpdatePathInfoResponse(const HttpResponse& response) {
   if (response.status().code() == 200) {
     LOG(INFO) << "Updating path info completed successfully.";
   } else {
-    auto status = utils::GetStatusForHttpStatus(response.status().code(),
-                                                response.status().message());
+    absl::Status status = utils::GetStatusForHttpResponse(response);
     LOG(ERROR) << "Updating path info failed with status: " << status;
   }
 }

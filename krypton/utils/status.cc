@@ -14,12 +14,13 @@
 
 #include "privacy/net/krypton/utils/status.h"
 
+#include <optional>
 #include <string>
 
 #include "privacy/net/common/proto/ppn_status.proto.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/cord.h"
-#include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/strings/string_view.h"
 
 namespace privacy {
 namespace krypton {
@@ -28,8 +29,7 @@ namespace utils {
 namespace {
 
 absl::Status CreateDisallowedCountryStatus(absl::string_view message) {
-  absl::Status status = absl::FailedPreconditionError(
-      absl::StrCat("Disallowed country: ", message));
+  absl::Status status = absl::FailedPreconditionError(message);
   ppn::PpnStatusDetails details;
   details.set_detailed_error_code(ppn::PpnStatusDetails::DISALLOWED_COUNTRY);
   SetPpnStatusDetails(&status, details);
@@ -57,8 +57,8 @@ absl::Status GetStatusForHttpStatus(int http_status,
       return absl::AbortedError(message);
     case 412:
       // The zinc and brass backends specifically reserve 412 for disallowed
-      // countries, so attach a detailed error code so that we can handle this
-      // with a special UI and treat it as a permanent error.
+      // countries. Since these backends do not attach a PpnStatusDetails to the
+      // response we need to create one, until we stop using Zinc and Brass.
       return CreateDisallowedCountryStatus(message);
     case 429:
       return absl::ResourceExhaustedError(message);
@@ -85,21 +85,38 @@ absl::Status GetStatusForHttpStatus(int http_status,
   return absl::UnknownError(message);
 }
 
+absl::Status GetStatusForHttpResponse(
+    const HttpResponse& http_response,
+    std::optional<absl::string_view> alternate_message) {
+  std::string message = http_response.status().message();
+  if (alternate_message.has_value()) {
+    message = std::string(*alternate_message);
+  }
+  absl::Status status =
+      GetStatusForHttpStatus(http_response.status().code(), message);
+  if (!status.ok() && http_response.has_proto_body()) {
+    ppn::PpnStatusDetails status_details;
+    if (status_details.ParseFromString(http_response.proto_body())) {
+      SetPpnStatusDetails(&status, status_details);
+    }
+  }
+  return status;
+}
+
 bool IsPermanentError(absl::Status status) {
   if (status.code() == absl::StatusCode::kPermissionDenied) {
     return true;
   }
 
-  if (status.code() == absl::StatusCode::kFailedPrecondition &&
-      GetPpnStatusDetails(status).detailed_error_code() ==
-          ppn::PpnStatusDetails::DISALLOWED_COUNTRY) {
-    return true;
-  }
-
-  if (status.code() == absl::StatusCode::kFailedPrecondition &&
-      GetPpnStatusDetails(status).detailed_error_code() ==
-          ppn::PpnStatusDetails::LIBRARY_NOT_FOUND) {
-    return true;
+  if (status.code() == absl::StatusCode::kFailedPrecondition) {
+    switch (GetPpnStatusDetails(status).detailed_error_code()) {
+      case ppn::PpnStatusDetails::DISALLOWED_COUNTRY:
+      case ppn::PpnStatusDetails::LIBRARY_NOT_FOUND:
+      case ppn::PpnStatusDetails::OASIS_DISABLED:
+        return true;
+      default:
+        return false;
+    }
   }
 
   return false;
@@ -107,8 +124,9 @@ bool IsPermanentError(absl::Status status) {
 
 ppn::PpnStatusDetails GetPpnStatusDetails(absl::Status status) {
   ppn::PpnStatusDetails details;
-  auto payload = status.GetPayload(kPpnStatusDetailsPayloadKey);
-  if (payload) {
+  std::optional<absl::Cord> payload =
+      status.GetPayload(kPpnStatusDetailsPayloadKey);
+  if (payload.has_value()) {
     std::string s;
     absl::CopyCordToString(*payload, &s);
     details.ParseFromString(s);
