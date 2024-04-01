@@ -76,7 +76,8 @@ public class PpnStatus {
    */
   public enum DetailedErrorCode {
     UNKNOWN(0),
-    DISALLOWED_COUNTRY(1);
+    DISALLOWED_COUNTRY(1),
+    OASIS_DISABLED(5);
 
     private final int value;
 
@@ -183,6 +184,6 @@ public class PpnStatus {
 
   @Override
   public String toString() {
-    return code.toString() + ":" + message;
+    return code + ":" + message;
   }
 }
