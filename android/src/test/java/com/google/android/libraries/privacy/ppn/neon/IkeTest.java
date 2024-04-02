@@ -18,7 +18,9 @@ import static com.google.common.truth.Truth.assertThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -154,6 +156,33 @@ public class IkeTest {
     // Additionally, there is one DNS lookup of the copper hostname.
     verify(mockNetwork, times(4)).getAllByName(anyString());
     verify(mockNetwork, times(3)).bindSocket(any(Socket.class));
+    verifyNoMoreInteractions(mockNetwork);
+  }
+
+  @Test
+  public void provision_customDnsUsedOverNetworkBoundDns() throws Exception {
+    fakeAuthServer.start();
+    fakeAuthServer.enqueuePositivePublicKeyResponse();
+    fakeAuthServer.enqueuePositiveAuthResponse();
+    mockBrass.start();
+    mockBrass.enqueuePositiveIkeResponse();
+
+    Task<ProvisionResponse> task =
+        Ike.provision(
+            ApplicationProvider.getApplicationContext(),
+            createOptions(),
+            "some token",
+            new FakeDns(),
+            mockNetwork);
+    await(task);
+
+    ProvisionResponse response = task.getResult();
+    assertThat(response.getServerAddress()).isEqualTo("server");
+    assertThat(response.getClientId()).isEqualTo("client".getBytes(UTF_8));
+    assertThat(response.getSharedSecret()).isEqualTo("secret".getBytes(UTF_8));
+    // Network should still be used, but not for DNS
+    verify(mockNetwork, never()).getAllByName(anyString());
+    verify(mockNetwork, atLeastOnce()).bindSocket(any(Socket.class));
     verifyNoMoreInteractions(mockNetwork);
   }
 

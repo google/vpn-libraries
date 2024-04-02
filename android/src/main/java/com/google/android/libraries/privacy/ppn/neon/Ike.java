@@ -31,6 +31,7 @@ import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.android.libraries.privacy.ppn.internal.http.NetworkBoundDns;
 import com.google.android.libraries.privacy.ppn.krypton.OAuthTokenProvider;
 import com.google.android.libraries.privacy.ppn.proto.PpnIkeResponse;
+import java.util.Optional;
 
 /** Class for standalone API methods for using IKE with PPN. */
 public class Ike {
@@ -43,8 +44,7 @@ public class Ike {
    */
   public static Task<ProvisionResponse> provision(
       Context context, PpnOptions options, String oauthToken) {
-    return startProvisioning(
-        context, options, oauthToken, HttpFetcher.DEFAULT_DNS, /* network= */ null);
+    return startProvisioning(context, options, oauthToken, Optional.empty(), /* network= */ null);
   }
 
   /**
@@ -56,7 +56,7 @@ public class Ike {
    */
   public static Task<ProvisionResponse> provision(
       Context context, PpnOptions options, String oauthToken, @Nullable Network network) {
-    return startProvisioning(context, options, oauthToken, HttpFetcher.DEFAULT_DNS, network);
+    return startProvisioning(context, options, oauthToken, Optional.empty(), network);
   }
 
   /**
@@ -67,12 +67,30 @@ public class Ike {
    * any other type of Exception occurs, it should be considered permanent.
    */
   public static Task<ProvisionResponse> provision(
-      Context context, PpnOptions options, String oauthToken, Dns defaultDns) {
-    return startProvisioning(context, options, oauthToken, defaultDns, /* network= */ null);
+      Context context, PpnOptions options, String oauthToken, Dns dns) {
+    return startProvisioning(context, options, oauthToken, Optional.of(dns), /* network= */ null);
   }
 
   /**
    * Attempts to provision IKE credentials for PPN one time.
+   *
+   * <p>The {@link Dns} should be using the {@link Network} for its operations, otherwise the
+   * provisioning operation may fail under some conditions.
+   *
+   * <p>If provisioning fails, returned Task will be failed. If the Exception is of type
+   * ProvisionException, then it can be checked for whether the error is permanent or transient. If
+   * any other type of Exception occurs, it should be considered permanent.
+   */
+  public static Task<ProvisionResponse> provision(
+      Context context, PpnOptions options, String oauthToken, Dns dns, Network network) {
+    return startProvisioning(context, options, oauthToken, Optional.of(dns), network);
+  }
+
+  /**
+   * Attempts to provision IKE credentials for PPN one time.
+   *
+   * <p>When both a {@link Dns} and {@link Network} are provided, then the {@link Dns} should be
+   * using the {@link Network}, otherwise the provisioning operation may fail under some conditions.
    *
    * <p>If provisioning fails, returned Task will be failed. If the Exception is of type
    * ProvisionException, then it can be checked for whether the error is permanent or transient. If
@@ -82,14 +100,18 @@ public class Ike {
       Context context,
       PpnOptions options,
       String oauthToken,
-      Dns defaultDns,
+      Optional<Dns> dns,
       @Nullable Network network) {
-    // If a network was specified, use it for DNS and bind the HTTP socket to it.
-    Dns dns = defaultDns;
-    if (network != null) {
-      dns = new NetworkBoundDns(network, AddressFamily.V4V6);
+    Dns httpFetcherDns;
+    if (dns.isPresent()) {
+      httpFetcherDns = dns.get();
+    } else if (network != null) {
+      httpFetcherDns = new NetworkBoundDns(network, AddressFamily.V4V6);
+    } else {
+      httpFetcherDns = HttpFetcher.DEFAULT_DNS;
     }
-    HttpFetcher httpFetcher = new HttpFetcher(new ProvisionSocketFactoryFactory(network), dns);
+    HttpFetcher httpFetcher =
+        new HttpFetcher(new ProvisionSocketFactoryFactory(network), httpFetcherDns);
 
     final OAuthTokenProvider tokenProvider;
     if (options.isHardwareAttestationEnabled()) {
