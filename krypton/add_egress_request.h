@@ -77,6 +77,7 @@ class AddEgressRequest {
     absl::Time expiration;
     // Whether to request that Beryllium uses the Oasis dataplane.
     bool prefer_oasis;
+    bool use_reserved_ip_pool;
   };
 
   HttpRequest EncodeToProtoForPpn(const PpnDataplaneRequestParams& params);

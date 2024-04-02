@@ -460,7 +460,7 @@ public class PpnOptionsTest {
   public void setRekeyDuration_setsValue() {
     PpnOptions options = new PpnOptions.Builder().setRekeyDuration(Duration.ofMillis(42)).build();
 
-    assertThat(options.getRekeyDuration().get().toMillis()).isEqualTo(42);
+    assertThat(options.getRekeyDuration().get()).isEqualTo(Duration.ofMillis(42));
   }
 
   @Test
@@ -491,7 +491,8 @@ public class PpnOptionsTest {
             .setReconnectorInitialTimeToReconnect(Duration.ofMillis(42))
             .build();
 
-    assertThat(options.getReconnectorInitialTimeToReconnect().get().toMillis()).isEqualTo(42);
+    assertThat(options.getReconnectorInitialTimeToReconnect().get())
+        .isEqualTo(Duration.ofMillis(42));
   }
 
   @Test
@@ -508,7 +509,8 @@ public class PpnOptionsTest {
             .setReconnectorSessionConnectionDeadline(Duration.ofMillis(42))
             .build();
 
-    assertThat(options.getReconnectorSessionConnectionDeadline().get().toMillis()).isEqualTo(42);
+    assertThat(options.getReconnectorSessionConnectionDeadline().get())
+        .isEqualTo(Duration.ofMillis(42));
   }
 
   @Test
@@ -770,6 +772,7 @@ public class PpnOptionsTest {
             .setDatapathConnectingTimerEnabled(true)
             .setDatapathConnectingTimerDuration(Duration.ofSeconds(16))
             .setPreferOasis(true)
+            .setUseReservedIpPool(true)
             .build();
 
     KryptonConfig config = options.createKryptonConfigBuilder().build();
@@ -822,6 +825,7 @@ public class PpnOptionsTest {
     assertThat(config.hasDatapathConnectingTimerDuration()).isTrue();
     assertThat(config.getDatapathConnectingTimerDuration().getSeconds()).isEqualTo(16);
     assertThat(config.getPreferOasis()).isTrue();
+    assertThat(config.getUseReservedIpPool()).isTrue();
   }
 
   @Test
@@ -863,6 +867,7 @@ public class PpnOptionsTest {
     assertThat(config.hasPeriodicHealthCheckPort()).isFalse();
     assertThat(config.hasDatapathConnectingTimerEnabled()).isFalse();
     assertThat(config.hasDatapathConnectingTimerDuration()).isFalse();
+    assertThat(config.getUseReservedIpPool()).isFalse();
   }
 
   @Test
@@ -1035,5 +1040,19 @@ public class PpnOptionsTest {
     PpnOptions options = new PpnOptions.Builder().setPreferOasis(true).build();
 
     assertThat(options.isOasisPreferred()).isTrue();
+  }
+
+  @Test
+  public void setUseReservedIpPool_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+
+    assertThat(options.getUseReservedIpPool()).isEmpty();
+  }
+
+  @Test
+  public void setUseReservedIpPool_setsValue() {
+    PpnOptions options = new PpnOptions.Builder().setUseReservedIpPool(true).build();
+
+    assertThat(options.getUseReservedIpPool()).hasValue(true);
   }
 }

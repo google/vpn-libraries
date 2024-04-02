@@ -184,6 +184,7 @@ void Provision::PpnDataplaneRequest(bool is_rekey,
   LOG(INFO) << "Control plane addr:" << control_plane_addr_;
   AddEgressRequest::PpnDataplaneRequestParams params{};
   params.prefer_oasis = config_.prefer_oasis();
+  params.use_reserved_ip_pool = config_.use_reserved_ip_pool();
   params.control_plane_sockaddr = control_plane_addr_;
   params.is_rekey = is_rekey;
   params.suite = config_.cipher_suite_key_length() == 256

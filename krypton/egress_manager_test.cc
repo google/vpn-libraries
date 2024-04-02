@@ -114,6 +114,7 @@ class EgressManagerTest : public ::testing::Test {
     expected[JsonKeys::kPpn][JsonKeys::kRekeyVerificationKey] =
         verification_key_encoded;
     expected[JsonKeys::kPpn][JsonKeys::kPreferOasis] = false;
+    expected[JsonKeys::kPpn][JsonKeys::kUseReservedIpPool] = false;
     return utils::JsonToString(expected);
   }
 
@@ -192,6 +193,7 @@ class EgressManagerTest : public ::testing::Test {
     expected[JsonKeys::kPpn][JsonKeys::kRekeyVerificationKey] =
         verification_key_encoded;
     expected[JsonKeys::kPpn][JsonKeys::kPreferOasis] = false;
+    expected[JsonKeys::kPpn][JsonKeys::kUseReservedIpPool] = false;
     return utils::JsonToString(expected);
   }
 

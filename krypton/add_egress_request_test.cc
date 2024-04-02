@@ -14,6 +14,7 @@
 
 #include "privacy/net/krypton/add_egress_request.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -26,7 +27,6 @@
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 #include "third_party/absl/strings/escaping.h"
-#include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/time/time.h"
 #include "third_party/json/include/nlohmann/json.hpp"
 
@@ -290,6 +290,22 @@ TEST_F(AddEgressRequestTest, PreferOasis) {
   ASSERT_OK_AND_ASSIGN(auto actual,
                        utils::StringToJson(http_request.json_body()));
   EXPECT_EQ(actual["ppn"]["prefer_oasis"], true);
+}
+
+TEST_F(AddEgressRequestTest, EncodeToProtoForPpnSetsUseReservedIpPoolValue) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<crypto::SessionCrypto> crypto,
+                       crypto::SessionCrypto::Create(config_));
+  AddEgressRequest request(std::optional("apiKey"),
+                           AddEgressRequest::RequestDestination::kBeryllium);
+  AddEgressRequest::PpnDataplaneRequestParams params{};
+  params.crypto = crypto.get();
+  params.use_reserved_ip_pool = true;
+
+  HttpRequest http_request = request.EncodeToProtoForPpn(params);
+
+  ASSERT_OK_AND_ASSIGN(nlohmann::json actual_json,
+                       utils::StringToJson(http_request.json_body()));
+  EXPECT_TRUE(actual_json["ppn"]["use_reserved_ip_pool"]);
 }
 
 }  // namespace krypton

@@ -100,6 +100,7 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
 
   ppn[JsonKeys::kControlPlaneSockAddr] = params.control_plane_sockaddr;
   ppn[JsonKeys::kPreferOasis] = params.prefer_oasis;
+  ppn[JsonKeys::kUseReservedIpPool] = params.use_reserved_ip_pool;
 
   auto verification_key = params.crypto->GetRekeyVerificationKey();
   if (verification_key.ok()) {

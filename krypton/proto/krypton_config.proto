@@ -37,7 +37,7 @@ message ReconnectorConfig {
   optional uint32 session_connection_deadline_msec = 3;
 }
 
-// Next ID: 40
+// Next ID: 41
 message KryptonConfig {
   reserved 5, 7, 10, 13, 24;
 
@@ -135,4 +135,8 @@ message KryptonConfig {
   // Client hint for whether Oasis is the preferred dataplane provider.
   // Beryllium may still elect to use another provider even if this is true.
   optional bool prefer_oasis = 39;
+
+  // If true, only reserved (allocated but inactive) IP addresses will be used.
+  // Oasis only flag used for internal testing of new IP turnups.
+  optional bool use_reserved_ip_pool = 40;
 }

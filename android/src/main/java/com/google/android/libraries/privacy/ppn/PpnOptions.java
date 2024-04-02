@@ -21,6 +21,7 @@ import androidx.annotation.RequiresApi;
 import com.google.android.libraries.privacy.ppn.internal.KryptonConfig;
 import com.google.android.libraries.privacy.ppn.internal.ReconnectorConfig;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -123,6 +124,7 @@ public class PpnOptions {
   private final Optional<Duration> datapathConnectingTimerDuration;
 
   private final boolean preferOasis;
+  private final Optional<Boolean> useReservedIpPool;
 
   private final boolean attestationNetworkOverrideEnabled;
   private final boolean forceDisallowPlayStoreForAttestationEnabled;
@@ -196,6 +198,7 @@ public class PpnOptions {
     this.datapathConnectingTimerDuration = builder.datapathConnectingTimerDuration;
 
     this.preferOasis = builder.preferOasis;
+    this.useReservedIpPool = builder.useReservedIpPool;
 
     this.attestationNetworkOverrideEnabled = builder.attestationNetworkOverrideEnabled;
     this.forceDisallowPlayStoreForAttestationEnabled =
@@ -412,6 +415,10 @@ public class PpnOptions {
     return preferOasis;
   }
 
+  public Optional<Boolean> getUseReservedIpPool() {
+    return useReservedIpPool;
+  }
+
   public boolean isAttestationNetworkOverrideEnabled() {
     return attestationNetworkOverrideEnabled;
   }
@@ -446,7 +453,14 @@ public class PpnOptions {
             .setInitialDataUrl(getInitialDataUrl())
             .setUpdatePathInfoUrl(getUpdatePathInfoUrl())
             .setReconnectorConfig(reconnectorConfig)
-            .setPreferOasis(isOasisPreferred());
+            .setPreferOasis(isOasisPreferred())
+            .addAllCopperHostnameSuffix(getCopperHostnameSuffix())
+            .setSafeDisconnectEnabled(isSafeDisconnectEnabled())
+            .setIpv6Enabled(isIPv6Enabled())
+            .setDynamicMtuEnabled(isDynamicMtuEnabled())
+            .setIntegrityAttestationEnabled(isIntegrityAttestationEnabled())
+            .setAttachOauthTokenAsHeader(isAttachOauthTokenAsHeaderEnabled())
+            .setPeriodicHealthCheckEnabled(isPeriodicHealthCheckEnabled());
 
     if (getCopperControllerAddress().isPresent()) {
       builder.setCopperControllerAddress(getCopperControllerAddress().get());
@@ -454,8 +468,6 @@ public class PpnOptions {
     if (getCopperHostnameOverride().isPresent()) {
       builder.setCopperHostnameOverride(getCopperHostnameOverride().get());
     }
-
-    builder.addAllCopperHostnameSuffix(getCopperHostnameSuffix());
 
     if (getDatapathProtocol().isPresent()) {
       switch (getDatapathProtocol().get()) {
@@ -493,17 +505,12 @@ public class PpnOptions {
               .build();
       builder.setRekeyDuration(proto);
     }
-    builder.setSafeDisconnectEnabled(isSafeDisconnectEnabled());
     if (getIpGeoLevel().isPresent()) {
       builder.setIpGeoLevel(getIpGeoLevel().get());
     }
-    builder.setIpv6Enabled(isIPv6Enabled());
-    builder.setDynamicMtuEnabled(isDynamicMtuEnabled());
-    builder.setIntegrityAttestationEnabled(isIntegrityAttestationEnabled());
     if (getApiKey().isPresent()) {
       builder.setApiKey(getApiKey().get());
     }
-    builder.setAttachOauthTokenAsHeader(isAttachOauthTokenAsHeaderEnabled());
 
     if (getIpv4KeepaliveInterval().isPresent()) {
       Duration ipv4KeepaliveInterval = getIpv4KeepaliveInterval().get();
@@ -529,7 +536,6 @@ public class PpnOptions {
       builder.setDebugModeAllowed(isDebugModeAllowed().get());
     }
 
-    builder.setPeriodicHealthCheckEnabled(isPeriodicHealthCheckEnabled());
     if (getPeriodicHealthCheckDuration().isPresent()) {
       Duration periodicHealthCheckDuration = getPeriodicHealthCheckDuration().get();
       builder.setPeriodicHealthCheckDuration(
@@ -558,6 +564,10 @@ public class PpnOptions {
               .setSeconds(datapathConnectingTimerDuration.getSeconds())
               .setNanos(datapathConnectingTimerDuration.getNano())
               .build());
+    }
+
+    if (getUseReservedIpPool().isPresent()) {
+      builder.setUseReservedIpPool(getUseReservedIpPool().get());
     }
 
     return builder;
@@ -596,7 +606,7 @@ public class PpnOptions {
     private boolean dynamicMtuEnabled = false;
     private boolean socketKeepaliveEnabled = true;
 
-    private Set<String> disallowedApplications = Collections.emptySet();
+    private Set<String> disallowedApplications = ImmutableSet.of();
     private boolean allowBypass = false;
     private boolean excludeLocalAddresses = true;
 
@@ -630,6 +640,7 @@ public class PpnOptions {
     private boolean forceDisallowPlayStoreForAttestationEnabled = false;
 
     private boolean preferOasis = false;
+    private Optional<Boolean> useReservedIpPool = Optional.empty();
 
     private boolean xenonV2Enabled = false;
 
@@ -1003,7 +1014,7 @@ public class PpnOptions {
     }
 
     /**
-     * Sets whether PPN should schedule a periodic background worker to pro-actively refresh account
+     * Sets whether PPN should schedule a periodic background worker to proactively refresh account
      * credentials.
      */
     @CanIgnoreReturnValue
@@ -1160,6 +1171,13 @@ public class PpnOptions {
     @CanIgnoreReturnValue
     public Builder setPreferOasis(boolean preferOasis) {
       this.preferOasis = preferOasis;
+      return this;
+    }
+
+    /** Sets whether the client should use reserved (allocated but inactive) IP addresses. */
+    @CanIgnoreReturnValue
+    public Builder setUseReservedIpPool(boolean useReservedIpPool) {
+      this.useReservedIpPool = Optional.of(useReservedIpPool);
       return this;
     }
 

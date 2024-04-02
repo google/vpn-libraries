@@ -47,6 +47,7 @@ const char JsonKeys::kSuite[] = "suite";
 const char JsonKeys::kApnType[] = "apn_type";
 const char JsonKeys::kDynamicMtuEnabled[] = "dynamic_mtu_enabled";
 const char JsonKeys::kPreferOasis[] = "prefer_oasis";
+const char JsonKeys::kUseReservedIpPool[] = "use_reserved_ip_pool";
 
 // PpnDataplaneResponse
 const char JsonKeys::kUserPrivateIp[] = "user_private_ip";

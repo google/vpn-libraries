@@ -51,6 +51,7 @@ class JsonKeys {
   static const char kApnType[];
   static const char kDynamicMtuEnabled[];
   static const char kPreferOasis[];
+  static const char kUseReservedIpPool[];
 
   // PpnDataplaneResponse
   static const char kUserPrivateIp[];
