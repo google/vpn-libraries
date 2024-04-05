@@ -21,7 +21,7 @@ public class ProvisionException extends Exception {
   private final PpnStatus status;
   private final boolean permanent;
 
-  ProvisionException(PpnStatus status, boolean permanent) {
+  public ProvisionException(PpnStatus status, boolean permanent) {
     super(
         "Unable to provision: "
             + status.getCode()
