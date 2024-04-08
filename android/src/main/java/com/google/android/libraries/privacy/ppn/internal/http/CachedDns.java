@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn.internal.http;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import android.util.Log;
+import com.google.android.libraries.privacy.ppn.Dns;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;

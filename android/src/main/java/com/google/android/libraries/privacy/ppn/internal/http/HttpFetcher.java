@@ -22,6 +22,7 @@ import androidx.annotation.Nullable;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
 import com.google.android.gms.tasks.Tasks;
+import com.google.android.libraries.privacy.ppn.Dns;
 import com.google.android.libraries.privacy.ppn.internal.HttpRequest;
 import com.google.android.libraries.privacy.ppn.internal.HttpResponse;
 import com.google.android.libraries.privacy.ppn.internal.HttpStatus;

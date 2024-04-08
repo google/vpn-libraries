@@ -16,7 +16,7 @@ package com.google.android.libraries.privacy.ppn.internal.service;
 
 import android.net.Network;
 import android.util.Log;
-import com.google.android.libraries.privacy.ppn.internal.http.Dns;
+import com.google.android.libraries.privacy.ppn.Dns;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import java.net.InetAddress;
 import java.net.UnknownHostException;

@@ -16,6 +16,7 @@ package com.google.android.libraries.privacy.ppn.internal.http;
 
 import android.net.Network;
 import android.util.Log;
+import com.google.android.libraries.privacy.ppn.Dns;
 import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFamily;
 import java.net.Inet4Address;
 import java.net.Inet6Address;

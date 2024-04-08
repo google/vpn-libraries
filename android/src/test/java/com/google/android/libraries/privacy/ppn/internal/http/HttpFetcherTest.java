@@ -21,6 +21,7 @@ import static org.mockito.Mockito.when;
 
 import android.net.Network;
 import android.util.Log;
+import com.google.android.libraries.privacy.ppn.Dns;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.internal.HttpRequest;
 import com.google.android.libraries.privacy.ppn.internal.HttpResponse;

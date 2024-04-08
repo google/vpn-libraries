@@ -27,6 +27,7 @@ import android.os.Looper;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.work.testing.WorkManagerTestInitHelper;
 import com.google.android.gms.tasks.TaskCompletionSource;
+import com.google.android.libraries.privacy.ppn.FakeDns;
 import com.google.android.libraries.privacy.ppn.IpGeoLevel;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
 import com.google.android.libraries.privacy.ppn.PpnStatus.Code;
@@ -40,7 +41,6 @@ import com.google.android.libraries.privacy.ppn.internal.NetworkInfo.AddressFami
 import com.google.android.libraries.privacy.ppn.internal.NetworkType;
 import com.google.android.libraries.privacy.ppn.internal.TunFdData;
 import com.google.android.libraries.privacy.ppn.internal.http.BoundSocketFactoryFactory;
-import com.google.android.libraries.privacy.ppn.internal.http.FakeDns;
 import com.google.android.libraries.privacy.ppn.internal.http.HttpFetcher;
 import com.google.android.libraries.privacy.ppn.proto.AttestationData;
 import com.google.android.libraries.privacy.ppn.proto.AuthAndSignRequest;

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.google.android.libraries.privacy.ppn.internal.http;
+package com.google.android.libraries.privacy.ppn;
 
 import com.google.common.collect.ImmutableList;
 import java.net.InetAddress;

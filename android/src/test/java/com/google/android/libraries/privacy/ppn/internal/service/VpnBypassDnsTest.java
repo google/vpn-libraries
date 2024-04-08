@@ -21,7 +21,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import android.net.Network;
-import com.google.android.libraries.privacy.ppn.internal.http.Dns;
+import com.google.android.libraries.privacy.ppn.Dns;
 import java.net.InetAddress;
 import java.util.Arrays;
 import org.junit.Rule;
