@@ -220,4 +220,9 @@ FOUNDATION_EXTERN PPNOptionKey const PPNMacOSConnectionTimeout;
  */
 FOUNDATION_EXTERN PPNOptionKey const PPNEnablePpnAdditionalTelemetryLogging;
 
+/**
+ * Enables project hamlet.
+ */
+FOUNDATION_EXTERN PPNOptionKey const PPNEnableProjectHamlet;
+
 NS_ASSUME_NONNULL_END

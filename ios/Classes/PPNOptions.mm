@@ -106,6 +106,8 @@ PPNOptionKey const PPNDebugModeAllowed = @"debugModeAllowed";
 
 PPNOptionKey const PPNMacOSConnectionTimeout = @"macosConnectionTimeout";
 
+PPNOptionKey const PPNEnableProjectHamlet = @"enableProjectHamlet";
+
 #pragma mark - Default Option Values
 
 static PPNOptionKey const PPNOptionDefaultZincURLString =
