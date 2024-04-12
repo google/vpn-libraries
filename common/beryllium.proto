@@ -29,6 +29,21 @@ option java_package = "com.google.android.libraries.privacy.ppn.proto";
 option use_java_stubby_library = true;
 
 
+enum IkeV2AuthMethod {
+  AUTH_METHOD_UNSPECIFIED = 0;
+  AUTH_METHOD_SHARED_KEY_MESSAGE_INTEGRITY_CODE = 1;
+  AUTH_METHOD_ECDSA_WITH_SHA256_ON_P256 = 2;
+  AUTH_METHOD_ECDSA_WITH_SHA384_ON_P384 = 3;
+  AUTH_METHOD_ECDSA_WITH_SHA512_ON_P521 = 4;
+}
+
+enum IkeV2ClientIdType {
+  ID_TYPE_UNSPECIFIED = 0;
+  ID_TYPE_FQDN = 1;
+  ID_TYPE_DER_ASN1_DN = 2;
+  ID_TYPE_KEY_ID = 3;
+}
+
 // Both V6 and V6 fields are ranges (e.g. ending in /<foo>.)
 message IpRange {
   oneof ip {
@@ -103,6 +118,19 @@ message PpnDataplaneRequest {
   // Oasis only flag used for internal testing of new IP turnups.
   // See oasis_vpn.IpPoolSelector.use_reserved.
   bool use_reserved_ip_pool = 14;
+
+  // To specify the authentication method used in IKE_AUTH. The probable auth
+  // methods are listed in
+  // https://www.iana.org/assignments/ikev2-parameters/ikev2-parameters.xhtml#ikev2-parameters-12
+  // The default value is Shared Key Message Integrity Code.
+  optional IkeV2AuthMethod auth_method = 16;
+
+  // To specify the client ID type used in IKE protocol. The current supported
+  // ID types are ID_KEY_ID and ID_DER_ASN1_DN. The full probable ID types are
+  // listed in
+  // https://www.iana.org/assignments/ikev2-parameters/ikev2-parameters.xhtml#ikev2-parameters-10.
+  // The default value is ID_KEY_ID.
+  optional IkeV2ClientIdType client_id_type = 17;
 }
 
 message PpnDataplaneResponse {
@@ -145,12 +173,29 @@ message PpnDataplaneResponse {
   string control_plane_addr = 10;
 }
 
+message AuthCertificates {
+  // The CA certificate to verify the server certificate, encoded in DER
+  // format.
+  optional bytes server_ca_certificate = 1;
+
+  // The client certificate issued from the server that will be used in
+  // certificate-based IKE_AUTH, encoded in DER format.
+  optional bytes client_certificate = 2;
+}
+
+// Next ID: 5
 message PpnIkeResponse {
   // The ID to be used in IKEv2.
   bytes client_id = 1;
 
-  // The shared secret to be used in IKE_AUTH.
-  bytes shared_secret = 2;
+  oneof auth_material {
+    // The shared secret to be used in pre-shared-key based auth algorithm.
+    bytes shared_secret = 2;
+
+    // The CA certificates respectively verifying the client and the server
+    // certificate to be used in the certificate-based auth algorithm.
+    AuthCertificates certificates = 4;
+  }
 
   // The server hostname to put in the IKE profile.
   string server_address = 3;
