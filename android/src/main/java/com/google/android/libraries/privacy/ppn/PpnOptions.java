@@ -432,16 +432,17 @@ public class PpnOptions {
   }
 
   /** Creates a KryptonConfig.Builder using the current options. */
+  @SuppressWarnings("JavaDurationGetSecondsGetNano")
   public KryptonConfig.Builder createKryptonConfigBuilder() {
     ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
-    if (getReconnectorInitialTimeToReconnect().isPresent()) {
-      reconnectorBuilder.setInitialTimeToReconnectMsec(
-          (int) getReconnectorInitialTimeToReconnect().get().toMillis());
-    }
-    if (getReconnectorSessionConnectionDeadline().isPresent()) {
-      reconnectorBuilder.setSessionConnectionDeadlineMsec(
-          (int) getReconnectorSessionConnectionDeadline().get().toMillis());
-    }
+    getReconnectorInitialTimeToReconnect()
+        .ifPresent(
+            duration ->
+                reconnectorBuilder.setInitialTimeToReconnectMsec((int) duration.toMillis()));
+    getReconnectorSessionConnectionDeadline()
+        .ifPresent(
+            duration ->
+                reconnectorBuilder.setSessionConnectionDeadlineMsec((int) duration.toMillis()));
     ReconnectorConfig reconnectorConfig = reconnectorBuilder.build();
 
     KryptonConfig.Builder builder =
@@ -462,26 +463,10 @@ public class PpnOptions {
             .setAttachOauthTokenAsHeader(isAttachOauthTokenAsHeaderEnabled())
             .setPeriodicHealthCheckEnabled(isPeriodicHealthCheckEnabled());
 
-    if (getCopperControllerAddress().isPresent()) {
-      builder.setCopperControllerAddress(getCopperControllerAddress().get());
-    }
-    if (getCopperHostnameOverride().isPresent()) {
-      builder.setCopperHostnameOverride(getCopperHostnameOverride().get());
-    }
-
-    if (getDatapathProtocol().isPresent()) {
-      switch (getDatapathProtocol().get()) {
-        case BRIDGE:
-          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.BRIDGE);
-          break;
-        case IPSEC:
-          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.IPSEC);
-          break;
-        case IKE:
-          builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.IKE);
-          break;
-      }
-    }
+    getCopperControllerAddress().ifPresent(builder::setCopperControllerAddress);
+    getCopperHostnameOverride().ifPresent(builder::setCopperHostnameOverride);
+    getDatapathProtocol()
+        .ifPresent(protocol -> builder.setDatapathProtocol(protocol.kryptonConfigValue()));
 
     // Default to bridge if the current Android API Level does not support IPsec
     if (builder.getDatapathProtocol() == KryptonConfig.DatapathProtocol.IPSEC
@@ -490,85 +475,59 @@ public class PpnOptions {
       builder.setDatapathProtocol(KryptonConfig.DatapathProtocol.BRIDGE);
     }
 
-    if (getBridgeKeyLength().isPresent()) {
-      builder.setCipherSuiteKeyLength(getBridgeKeyLength().get());
-    }
-    if (isBlindSigningEnabled().isPresent()) {
-      builder.setEnableBlindSigning(isBlindSigningEnabled().get());
-    }
-    if (getRekeyDuration().isPresent()) {
-      Duration duration = getRekeyDuration().get();
-      com.google.protobuf.Duration proto =
-          com.google.protobuf.Duration.newBuilder()
-              .setSeconds(duration.getSeconds())
-              .setNanos(duration.getNano())
-              .build();
-      builder.setRekeyDuration(proto);
-    }
-    if (getIpGeoLevel().isPresent()) {
-      builder.setIpGeoLevel(getIpGeoLevel().get());
-    }
-    if (getApiKey().isPresent()) {
-      builder.setApiKey(getApiKey().get());
-    }
+    getBridgeKeyLength().ifPresent(builder::setCipherSuiteKeyLength);
+    isBlindSigningEnabled().ifPresent(builder::setEnableBlindSigning);
 
-    if (getIpv4KeepaliveInterval().isPresent()) {
-      Duration ipv4KeepaliveInterval = getIpv4KeepaliveInterval().get();
-      builder.setIpv4KeepaliveInterval(
-          com.google.protobuf.Duration.newBuilder()
-              .setSeconds(ipv4KeepaliveInterval.getSeconds())
-              .setNanos(ipv4KeepaliveInterval.getNano())
-              .build());
-    }
-    if (getIpv6KeepaliveInterval().isPresent()) {
-      Duration ipv6KeepaliveInterval = getIpv6KeepaliveInterval().get();
-      builder.setIpv6KeepaliveInterval(
-          com.google.protobuf.Duration.newBuilder()
-              .setSeconds(ipv6KeepaliveInterval.getSeconds())
-              .setNanos(ipv6KeepaliveInterval.getNano())
-              .build());
-    }
-    if (isPublicMetadataEnabled().isPresent()) {
-      builder.setPublicMetadataEnabled(isPublicMetadataEnabled().get());
-    }
+    getRekeyDuration()
+        .ifPresent(
+            duration ->
+                builder.setRekeyDuration(
+                    com.google.protobuf.Duration.newBuilder()
+                        .setSeconds(duration.getSeconds())
+                        .setNanos(duration.getNano())));
 
-    if (isDebugModeAllowed().isPresent()) {
-      builder.setDebugModeAllowed(isDebugModeAllowed().get());
-    }
+    getIpGeoLevel().ifPresent(builder::setIpGeoLevel);
+    getApiKey().ifPresent(builder::setApiKey);
 
-    if (getPeriodicHealthCheckDuration().isPresent()) {
-      Duration periodicHealthCheckDuration = getPeriodicHealthCheckDuration().get();
-      builder.setPeriodicHealthCheckDuration(
-          com.google.protobuf.Duration.newBuilder()
-              .setSeconds(periodicHealthCheckDuration.getSeconds())
-              .setNanos(periodicHealthCheckDuration.getNano())
-              .build());
-    }
+    getIpv4KeepaliveInterval()
+        .ifPresent(
+            interval ->
+                builder.setIpv4KeepaliveInterval(
+                    com.google.protobuf.Duration.newBuilder()
+                        .setSeconds(interval.getSeconds())
+                        .setNanos(interval.getNano())));
+    getIpv6KeepaliveInterval()
+        .ifPresent(
+            interval ->
+                builder.setIpv6KeepaliveInterval(
+                    com.google.protobuf.Duration.newBuilder()
+                        .setSeconds(interval.getSeconds())
+                        .setNanos(interval.getNano())));
 
-    if (getPeriodicHealthCheckUrl().isPresent()) {
-      builder.setPeriodicHealthCheckUrl(getPeriodicHealthCheckUrl().get());
-    }
+    isPublicMetadataEnabled().ifPresent(builder::setPublicMetadataEnabled);
+    isDebugModeAllowed().ifPresent(builder::setDebugModeAllowed);
 
-    if (getPeriodicHealthCheckPort().isPresent()) {
-      builder.setPeriodicHealthCheckPort(getPeriodicHealthCheckPort().get());
-    }
+    getPeriodicHealthCheckDuration()
+        .ifPresent(
+            duration ->
+                builder.setPeriodicHealthCheckDuration(
+                    com.google.protobuf.Duration.newBuilder()
+                        .setSeconds(duration.getSeconds())
+                        .setNanos(duration.getNano())));
 
-    if (getDatapathConnectingTimerEnabled().isPresent()) {
-      builder.setDatapathConnectingTimerEnabled(getDatapathConnectingTimerEnabled().get());
-    }
+    getPeriodicHealthCheckUrl().ifPresent(builder::setPeriodicHealthCheckUrl);
+    getPeriodicHealthCheckPort().ifPresent(builder::setPeriodicHealthCheckPort);
+    getDatapathConnectingTimerEnabled().ifPresent(builder::setDatapathConnectingTimerEnabled);
 
-    if (getDatapathConnectingTimerDuration().isPresent()) {
-      Duration datapathConnectingTimerDuration = getDatapathConnectingTimerDuration().get();
-      builder.setDatapathConnectingTimerDuration(
-          com.google.protobuf.Duration.newBuilder()
-              .setSeconds(datapathConnectingTimerDuration.getSeconds())
-              .setNanos(datapathConnectingTimerDuration.getNano())
-              .build());
-    }
+    getDatapathConnectingTimerDuration()
+        .ifPresent(
+            duration ->
+                builder.setDatapathConnectingTimerDuration(
+                    com.google.protobuf.Duration.newBuilder()
+                        .setSeconds(duration.getSeconds())
+                        .setNanos(duration.getNano())));
 
-    if (getUseReservedIpPool().isPresent()) {
-      builder.setUseReservedIpPool(getUseReservedIpPool().get());
-    }
+    getUseReservedIpPool().ifPresent(builder::setUseReservedIpPool);
 
     return builder;
   }
@@ -1223,12 +1182,22 @@ public class PpnOptions {
   /** Defines the Datapath Protocols supported by PPN. */
   public enum DatapathProtocol {
     /** Use IpSec datapath. */
-    IPSEC,
+    IPSEC(KryptonConfig.DatapathProtocol.IPSEC),
 
     /** Use bridge over PPN. */
-    BRIDGE,
+    BRIDGE(KryptonConfig.DatapathProtocol.BRIDGE),
 
     /** Use IKE with VpnManager. */
-    IKE,
+    IKE(KryptonConfig.DatapathProtocol.IKE);
+
+    private final KryptonConfig.DatapathProtocol kryptonConfigValue;
+
+    DatapathProtocol(KryptonConfig.DatapathProtocol kryptonConfigValue) {
+      this.kryptonConfigValue = kryptonConfigValue;
+    }
+
+    public KryptonConfig.DatapathProtocol kryptonConfigValue() {
+      return kryptonConfigValue;
+    }
   }
 }
