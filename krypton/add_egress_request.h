@@ -78,6 +78,8 @@ class AddEgressRequest {
     // Whether to request that Beryllium uses the Oasis dataplane.
     bool prefer_oasis;
     bool use_reserved_ip_pool;
+    uint32_t auth_method;
+    uint32_t client_id_type;
   };
 
   HttpRequest EncodeToProtoForPpn(const PpnDataplaneRequestParams& params);

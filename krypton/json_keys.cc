@@ -48,6 +48,8 @@ const char JsonKeys::kApnType[] = "apn_type";
 const char JsonKeys::kDynamicMtuEnabled[] = "dynamic_mtu_enabled";
 const char JsonKeys::kPreferOasis[] = "prefer_oasis";
 const char JsonKeys::kUseReservedIpPool[] = "use_reserved_ip_pool";
+const char JsonKeys::kAuthMethod[] = "auth_method";
+const char JsonKeys::kClientIdType[] = "client_id_type";
 
 // PpnDataplaneResponse
 const char JsonKeys::kUserPrivateIp[] = "user_private_ip";
@@ -70,10 +72,15 @@ const char JsonKeys::kBlindedTokenSignature[] = "blinded_token_signature";
 const char JsonKeys::kCopperControllerHostname[] = "copper_controller_hostname";
 const char JsonKeys::kPublicKeyHash[] = "public_key_hash";
 
+// AuthCertificates
+const char JsonKeys::kServerCaCertificate[] = "server_ca_certificate";
+const char JsonKeys::kClientCertificate[] = "client_certificate";
+
 // IKE
 const char JsonKeys::kClientId[] = "client_id";
 const char JsonKeys::kSharedSecret[] = "shared_secret";
 const char JsonKeys::kServerAddress[] = "server_address";
+const char JsonKeys::kCertificates[] = "certificates";
 
 // Attestation
 const char JsonKeys::kAttestationNonce[] = "attestation_nonce";

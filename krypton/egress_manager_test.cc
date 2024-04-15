@@ -133,7 +133,10 @@ class EgressManagerTest : public ::testing::Test {
   absl::StatusOr<std::string> BuildJsonBodyForAddEgressRequestBeryllium(
       uint32_t spi) {
     PPN_ASSIGN_OR_RETURN(auto expected, utils::StringToJson(R"string({
-      "ppn" : {},
+      "ppn" : {
+        "auth_method" : 0,
+        "client_id_type" : 0
+      },
       "unblinded_token" : "",
       "unblinded_token_signature": "",
       "region_token_and_signature" : "",

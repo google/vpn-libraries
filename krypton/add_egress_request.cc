@@ -68,6 +68,9 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
     json_body[JsonKeys::kSigningKeyVersion] = params.signing_key_version;
     json_body[JsonKeys::kMessageMask] = params.message_mask;
     json_body[JsonKeys::kUnblindedToken] = params.unblinded_token;
+
+    ppn[JsonKeys::kAuthMethod] = params.auth_method;
+    ppn[JsonKeys::kClientIdType] = params.client_id_type;
   }
 
   if (request_destination_ == RequestDestination::kBrass) {

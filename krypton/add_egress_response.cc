@@ -130,6 +130,24 @@ absl::StatusOr<PpnIkeResponse> ParseIkeResponse(nlohmann::json json) {
     response.set_shared_secret(*shared_secret);
   }
 
+  auto certificates = json.find(JsonKeys::kCertificates);
+  if (certificates != json.end()) {
+    PPN_ASSIGN_OR_RETURN(
+        std::optional<std::string> server_ca_certificate,
+        utils::JsonGetBytes(*certificates, JsonKeys::kServerCaCertificate));
+    if (server_ca_certificate) {
+      response.mutable_certificates()->set_server_ca_certificate(
+          *server_ca_certificate);
+    }
+    PPN_ASSIGN_OR_RETURN(
+        std::optional<std::string> client_certificate,
+        utils::JsonGetBytes(*certificates, JsonKeys::kClientCertificate));
+    if (client_certificate) {
+      response.mutable_certificates()->set_client_certificate(
+          *client_certificate);
+    }
+  }
+
   PPN_ASSIGN_OR_RETURN(std::optional<std::string> server_address,
                        utils::JsonGetString(json, JsonKeys::kServerAddress));
   if (server_address) {

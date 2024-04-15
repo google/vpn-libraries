@@ -23,6 +23,7 @@ namespace privacy {
 namespace krypton {
 
 using ::privacy::net::common::proto::PpnDataplaneResponse;
+using ::privacy::net::common::proto::PpnIkeResponse;
 using ::testing::EqualsProto;
 using ::testing::status::StatusIs;
 
@@ -75,7 +76,7 @@ TEST(AddEgressResponse, TestAddEgressResponse) {
               )pb"));
 }
 
-TEST(AddEgressResponse, TestAddEgressIkeResponse) {
+TEST(AddEgressResponse, TestAddEgressIkeResponseWithSharedSecret) {
   HttpResponse proto;
   proto.mutable_status()->set_code(200);
   proto.mutable_status()->set_message("OK");
@@ -88,13 +89,45 @@ TEST(AddEgressResponse, TestAddEgressIkeResponse) {
     }
   })string");
 
-  ASSERT_OK_AND_ASSIGN(auto add_egress_response,
+  ASSERT_OK_AND_ASSIGN(AddEgressResponse add_egress_response,
                        AddEgressResponse::FromProto(proto));
-  ASSERT_OK_AND_ASSIGN(auto ike_response, add_egress_response.ike_response());
+  ASSERT_OK_AND_ASSIGN(PpnIkeResponse ike_response,
+                       add_egress_response.ike_response());
 
   EXPECT_THAT(ike_response, EqualsProto(R"pb(
                 client_id: "foo"
                 shared_secret: "bar"
+                server_address: "127.0.0.1"
+              )pb"));
+}
+
+TEST(AddEgressResponse, TestAddEgressIkeResponseWithAuthCertificates) {
+  HttpResponse proto;
+  proto.mutable_status()->set_code(200);
+  proto.mutable_status()->set_message("OK");
+  proto.set_json_body(R"string(
+  {
+    "ike": {
+      "client_id": "Zm9v",
+      "certificates": {
+        "server_ca_certificate": "U2VydmVyIENlcnQ=",
+        "client_certificate": "Q2xpZW50IENlcnQ="
+      },
+      "server_address": "127.0.0.1"
+    }
+  })string");
+
+  ASSERT_OK_AND_ASSIGN(AddEgressResponse add_egress_response,
+                       AddEgressResponse::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(PpnIkeResponse ike_response,
+                       add_egress_response.ike_response());
+
+  EXPECT_THAT(ike_response, EqualsProto(R"pb(
+                client_id: "foo"
+                certificates: {
+                  server_ca_certificate: "Server Cert"
+                  client_certificate: "Client Cert"
+                }
                 server_address: "127.0.0.1"
               )pb"));
 }

@@ -20,6 +20,8 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import com.google.android.libraries.privacy.ppn.internal.KryptonConfig;
 import com.google.android.libraries.privacy.ppn.internal.ReconnectorConfig;
+import com.google.android.libraries.privacy.ppn.proto.IkeV2AuthMethod;
+import com.google.android.libraries.privacy.ppn.proto.IkeV2ClientIdType;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -131,6 +133,9 @@ public class PpnOptions {
 
   private final boolean xenonV2Enabled;
 
+  private final Optional<IkeV2AuthMethod> authMethod;
+  private final Optional<IkeV2ClientIdType> clientIdType;
+
   private PpnOptions(PpnOptions.Builder builder) {
     this.zincUrl = builder.zincUrl;
     this.zincPublicSigningKeyUrl = builder.zincPublicSigningKeyUrl;
@@ -205,6 +210,9 @@ public class PpnOptions {
         builder.forceDisallowPlayStoreForAttestationEnabled;
 
     this.xenonV2Enabled = builder.xenonV2Enabled;
+
+    this.authMethod = builder.authMethod;
+    this.clientIdType = builder.clientIdType;
   }
 
   public String getZincUrl() {
@@ -431,6 +439,14 @@ public class PpnOptions {
     return xenonV2Enabled;
   }
 
+  public Optional<IkeV2AuthMethod> getAuthMethod() {
+    return authMethod;
+  }
+
+  public Optional<IkeV2ClientIdType> getClientIdType() {
+    return clientIdType;
+  }
+
   /** Creates a KryptonConfig.Builder using the current options. */
   public KryptonConfig.Builder createKryptonConfigBuilder() {
     ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
@@ -502,6 +518,9 @@ public class PpnOptions {
             duration -> builder.setDatapathConnectingTimerDuration(toProtoDuration(duration)));
 
     getUseReservedIpPool().ifPresent(builder::setUseReservedIpPool);
+
+    getAuthMethod().ifPresent(builder::setAuthMethod);
+    getClientIdType().ifPresent(builder::setClientIdType);
 
     return builder;
   }
@@ -576,6 +595,9 @@ public class PpnOptions {
     private Optional<Boolean> useReservedIpPool = Optional.empty();
 
     private boolean xenonV2Enabled = false;
+
+    private Optional<IkeV2AuthMethod> authMethod = Optional.empty();
+    private Optional<IkeV2ClientIdType> clientIdType = Optional.empty();
 
     public Builder() {}
 
@@ -1140,6 +1162,24 @@ public class PpnOptions {
     @CanIgnoreReturnValue
     public Builder setXenonV2Enabled(boolean enabled) {
       this.xenonV2Enabled = enabled;
+      return this;
+    }
+
+    /** Sets the IKEv2 authentication method. */
+    @CanIgnoreReturnValue
+    public Builder setAuthMethod(IkeV2AuthMethod authMethod) {
+      if (authMethod != null) {
+        this.authMethod = Optional.of(authMethod);
+      }
+      return this;
+    }
+
+    /** Sets the IKEv2 client ID type. */
+    @CanIgnoreReturnValue
+    public Builder setClientIdType(IkeV2ClientIdType clientIdType) {
+      if (clientIdType != null) {
+        this.clientIdType = Optional.of(clientIdType);
+      }
       return this;
     }
 

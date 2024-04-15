@@ -308,5 +308,39 @@ TEST_F(AddEgressRequestTest, EncodeToProtoForPpnSetsUseReservedIpPoolValue) {
   EXPECT_TRUE(actual_json["ppn"]["use_reserved_ip_pool"]);
 }
 
+TEST_F(AddEgressRequestTest, BrassRequestsDoNotIncludeIkeParams) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<crypto::SessionCrypto> crypto,
+                       crypto::SessionCrypto::Create(config_));
+  AddEgressRequest request(std::optional("apiKey"),
+                           AddEgressRequest::RequestDestination::kBrass);
+  AddEgressRequest::PpnDataplaneRequestParams params{};
+  params.crypto = crypto.get();
+  params.use_reserved_ip_pool = true;
+
+  HttpRequest http_request = request.EncodeToProtoForPpn(params);
+
+  ASSERT_OK_AND_ASSIGN(nlohmann::json actual_json,
+                       utils::StringToJson(http_request.json_body()));
+  EXPECT_FALSE(actual_json["ppn"].contains("auth_method"));
+  EXPECT_FALSE(actual_json["ppn"].contains("client_id_type"));
+}
+
+TEST_F(AddEgressRequestTest, BerylliumRequestsIncludeIkeParams) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<crypto::SessionCrypto> crypto,
+                       crypto::SessionCrypto::Create(config_));
+  AddEgressRequest request(std::optional("apiKey"),
+                           AddEgressRequest::RequestDestination::kBeryllium);
+  AddEgressRequest::PpnDataplaneRequestParams params{};
+  params.crypto = crypto.get();
+  params.use_reserved_ip_pool = true;
+
+  HttpRequest http_request = request.EncodeToProtoForPpn(params);
+
+  ASSERT_OK_AND_ASSIGN(nlohmann::json actual_json,
+                       utils::StringToJson(http_request.json_body()));
+  EXPECT_TRUE(actual_json["ppn"].contains("auth_method"));
+  EXPECT_TRUE(actual_json["ppn"].contains("client_id_type"));
+}
+
 }  // namespace krypton
 }  // namespace privacy

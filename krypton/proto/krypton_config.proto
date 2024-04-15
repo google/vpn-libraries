@@ -17,6 +17,7 @@ syntax = "proto2";
 package privacy.krypton;
 
 import "google/protobuf/duration.proto";
+import "privacy/net/common/proto/beryllium.proto";
 import "privacy/net/common/proto/ppn_options.proto";
 
 option cc_api_version = 2;
@@ -37,7 +38,7 @@ message ReconnectorConfig {
   optional uint32 session_connection_deadline_msec = 3;
 }
 
-// Next ID: 41
+// Next ID: 43
 message KryptonConfig {
   reserved 5, 7, 10, 13, 24;
 
@@ -139,4 +140,15 @@ message KryptonConfig {
   // If true, only reserved (allocated but inactive) IP addresses will be used.
   // Oasis only flag used for internal testing of new IP turnups.
   optional bool use_reserved_ip_pool = 40;
+
+  // To specify the authentication method used in IKE_AUTH. The probable auth
+  // methods are listed in
+  // https://www.iana.org/assignments/ikev2-parameters/ikev2-parameters.xhtml#ikev2-parameters-12
+  optional privacy.net.common.proto.IkeV2AuthMethod auth_method = 41;
+
+  // To specify the client ID type used in IKE protocol. The current supported
+  // ID types are ID_KEY_ID and ID_DER_ASN1_DN. The full probable ID types are
+  // listed in
+  // https://www.iana.org/assignments/ikev2-parameters/ikev2-parameters.xhtml#ikev2-parameters-10.
+  optional privacy.net.common.proto.IkeV2ClientIdType client_id_type = 42;
 }

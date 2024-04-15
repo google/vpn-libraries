@@ -18,6 +18,8 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
 
 import com.google.android.libraries.privacy.ppn.internal.KryptonConfig;
+import com.google.android.libraries.privacy.ppn.proto.IkeV2AuthMethod;
+import com.google.android.libraries.privacy.ppn.proto.IkeV2ClientIdType;
 import java.time.Duration;
 import java.util.Arrays;
 import org.junit.Test;
@@ -773,6 +775,8 @@ public class PpnOptionsTest {
             .setDatapathConnectingTimerDuration(Duration.ofSeconds(16))
             .setPreferOasis(true)
             .setUseReservedIpPool(true)
+            .setAuthMethod(IkeV2AuthMethod.AUTH_METHOD_ECDSA_WITH_SHA512_ON_P521)
+            .setClientIdType(IkeV2ClientIdType.ID_TYPE_DER_ASN1_DN)
             .build();
 
     KryptonConfig config = options.createKryptonConfigBuilder().build();
@@ -826,6 +830,9 @@ public class PpnOptionsTest {
     assertThat(config.getDatapathConnectingTimerDuration().getSeconds()).isEqualTo(16);
     assertThat(config.getPreferOasis()).isTrue();
     assertThat(config.getUseReservedIpPool()).isTrue();
+    assertThat(config.getAuthMethod())
+        .isEqualTo(IkeV2AuthMethod.AUTH_METHOD_ECDSA_WITH_SHA512_ON_P521);
+    assertThat(config.getClientIdType()).isEqualTo(IkeV2ClientIdType.ID_TYPE_DER_ASN1_DN);
   }
 
   @Test
@@ -868,6 +875,9 @@ public class PpnOptionsTest {
     assertThat(config.hasDatapathConnectingTimerEnabled()).isFalse();
     assertThat(config.hasDatapathConnectingTimerDuration()).isFalse();
     assertThat(config.getUseReservedIpPool()).isFalse();
+    assertThat(config.getAuthMethod())
+        .isEqualTo(IkeV2AuthMethod.AUTH_METHOD_SHARED_KEY_MESSAGE_INTEGRITY_CODE);
+    assertThat(config.getClientIdType()).isEqualTo(IkeV2ClientIdType.ID_TYPE_KEY_ID);
   }
 
   @Test
@@ -1054,5 +1064,52 @@ public class PpnOptionsTest {
     PpnOptions options = new PpnOptions.Builder().setUseReservedIpPool(true).build();
 
     assertThat(options.getUseReservedIpPool()).hasValue(true);
+  }
+
+  @Test
+  public void setAuthMethod_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+
+    assertThat(options.getAuthMethod()).isEmpty();
+  }
+
+  @Test
+  public void setAuthMethod_setsValue() {
+    PpnOptions options =
+        new PpnOptions.Builder()
+            .setAuthMethod(IkeV2AuthMethod.AUTH_METHOD_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
+            .build();
+
+    assertThat(options.getAuthMethod())
+        .hasValue(IkeV2AuthMethod.AUTH_METHOD_SHARED_KEY_MESSAGE_INTEGRITY_CODE);
+  }
+
+  @Test
+  public void setAuthMethod_ignoresNull() {
+    PpnOptions options = new PpnOptions.Builder().setAuthMethod(null).build();
+
+    assertThat(options.getAuthMethod()).isEmpty();
+  }
+
+  @Test
+  public void setClientIdType_defaultValue() {
+    PpnOptions options = new PpnOptions.Builder().build();
+
+    assertThat(options.getClientIdType()).isEmpty();
+  }
+
+  @Test
+  public void setClientIdType_setsValue() {
+    PpnOptions options =
+        new PpnOptions.Builder().setClientIdType(IkeV2ClientIdType.ID_TYPE_KEY_ID).build();
+
+    assertThat(options.getClientIdType()).hasValue(IkeV2ClientIdType.ID_TYPE_KEY_ID);
+  }
+
+  @Test
+  public void setClientIdType_ignoresNull() {
+    PpnOptions options = new PpnOptions.Builder().setClientIdType(null).build();
+
+    assertThat(options.getClientIdType()).isEmpty();
   }
 }

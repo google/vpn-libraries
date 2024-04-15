@@ -52,6 +52,8 @@ class JsonKeys {
   static const char kDynamicMtuEnabled[];
   static const char kPreferOasis[];
   static const char kUseReservedIpPool[];
+  static const char kAuthMethod[];
+  static const char kClientIdType[];
 
   // PpnDataplaneResponse
   static const char kUserPrivateIp[];
@@ -74,10 +76,15 @@ class JsonKeys {
   static const char kCopperControllerHostname[];
   static const char kPublicKeyHash[];
 
+  // AuthCertificates
+  static const char kServerCaCertificate[];
+  static const char kClientCertificate[];
+
   // IKE
   static const char kClientId[];
   static const char kSharedSecret[];
   static const char kServerAddress[];
+  static const char kCertificates[];
 
   // Attestation
   static const char kAttestationNonce[];
