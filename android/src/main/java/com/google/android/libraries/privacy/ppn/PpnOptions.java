@@ -432,7 +432,6 @@ public class PpnOptions {
   }
 
   /** Creates a KryptonConfig.Builder using the current options. */
-  @SuppressWarnings("JavaDurationGetSecondsGetNano")
   public KryptonConfig.Builder createKryptonConfigBuilder() {
     ReconnectorConfig.Builder reconnectorBuilder = ReconnectorConfig.newBuilder();
     getReconnectorInitialTimeToReconnect()
@@ -478,42 +477,21 @@ public class PpnOptions {
     getBridgeKeyLength().ifPresent(builder::setCipherSuiteKeyLength);
     isBlindSigningEnabled().ifPresent(builder::setEnableBlindSigning);
 
-    getRekeyDuration()
-        .ifPresent(
-            duration ->
-                builder.setRekeyDuration(
-                    com.google.protobuf.Duration.newBuilder()
-                        .setSeconds(duration.getSeconds())
-                        .setNanos(duration.getNano())));
+    getRekeyDuration().ifPresent(duration -> builder.setRekeyDuration(toProtoDuration(duration)));
 
     getIpGeoLevel().ifPresent(builder::setIpGeoLevel);
     getApiKey().ifPresent(builder::setApiKey);
 
     getIpv4KeepaliveInterval()
-        .ifPresent(
-            interval ->
-                builder.setIpv4KeepaliveInterval(
-                    com.google.protobuf.Duration.newBuilder()
-                        .setSeconds(interval.getSeconds())
-                        .setNanos(interval.getNano())));
+        .ifPresent(interval -> builder.setIpv4KeepaliveInterval(toProtoDuration(interval)));
     getIpv6KeepaliveInterval()
-        .ifPresent(
-            interval ->
-                builder.setIpv6KeepaliveInterval(
-                    com.google.protobuf.Duration.newBuilder()
-                        .setSeconds(interval.getSeconds())
-                        .setNanos(interval.getNano())));
+        .ifPresent(interval -> builder.setIpv6KeepaliveInterval(toProtoDuration(interval)));
 
     isPublicMetadataEnabled().ifPresent(builder::setPublicMetadataEnabled);
     isDebugModeAllowed().ifPresent(builder::setDebugModeAllowed);
 
     getPeriodicHealthCheckDuration()
-        .ifPresent(
-            duration ->
-                builder.setPeriodicHealthCheckDuration(
-                    com.google.protobuf.Duration.newBuilder()
-                        .setSeconds(duration.getSeconds())
-                        .setNanos(duration.getNano())));
+        .ifPresent(duration -> builder.setPeriodicHealthCheckDuration(toProtoDuration(duration)));
 
     getPeriodicHealthCheckUrl().ifPresent(builder::setPeriodicHealthCheckUrl);
     getPeriodicHealthCheckPort().ifPresent(builder::setPeriodicHealthCheckPort);
@@ -521,11 +499,7 @@ public class PpnOptions {
 
     getDatapathConnectingTimerDuration()
         .ifPresent(
-            duration ->
-                builder.setDatapathConnectingTimerDuration(
-                    com.google.protobuf.Duration.newBuilder()
-                        .setSeconds(duration.getSeconds())
-                        .setNanos(duration.getNano())));
+            duration -> builder.setDatapathConnectingTimerDuration(toProtoDuration(duration)));
 
     getUseReservedIpPool().ifPresent(builder::setUseReservedIpPool);
 
@@ -1199,5 +1173,13 @@ public class PpnOptions {
     public KryptonConfig.DatapathProtocol kryptonConfigValue() {
       return kryptonConfigValue;
     }
+  }
+
+  /** Converts a {@link Duration} to a protobuf {@link com.google.protobuf.Duration}. */
+  private static com.google.protobuf.Duration toProtoDuration(Duration duration) {
+    return com.google.protobuf.Duration.newBuilder()
+        .setSeconds(duration.getSeconds())
+        .setNanos(duration.getNano())
+        .build();
   }
 }
