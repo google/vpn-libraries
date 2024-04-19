@@ -96,7 +96,12 @@ absl::Status GetStatusForHttpResponse(
       GetStatusForHttpStatus(http_response.status().code(), message);
   if (!status.ok() && http_response.has_proto_body()) {
     ppn::PpnStatusDetails status_details;
-    if (status_details.ParseFromString(http_response.proto_body())) {
+    if (!status_details.ParseFromString(http_response.proto_body())) {
+      return status;
+    }
+
+    if (PpnStatusDetails_DetailedErrorCode_IsValid(
+            status_details.detailed_error_code())) {
       SetPpnStatusDetails(&status, status_details);
     }
   }

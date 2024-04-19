@@ -14,6 +14,7 @@
 
 #include "privacy/net/krypton/utils/status.h"
 
+#include "net/proto2/contrib/parse_proto/parse_text_proto.h"
 #include "privacy/net/common/proto/ppn_status.proto.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
@@ -25,6 +26,7 @@ namespace utils {
 namespace {
 
 using absl::StatusCode;
+using ::proto2::contrib::parse_proto::ParseTextProtoOrDie;
 using ::testing::EqualsProto;
 using ::testing::status::StatusIs;
 
@@ -127,6 +129,35 @@ TEST_F(StatusTest, GetStatusForHttpResponseWithOasisDisabledIncludesPpnStatus) {
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kFailedPrecondition,
                                "oasis disabled"));
   EXPECT_THAT(GetPpnStatusDetails(status), EqualsProto(details));
+}
+
+TEST_F(StatusTest, GetStatusForHttpResponseIgnoresInvalidProtobuf) {
+  HttpResponse http_response;
+  http_response.mutable_status()->set_code(418);
+  http_response.mutable_status()->set_message("failure");
+  http_response.set_proto_body("invalid");
+
+  absl::Status status = GetStatusForHttpResponse(http_response);
+
+  EXPECT_THAT(GetPpnStatusDetails(status),
+              EqualsProto(R"pb(detailed_error_code: 0
+                               auth_internal_error_code: 0)pb"));
+}
+
+TEST_F(StatusTest, GetStatusForHttpResponseIgnoresInvalidPpnStatusDetails) {
+  ppn::PpnStatusDetails details =
+      ParseTextProtoOrDie(R"pb(detailed_error_code: 999,
+                               auth_internal_error_code: 12)pb");
+  HttpResponse http_response;
+  http_response.mutable_status()->set_code(418);
+  http_response.mutable_status()->set_message("failure");
+  http_response.set_proto_body(details.SerializeAsString());
+
+  absl::Status status = GetStatusForHttpResponse(http_response);
+
+  EXPECT_THAT(GetPpnStatusDetails(status),
+              EqualsProto(R"pb(detailed_error_code: 0
+                               auth_internal_error_code: 0)pb"));
 }
 
 }  // anonymous namespace
