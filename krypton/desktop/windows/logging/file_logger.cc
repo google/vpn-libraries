@@ -146,7 +146,7 @@ void FileLogger::ResetLoggerStates() {
   }
 
   //  Get the size of the last (current) file.
-  std::ifstream in(sorted_paths_.back(),
+  std::ifstream in(sorted_paths_.back().c_str(),
                    std::ifstream::ate | std::ifstream::binary);
   current_file_size_ = in.tellg();
   in.close();
