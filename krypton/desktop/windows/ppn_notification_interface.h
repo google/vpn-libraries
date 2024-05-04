@@ -29,10 +29,6 @@ class PpnNotificationInterface {
   PpnNotificationInterface() = default;
   virtual ~PpnNotificationInterface() = default;
 
-  virtual void PpnStarted() = 0;
-
-  virtual void PpnStopped(const absl::Status& status) = 0;
-
   virtual void PpnConnected() = 0;
 
   virtual void PpnConnecting() = 0;
