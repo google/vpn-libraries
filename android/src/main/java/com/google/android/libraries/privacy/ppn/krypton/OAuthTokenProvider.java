@@ -16,7 +16,11 @@
 package com.google.android.libraries.privacy.ppn.krypton;
 
 // LINT.IfChange
+
+import androidx.annotation.Keep;
+
 /** Interface for Krypton to use when fetching an oauth token and for device verification. */
+@Keep
 public interface OAuthTokenProvider {
   /**
    * Returns a fresh oauth token. This method is called by C++ code, so it returns an empty string

@@ -16,6 +16,7 @@ package com.google.android.libraries.privacy.ppn.krypton;
 
 import android.content.Context;
 import android.util.Log;
+import androidx.annotation.Keep;
 import androidx.annotation.VisibleForTesting;
 import androidx.work.WorkManager;
 import com.google.android.libraries.privacy.ppn.IpGeoLevel;
@@ -47,6 +48,7 @@ import org.json.JSONObject;
  * must call stop() to close any open file descriptors and free memory used by Krypton. All
  * lifecycle events for Krypton will be reported by the provided KryptonListener.
  */
+@Keep
 public class KryptonImpl implements Krypton, TimerListener {
   private static final String TAG = "Krypton";
 

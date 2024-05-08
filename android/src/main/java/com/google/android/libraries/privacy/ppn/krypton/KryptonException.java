@@ -14,9 +14,11 @@
 
 package com.google.android.libraries.privacy.ppn.krypton;
 
+import androidx.annotation.Keep;
 import androidx.annotation.Nullable;
 
 /** Exception thrown by Krypton native code */
+@Keep
 public class KryptonException extends Exception {
   public KryptonException(String message) {
     super(message);

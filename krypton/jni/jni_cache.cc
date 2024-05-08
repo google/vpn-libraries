@@ -36,6 +36,10 @@ namespace {
 // kKryptonExceptionClass.
 // Method: Method name should match the Java name. k<Class><Method>Method
 // e.g. kKryptonGetHttpFetcherMethod.
+//
+// Please also ensure that any new class or method references added are tagged
+// with `@Keep` in its java code. Otherwise, clients using Proguard may not be
+// able to find them. See cl/631576282.
 
 // com.google.android.libraries.privacy.ppn.krypton.KryptonException
 // LINT.IfChange

@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn.neon;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import androidx.annotation.Keep;
 import com.google.android.libraries.privacy.ppn.PpnException;
 import com.google.android.libraries.privacy.ppn.PpnOptions;
 import com.google.android.libraries.privacy.ppn.PpnStatus;
@@ -114,6 +115,7 @@ class Provision {
   private native void stopNative(long nativeContext) throws KryptonException;
 
   /** Called by C++ code when provisioning is complete. */
+  @Keep
   private void onProvisioned(long nativeContext, byte[] ppnIkeResponseBytes) {
     try {
       Log.i(TAG, "Provisioning succeeded.");
@@ -130,6 +132,7 @@ class Provision {
   }
 
   /** Called by C++ code when provisioning fails. */
+  @Keep
   private void onProvisioningFailure(
       long nativeContext, int code, String reason, byte[] detailsBytes, boolean permanent) {
     try {

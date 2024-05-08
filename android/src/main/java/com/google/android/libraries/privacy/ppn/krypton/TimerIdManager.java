@@ -17,6 +17,7 @@ package com.google.android.libraries.privacy.ppn.krypton;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import androidx.annotation.Keep;
 import androidx.work.WorkManager;
 import com.google.common.annotations.VisibleForTesting;
 import java.time.Duration;
@@ -84,6 +85,7 @@ final class TimerIdManager implements TimerIdListener {
    *     not validated by this class.
    * @param delayMilliseconds Milliseconds delay for the timer
    */
+  @Keep
   public boolean startTimer(int timerId, int delayMilliseconds) {
     TimerIdTask timerIdTask =
         new TimerIdTask(
@@ -107,6 +109,7 @@ final class TimerIdManager implements TimerIdListener {
    * @param timerId timerId that was used in startTimer that needs to be cancelled. Operation is
    *     NoOp if the timer is not running and returns false.
    */
+  @Keep
   public boolean cancelTimer(int timerId) {
     TimerIdTask timerTask = runningTimers.remove(timerId);
     if (timerTask == null) {

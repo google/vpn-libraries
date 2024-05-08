@@ -18,6 +18,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import android.net.Network;
 import android.util.Log;
+import androidx.annotation.Keep;
 import androidx.annotation.Nullable;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.TaskCompletionSource;
@@ -198,6 +199,7 @@ public class HttpFetcher {
    * proto once the request is complete. The HttpResponse's HTTP status will indicate success or
    * failure.
    */
+  @Keep
   public byte[] postJson(byte[] requestBytes) {
     HttpRequest request = null;
     try {
@@ -412,6 +414,7 @@ public class HttpFetcher {
   }
 
   @Nullable
+  @Keep
   public String lookupDns(String hostname) {
     try {
       List<InetAddress> addresses = dns.lookup(hostname);
