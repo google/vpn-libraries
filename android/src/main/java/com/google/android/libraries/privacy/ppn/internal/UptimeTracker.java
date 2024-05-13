@@ -41,7 +41,7 @@ class UptimeTracker {
         return;
       }
 
-      startTime = Instant.now(clock);
+      startTime = clock.instant();
     }
   }
 
@@ -57,7 +57,7 @@ class UptimeTracker {
       }
 
       // Measure the elapsed duration and add it to the running total.
-      Instant now = Instant.now(clock);
+      Instant now = clock.instant();
       Duration elapsedTime = Duration.between(startTime, now);
       totalTime = totalTime.plus(elapsedTime);
 
@@ -78,7 +78,7 @@ class UptimeTracker {
 
       // If it's still running, grab the current elapsed time and reset the start time to now.
       if (startTime != null) {
-        Instant now = Instant.now(clock);
+        Instant now = clock.instant();
         Duration elapedTime = Duration.between(startTime, now);
         duration = duration.plus(elapedTime);
 
