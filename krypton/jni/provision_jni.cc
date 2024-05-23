@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "privacy/net/krypton/provision.h"
-
 #include <jni.h>
 #include <jni_md.h>
 
@@ -30,6 +28,7 @@
 #include "privacy/net/krypton/jni/jni_utils.h"
 #include "privacy/net/krypton/jni/oauth.h"
 #include "privacy/net/krypton/proto/krypton_config.proto.h"
+#include "privacy/net/krypton/provision.h"
 #include "privacy/net/krypton/utils/looper.h"
 #include "privacy/net/krypton/utils/status.h"
 #include "third_party/absl/log/log.h"
