@@ -146,7 +146,9 @@ class SessionTest : public ::testing::Test {
                                                key_pair_.first.get());
         });
     ON_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
-        .WillByDefault(Return(utils::CreateAddEgressHttpResponse()));
+        .WillByDefault([](const HttpRequest& request) {
+          return utils::CreateAddEgressHttpResponse(request);
+        });
   }
 
   void CreateSession() {
@@ -344,16 +346,14 @@ TEST_F(SessionTest, DatapathInitFailure) {
 TEST_F(SessionTest, DatapathConnectSuccessful) { BringDatapathToConnected(); }
 
 TEST_F(SessionTest, DatapathConnectFailsWithoutDatapathAddress) {
-  HttpResponse add_egress_response = utils::CreateAddEgressHttpResponse();
+  HttpResponse add_egress_response =
+      utils::CreateAddEgressHttpResponseForNonIke();
   ASSERT_OK_AND_ASSIGN(nlohmann::json json,
                        utils::StringToJson(add_egress_response.json_body()));
   json[JsonKeys::kPpnDataplane].erase(JsonKeys::kEgressPointSockAddr);
   add_egress_response.set_json_body(utils::JsonToString(json));
-
-  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("initial_data")));
-  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("auth")));
-  EXPECT_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
-      .WillOnce(Return(add_egress_response));
+  ON_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
+      .WillByDefault(Return(add_egress_response));
 
   ConnectControlPlaneWithoutSettingNetwork();
 
@@ -542,9 +542,9 @@ TEST_F(SessionTest, ProvisionedWithoutStartFails) {
   EXPECT_CALL(notification_,
               SessionError(StatusIs(absl::StatusCode::kFailedPrecondition)));
 
-  ASSERT_OK_AND_ASSIGN(
-      AddEgressResponse response,
-      AddEgressResponse::FromProto(utils::CreateAddEgressHttpResponse()));
+  ASSERT_OK_AND_ASSIGN(AddEgressResponse response,
+                       AddEgressResponse::FromProto(
+                           utils::CreateAddEgressHttpResponseForNonIke()));
   session_->Provisioned(response, /*is_rekey=*/false);
 }
 
@@ -552,14 +552,9 @@ TEST_F(SessionTest, ProvisionedWithIkeResponseFails) {
   EXPECT_CALL(notification_,
               SessionError(StatusIs(absl::StatusCode::kFailedPrecondition)));
 
-  HttpResponse http_response = utils::CreateHttpResponseWithStatus(200, "OK");
-  http_response.set_json_body(R"json({
-      "ike": {
-        "server_address": "www.google.com"
-      }
-    })json");
-  ASSERT_OK_AND_ASSIGN(AddEgressResponse response,
-                       AddEgressResponse::FromProto(http_response));
+  ASSERT_OK_AND_ASSIGN(
+      AddEgressResponse response,
+      AddEgressResponse::FromProto(utils::CreateAddEgressHttpResponseForIke()));
   session_->Provisioned(response, /*is_rekey=*/false);
 }
 

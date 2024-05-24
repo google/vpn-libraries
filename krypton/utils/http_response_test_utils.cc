@@ -23,6 +23,7 @@
 #include "privacy/net/krypton/proto/http_fetcher.proto.h"
 #include "third_party/absl/status/statusor.h"
 #include "third_party/absl/strings/escaping.h"
+#include "third_party/absl/strings/match.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/anonymous_tokens/cpp/testing/utils.h"
 #include "third_party/anonymous_tokens/proto/anonymous_tokens.proto.h"
@@ -112,7 +113,26 @@ HttpResponse CreateAuthHttpResponse(const HttpRequest& auth_request,
   return utils::CreateHttpResponseWithProtoBody(auth_response);
 }
 
-HttpResponse CreateAddEgressHttpResponse() {
+HttpResponse CreateAddEgressHttpResponse(
+    const HttpRequest& add_egress_request) {
+  if (absl::StrContains(add_egress_request.json_body(),
+                        R"("dataplane_protocol":"IKE")")) {
+    return CreateAddEgressHttpResponseForIke();
+  }
+  return CreateAddEgressHttpResponseForNonIke();
+}
+
+HttpResponse CreateAddEgressHttpResponseForIke() {
+  return CreateHttpResponseWithJsonBody(R"string({
+      "ike": {
+        "client_id": "Y2xpZW50X2lk",
+        "server_address": "server_address",
+        "shared_secret": "c2hhcmVkX3NlY3JldA=="
+      }
+    })string");
+}
+
+HttpResponse CreateAddEgressHttpResponseForNonIke() {
   return CreateHttpResponseWithJsonBody(R"string({
       "ppn_dataplane": {
         "user_private_ip": [{

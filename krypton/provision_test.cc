@@ -98,7 +98,9 @@ class ProvisionTest : public ::testing::Test {
                                                key_pair_.first.get());
         });
     ON_CALL(http_fetcher_, PostJson(RequestUrlMatcher("add_egress")))
-        .WillByDefault(Return(utils::CreateAddEgressHttpResponse()));
+        .WillByDefault([](const HttpRequest& request) {
+          return utils::CreateAddEgressHttpResponse(request);
+        });
 
     ON_CALL(notification_, ReadyForAddEgress)
         .WillByDefault([this](bool is_rekey) {
@@ -196,9 +198,9 @@ TEST_F(ProvisionTest, EgressAvailable) {
   EXPECT_EQ(control_plane_addr, "0.0.0.0:1849");
   ASSERT_OK_AND_ASSIGN(PpnDataplaneResponse actual_ppn_dataplane_response,
                        provisioned_response.ppn_dataplane_response());
-  ASSERT_OK_AND_ASSIGN(
-      AddEgressResponse expected_add_egress_response,
-      AddEgressResponse::FromProto(utils::CreateAddEgressHttpResponse()));
+  ASSERT_OK_AND_ASSIGN(AddEgressResponse expected_add_egress_response,
+                       AddEgressResponse::FromProto(
+                           utils::CreateAddEgressHttpResponseForNonIke()));
   ASSERT_OK_AND_ASSIGN(PpnDataplaneResponse expected_ppn_dataplane_response,
                        expected_add_egress_response.ppn_dataplane_response());
   EXPECT_THAT(actual_ppn_dataplane_response,
@@ -207,7 +209,8 @@ TEST_F(ProvisionTest, EgressAvailable) {
 
 TEST_F(ProvisionTest, UsesControlPlaneAddrFromAddEgressResponse) {
   // Modify the default AddEgressResponse to include a control plane addr.
-  HttpResponse fake_add_egress_response = utils::CreateAddEgressHttpResponse();
+  HttpResponse fake_add_egress_response =
+      utils::CreateAddEgressHttpResponseForNonIke();
   ASSERT_OK_AND_ASSIGN(
       nlohmann::json json_obj,
       utils::StringToJson(fake_add_egress_response.json_body()));

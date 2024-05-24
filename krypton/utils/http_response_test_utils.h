@@ -37,8 +37,18 @@ HttpResponse CreateAuthHttpResponse(
     const HttpRequest& auth_request, RSA* rsa_key,
     absl::string_view control_plane_hostname = "");
 
-HttpResponse CreateAddEgressHttpResponse();
+// Creates an AddEgressHttpResponse according to the data plane protocol in the
+// request.
+HttpResponse CreateAddEgressHttpResponse(const HttpRequest& add_egress_request);
 
+// Creates an AddEgressHttpResponse for an IKE session.
+HttpResponse CreateAddEgressHttpResponseForIke();
+
+// Creates an AddEgressHttpResponse for a non-IKE session.
+HttpResponse CreateAddEgressHttpResponseForNonIke();
+
+// Creates an AddEgressHttpResponse for a rekey operation. Rekey only applies to
+// non-IKE sessions.
 HttpResponse CreateRekeyHttpResponse();
 
 }  // namespace utils
