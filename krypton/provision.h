@@ -70,7 +70,12 @@ class Provision : public Auth::NotificationInterface,
 
   void Rekey() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void SendAddEgress(bool is_rekey, crypto::SessionCrypto* key_material)
+  // SendAddEgress will continue the provisioning by sending an
+  // AddEgressRequest. This should be called after the ReadyForAddEgress
+  // notification has been called. The key_material is optional and is only
+  // needed for non-IKE clients.
+  void SendAddEgress(bool is_rekey,
+                     crypto::SessionCrypto* key_material = nullptr)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   std::string GetApnType() ABSL_LOCKS_EXCLUDED(mutex_);

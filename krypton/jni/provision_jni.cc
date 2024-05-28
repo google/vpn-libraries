@@ -97,7 +97,10 @@ class ProvisionContext : public Provision::NotificationInterface {
   }
 
   void ReadyForAddEgress(bool is_rekey) override {
-    // TODO: Do not require unnecessary SessionCrypto for IKE.
+    if (config_.datapath_protocol() == KryptonConfig::IKE) {
+      provision_->SendAddEgress(is_rekey);
+      return;
+    }
     absl::StatusOr<std::unique_ptr<crypto::SessionCrypto>> key_material =
         crypto::SessionCrypto::Create(config_);
     if (!key_material.ok()) {

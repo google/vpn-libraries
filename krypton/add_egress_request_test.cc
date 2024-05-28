@@ -164,33 +164,31 @@ TEST_F(PpnAddEgressRequest, TestPpnRequestBrassWithDynamicMtu) {
 
 TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
   ASSERT_OK_AND_ASSIGN(auto crypto, crypto::SessionCrypto::Create(config_));
-  auto keys = crypto->GetMyKeyMaterial();
+  crypto::SessionCrypto::KeyMaterial keys = crypto->GetMyKeyMaterial();
 
   AddEgressRequest request(std::optional("apiKey"));
   AddEgressRequest::PpnDataplaneRequestParams params{};
+  crypto->SetSignature("some_signature");
   params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = true;
-  params.signature = "some_signature";
   params.uplink_spi = 1234;
-  auto http_request = request.EncodeToProtoForPpn(params);
+  HttpRequest http_request = request.EncodeToProtoForPpn(params);
 
   EXPECT_EQ(http_request.headers().find("X-Goog-Api-Key")->second, "apiKey");
-  ASSERT_OK_AND_ASSIGN(auto actual,
+  ASSERT_OK_AND_ASSIGN(nlohmann::json actual,
                        utils::StringToJson(http_request.json_body()));
 
-  ASSERT_OK_AND_ASSIGN(auto verification_key,
+  ASSERT_OK_AND_ASSIGN(std::string verification_key,
                        crypto->GetRekeyVerificationKey());
   std::string public_value_encoded;
   std::string nonce_encoded;
   std::string verification_key_encoded;
-  std::string signature_encoded;
   absl::Base64Escape(keys.public_value, &public_value_encoded);
   absl::Base64Escape(keys.nonce, &nonce_encoded);
   absl::Base64Escape(verification_key, &verification_key_encoded);
-  absl::Base64Escape(params.signature, &signature_encoded);
 
   // Round-tripping through serialization causes int values to randomly be int
   // or uint, so we need to test each value separately.
@@ -203,7 +201,7 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
   EXPECT_EQ(actual["ppn"]["suite"], "AES128_GCM");
   EXPECT_EQ(actual["ppn"]["dataplane_protocol"], "BRIDGE");
   EXPECT_EQ(actual["ppn"]["rekey_verification_key"], verification_key_encoded);
-  EXPECT_EQ(actual["ppn"]["rekey_signature"], signature_encoded);
+  EXPECT_EQ(actual["ppn"]["rekey_signature"], "c29tZV9zaWduYXR1cmU=");
   EXPECT_EQ(actual["ppn"]["previous_uplink_spi"], params.uplink_spi);
   EXPECT_TRUE(actual["ppn"]["dynamic_mtu_enabled"].is_null());
   EXPECT_TRUE(actual["ppn"]["public_metadata"].is_null());
@@ -212,17 +210,17 @@ TEST_F(AddEgressRequestTest, TestPpnRequestBrassWithRekey) {
 
 TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   ASSERT_OK_AND_ASSIGN(auto crypto, crypto::SessionCrypto::Create(config_));
-  auto keys = crypto->GetMyKeyMaterial();
+  crypto::SessionCrypto::KeyMaterial keys = crypto->GetMyKeyMaterial();
 
   AddEgressRequest request(std::optional("apiKey"),
                            AddEgressRequest::RequestDestination::kBeryllium);
   AddEgressRequest::PpnDataplaneRequestParams params{};
+  crypto->SetSignature("some_signature");
   params.crypto = crypto.get();
   params.control_plane_sockaddr = kCopperControlPlaneAddress;
   params.dataplane_protocol = KryptonConfig::BRIDGE;
   params.suite = PpnDataplaneRequest::AES128_GCM;
   params.is_rekey = true;
-  params.signature = "some_signature";
   params.uplink_spi = 1234;
   params.country = "US";
   params.city_geo_id = "us_ca_san_diego";
@@ -230,21 +228,19 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   params.service_type = "foo";
   params.signing_key_version = 3;
   params.debug_mode = privacy::ppn::PublicMetadata::UNSPECIFIED_DEBUG_MODE;
-  auto http_request = request.EncodeToProtoForPpn(params);
+  HttpRequest http_request = request.EncodeToProtoForPpn(params);
 
-  ASSERT_OK_AND_ASSIGN(auto verification_key,
+  ASSERT_OK_AND_ASSIGN(std::string verification_key,
                        crypto->GetRekeyVerificationKey());
   std::string public_value_encoded;
   std::string nonce_encoded;
   std::string verification_key_encoded;
-  std::string signature_encoded;
   absl::Base64Escape(keys.public_value, &public_value_encoded);
   absl::Base64Escape(keys.nonce, &nonce_encoded);
   absl::Base64Escape(verification_key, &verification_key_encoded);
-  absl::Base64Escape(params.signature, &signature_encoded);
 
   EXPECT_EQ(http_request.headers().find("X-Goog-Api-Key")->second, "apiKey");
-  ASSERT_OK_AND_ASSIGN(auto actual,
+  ASSERT_OK_AND_ASSIGN(nlohmann::json actual,
                        utils::StringToJson(http_request.json_body()));
   // Round-tripping through serialization causes int values to randomly be int
   // or uint, so we need to test each value separately.
@@ -253,7 +249,7 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   EXPECT_FALSE(actual["region_token_and_signature"].is_null());
   ASSERT_TRUE(actual["ppn"].is_object());
 
-  auto ppn = actual["ppn"];
+  nlohmann::json ppn = actual["ppn"];
   EXPECT_FALSE(ppn["apn_type"].is_null());
   EXPECT_EQ(ppn["client_public_value"], public_value_encoded);
   EXPECT_EQ(ppn["client_nonce"], nonce_encoded);
@@ -262,12 +258,12 @@ TEST_F(AddEgressRequestTest, TestRekeyParametersWithDynamicMtu) {
   EXPECT_EQ(ppn["suite"], "AES128_GCM");
   EXPECT_EQ(ppn["dataplane_protocol"], "BRIDGE");
   EXPECT_EQ(ppn["rekey_verification_key"], verification_key_encoded);
-  EXPECT_EQ(ppn["rekey_signature"], signature_encoded);
+  EXPECT_EQ(ppn["rekey_signature"], "c29tZV9zaWduYXR1cmU=");
   EXPECT_EQ(ppn["previous_uplink_spi"], params.uplink_spi);
   EXPECT_TRUE(ppn["dynamic_mtu_enabled"].is_null());
 
   ASSERT_TRUE(actual["public_metadata"].is_object());
-  auto public_metadata = actual["public_metadata"];
+  nlohmann::json public_metadata = actual["public_metadata"];
   EXPECT_EQ(public_metadata["exit_location"]["country"], "US");
   EXPECT_EQ(public_metadata["exit_location"]["city_geo_id"], "us_ca_san_diego");
   EXPECT_EQ(public_metadata["service_type"], "foo");

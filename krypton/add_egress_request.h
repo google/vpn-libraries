@@ -48,7 +48,6 @@ class AddEgressRequest {
     net::common::proto::PpnDataplaneRequest::CryptoSuite suite;
     KryptonConfig::DatapathProtocol dataplane_protocol;
     bool is_rekey;
-    std::string signature;
     uint32_t uplink_spi;
     // Raw text that was sent to Zinc also needs to be sent to Brass.
     std::string blind_message;

@@ -241,10 +241,12 @@ void Provision::PpnDataplaneRequest(bool is_rekey,
     }
   }
 
-  params.crypto = key_material;
-  if (key_material->GetRekeySignature()) {
-    params.signature = key_material->GetRekeySignature().value();
+  if (config_.datapath_protocol() != KryptonConfig::IKE &&
+      key_material == nullptr) {
+    FailWithStatus(absl::FailedPreconditionError("Key material is null"));
+    return;
   }
+  params.crypto = key_material;
   params.uplink_spi = egress_manager_->uplink_spi();
 
   if (config_.public_metadata_enabled()) {

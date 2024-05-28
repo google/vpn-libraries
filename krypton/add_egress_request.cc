@@ -82,15 +82,36 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
   json_body[JsonKeys::kRegionTokenAndSignature] =
       params.region_token_and_signature;
 
-  auto my_keys = params.crypto->GetMyKeyMaterial();
-  std::string public_value_encoded;
-  std::string nonce_encoded;
-  absl::Base64Escape(my_keys.public_value, &public_value_encoded);
-  absl::Base64Escape(my_keys.nonce, &nonce_encoded);
+  if (params.crypto != nullptr) {
+    crypto::SessionCrypto::KeyMaterial keys = params.crypto->GetMyKeyMaterial();
+    std::string public_value_encoded;
+    std::string nonce_encoded;
+    absl::Base64Escape(keys.public_value, &public_value_encoded);
+    absl::Base64Escape(keys.nonce, &nonce_encoded);
 
-  ppn[JsonKeys::kClientPublicValue] = public_value_encoded;
-  ppn[JsonKeys::kClientNonce] = nonce_encoded;
-  ppn[JsonKeys::kDownlinkSpi] = params.crypto->downlink_spi();
+    ppn[JsonKeys::kClientPublicValue] = public_value_encoded;
+    ppn[JsonKeys::kClientNonce] = nonce_encoded;
+    ppn[JsonKeys::kDownlinkSpi] = params.crypto->downlink_spi();
+
+    absl::StatusOr<std::string> verification_key =
+        params.crypto->GetRekeyVerificationKey();
+    if (verification_key.ok()) {
+      std::string verification_key_encoded;
+      absl::Base64Escape(*verification_key, &verification_key_encoded);
+      ppn[JsonKeys::kRekeyVerificationKey] = verification_key_encoded;
+    }
+
+    if (params.is_rekey) {
+      std::optional<std::string> signature = params.crypto->GetRekeySignature();
+      if (signature.has_value()) {
+        std::string signature_encoded;
+        absl::Base64Escape(*signature, &signature_encoded);
+        ppn[JsonKeys::kSignature] = signature_encoded;
+      }
+      ppn[JsonKeys::kPreviousUplinkSpi] = params.uplink_spi;
+    }
+  }
+
   ppn[JsonKeys::kApnType] = params.apn_type;
 
   if (params.dynamic_mtu_enabled) {
@@ -104,21 +125,6 @@ nlohmann::json AddEgressRequest::BuildBodyJson(
   ppn[JsonKeys::kControlPlaneSockAddr] = params.control_plane_sockaddr;
   ppn[JsonKeys::kPreferOasis] = params.prefer_oasis;
   ppn[JsonKeys::kUseReservedIpPool] = params.use_reserved_ip_pool;
-
-  auto verification_key = params.crypto->GetRekeyVerificationKey();
-  if (verification_key.ok()) {
-    std::string verification_key_encoded;
-    absl::Base64Escape(*verification_key, &verification_key_encoded);
-
-    ppn[JsonKeys::kRekeyVerificationKey] = verification_key_encoded;
-  }
-  if (params.is_rekey) {
-    std::string signature_encoded;
-    absl::Base64Escape(params.signature, &signature_encoded);
-
-    ppn[JsonKeys::kSignature] = signature_encoded;
-    ppn[JsonKeys::kPreviousUplinkSpi] = params.uplink_spi;
-  }
 
   json_body[JsonKeys::kPpn] = ppn;
   return json_body;
