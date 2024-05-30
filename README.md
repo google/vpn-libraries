@@ -1,5 +1,17 @@
 # Google VPN
 
+## Update regarding this repo
+
+This repo contains source code for the client libraries used in the VPN by
+Google One. It has been announced that VPN by Google One will sunset in June
+2024. Due to the planned turndown of the VPN, the repo will no
+longer be updated.
+
+This repo will be archived on June 20, 2024, coinciding with the planned
+turndown date.
+
+## Overview
+
 VPN client library that provides a secure, encrypted tunnel for connected
 devices
 
